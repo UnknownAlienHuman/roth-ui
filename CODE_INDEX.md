@@ -8,7 +8,7 @@
 | Action bars | `core/action_bar_*.lua`, `core/bar_runtime_registry.lua` | Secure bars, dock, override, vehicle and visibility paths |
 | Movers | `core/mover_runtime.lua`, `core/movegrid.lua`, `embeds/rLib/dragframe.lua` | Registration, drag and persisted placement |
 | Orbs/bars | `core/orb_*.lua`, `core/bars.lua` | Player resources and status bars |
-| Units | `units/*.lua`, `oUF/elements/*.lua` | oUF layouts, castbars and unit-specific elements |
+| Units | loaded `units/*.lua`; loaded elements `oUF/elements/target_border.lua`, `experience.lua`, `reputation.lua` | oUF layouts, castbars and unit-specific elements; other on-disk element files are inactive unless added to the root TOC |
 | Settings | `core/settings_*.lua`, `core/settings_actions.lua` | In-game settings and apply/reset operations |
 | Optional modules | `modules/Roth_UI_*/*` | ActionBarStyler, button templates and oUF helpers |
 

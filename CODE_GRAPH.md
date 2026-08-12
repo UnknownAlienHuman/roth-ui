@@ -10,7 +10,8 @@ flowchart TD
   C --> O["orb and unit runtime"]
   B --> AB["action bars and dock"]
   O --> U["oUF units and elements"]
-  AB --> M["optional module TOCs"]
+  AB --> M["embedded action-bar/button XML"]
+  M -. "separate optional wrappers" .-> MT["module TOCs"]
   P --> DB[("Roth_UI_DB")]
 ```
 
