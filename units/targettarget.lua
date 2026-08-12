@@ -1,0 +1,194 @@
+
+  --get the addon namespace
+  local addon, ns = ...
+
+  --get oUF namespace (just in case needed)
+  local oUF = ns.oUF or oUF
+
+  --get the config
+  local cfg = ns.cfg
+
+  --get the functions
+  local func = ns.func
+
+  --get the unit container
+  local unit = ns.unit
+
+  ---------------------------------------------
+  -- UNIT SPECIFIC FUNCTIONS
+  ---------------------------------------------
+
+  --init parameters
+  local initUnitParameters = function(self)
+    self:SetFrameStrata("LOW")
+    self:SetFrameLevel(1)
+    self:SetSize(self.cfg.width, self.cfg.height)
+    self:SetScale(self.cfg.scale)
+    self:SetPoint(self.cfg.pos.a1,self.cfg.pos.af,self.cfg.pos.a2,self.cfg.pos.x,self.cfg.pos.y)
+    self:RegisterForClicks("AnyDown")
+    self:SetScript("OnEnter", UnitFrame_OnEnter)
+    self:SetScript("OnLeave", UnitFrame_OnLeave)
+    func.applyDragFunctionality(self)
+    self:SetHitRectInsets(10,10,10,10)
+  end
+
+  --actionbar background
+  local createArtwork = function(self)
+    local t = self:CreateTexture(nil,"BORDER",nil,-8)
+    t:SetAllPoints(self)
+    t:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget")
+  end
+
+  --create health frames
+  local createHealthFrame = function(self)
+
+    local cfg = self.cfg.health
+
+    --health
+    local h = CreateFrame("StatusBar", nil, self)
+    h:SetPoint("TOP",0,-29)
+    h:SetPoint("LEFT",30.5,0)
+    h:SetPoint("RIGHT",-30.5,0)
+    h:SetPoint("BOTTOM",0,25.7)
+	  h:SetFrameStrata("BACKGROUND")
+
+    h:SetStatusBarTexture(cfg.texture)
+    h.bg = h:CreateTexture(nil,"BACKGROUND",nil,-6)
+    h.bg:SetTexture(cfg.texture)
+    h.bg:SetAllPoints(h)
+
+    h.glow = h:CreateTexture(nil,"OVERLAY",nil,-5)
+    h.glow:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget_hpglow")
+    h.glow:SetPoint("TOP",0,-33)
+    h.glow:SetPoint("LEFT",-27.5,0)
+    h.glow:SetPoint("RIGHT",27.5,0)
+    h.glow:SetPoint("BOTTOM",0,27)
+    h.glow:SetVertexColor(0,0,0,1)
+
+    h.highlight = h:CreateTexture(nil,"OVERLAY",nil,-4)
+    h.highlight:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget_highlight")
+    h.highlight:SetAllPoints(h.glow)
+
+    self.Health = h
+    self.Health.Smooth = true
+  end
+
+  --create power frames
+  local createPowerFrame = function(self)
+    local cfg = self.cfg.power
+
+    --power
+    local h = CreateFrame("StatusBar", nil, self.Health)
+    h:SetPoint("TOP",0,-12)
+    h:SetPoint("LEFT",4,0)
+    h:SetPoint("RIGHT",-4,0)
+    h:SetPoint("BOTTOM",0,-10)
+
+    h:SetStatusBarTexture(cfg.texture)
+
+    h.bg = h:CreateTexture(nil,"BACKGROUND",nil,-6)
+    h.bg:SetTexture(cfg.texture)
+    h.bg:SetAllPoints(h)
+
+    h.glow = h:CreateTexture(nil,"OVERLAY",nil,-5)
+    h.glow:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget_ppglow")
+    h.glow:SetAllPoints(self)
+    h.glow:SetVertexColor(0,0,0,1)
+
+    self.Power = h
+    self.Power.Smooth = true
+
+  end
+
+  --create health power strings
+  local createHealthPowerStrings = function(self)
+
+    local name = func.createFontString(self, cfg.font, 11, "THINOUTLINE")
+    name:SetPoint("BOTTOM", self, "TOP", 0, -16)
+    name:SetPoint("LEFT", self.Health, 0, 0)
+    name:SetPoint("RIGHT", self.Health, 0, 0)
+    self.Name = name
+
+    local hpval = func.createFontString(self.Health, cfg.font, 8, "THINOUTLINE")
+    hpval:SetPoint("RIGHT", self.Health, "RIGHT", -4, 0)
+    hpval:SetJustifyH("RIGHT")
+
+    local perphp = func.createFontString(self.Health, cfg.font, 8, "THINOUTLINE")
+    perphp:SetPoint("CENTER", self.Health, "CENTER", 0, 0)
+    perphp:SetJustifyH("CENTER")
+
+    self:Tag(name, "[diablo:name]")
+
+    self.Health.valueText = hpval
+    self.Health.valueTextMode = func.ResolveHealthValueMode()
+    self.Health.perText = perphp
+
+  end
+
+
+  ---------------------------------------------
+  -- TARGETTARGET STYLE FUNC
+  ---------------------------------------------
+
+  local function createStyle(self)
+  self.colors = self.colors or (oUF and oUF.colors) or {}
+
+    --apply config to self
+    self.cfg = (ns.GetUnitConfig and ns.GetUnitConfig("targettarget")) or cfg.units.targettarget
+    self.__style = "targettarget"
+
+    --init
+    initUnitParameters(self)
+
+    --create the art
+    createArtwork(self)
+
+    --createhealthPower
+    createHealthFrame(self)
+    createPowerFrame(self)
+
+    --health power strings
+    createHealthPowerStrings(self)
+
+    --health power update
+    self.Health.PostUpdate = func.updateHealth
+    self.Power.PostUpdate = func.updatePower
+
+    -- castbar: oUF skips *target units for castbar events, so targettarget needs
+    -- the addon's standalone polling path instead of local dead callback glue.
+    if self.cfg.castbar and self.cfg.castbar.show then
+      func.createCastbar(self)
+      local bar = self.Castbar
+      if bar and type(func.EnableStandaloneCastbar) == "function" then
+        func.EnableStandaloneCastbar(bar, "targettarget")
+      end
+    end
+
+    -- Auras (WoW 12.x): native oUF Debuffs with Roth skinning callbacks.
+    if self.cfg.auras and self.cfg.auras.show then
+      func.createDebuffs(self)
+    end
+
+    --debuffglow
+    func.createDebuffGlow(self)
+
+    --icons
+    self.RaidTargetIndicator = func.createIcon(self,"BACKGROUND",20,self.Name,"BOTTOM","TOP",0,0,-1)
+	self.RaidTargetIndicator:SetTexture("Interface\\AddOns\\Roth_UI\\media\\raidicons")
+
+    func.healPrediction(self)
+
+    --add self to unit container (maybe access to that unit is needed in another style)
+    unit.targettarget = self
+
+  end
+
+  ---------------------------------------------
+  -- SPAWN TARGETTARGET UNIT
+  ---------------------------------------------
+
+  if ns.IsRothEnabled and ns.IsRothEnabled(cfg.units.targettarget.show) then
+    oUF:RegisterStyle("diablo:targettarget", createStyle)
+    oUF:SetActiveStyle("diablo:targettarget")
+    oUF:Spawn("targettarget", "Roth_UITargetTargetFrame")
+  end

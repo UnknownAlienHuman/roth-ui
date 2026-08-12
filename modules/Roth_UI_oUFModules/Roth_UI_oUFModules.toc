@@ -1,0 +1,9 @@
+## Interface: 120001, 120005
+## Author: Galaxy
+## Title: Roth UI: oUF Modules
+## Version: 1.0.0
+## Notes: oUF element modules used by Roth UI unit frames.
+## RequiredDeps: oUF
+
+# Elements
+modules\oUF_Smooth.lua
