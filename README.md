@@ -2,6 +2,12 @@
 
 Diablo-inspired World of Warcraft UI built around the oUF framework. The addon provides custom unit frames, resource orbs, action-bar styling, movers, Blizzard-frame policies, and a settings/persistence layer.
 
+## Preview
+
+![Roth UI Community Edition in game](https://media.forgecdn.net/attachments/1569/226/screenshot-2026-03-07-072119-png.png)
+
+Screenshot from the [CurseForge gallery](https://www.curseforge.com/wow/addons/roth-ui-community-edition).
+
 ## Compatibility
 
 - Interface: `120001`, `120005`
