@@ -1,9 +1,9 @@
 # Midnight 12.1 migration record
 
-Date: 2026-08-27  
-Addon target: World of Warcraft Retail `12.1.0` / Interface `120100`  
-Blizzard UI source pin: `Gethe/wow-ui-source@027d26c3406d3de2cbd2b1f67d468fe033a1bcd4` (`12.1.0.69497`)  
-oUF baseline: `14.0.2` (`cbdb1d2f33bfcf4e9a5e44f02df3ebcefd35b491`)
+- Date: 2026-08-27
+- Addon target: World of Warcraft Retail `12.1.0` / Interface `120100`
+- Blizzard UI source pin: `Gethe/wow-ui-source@027d26c3406d3de2cbd2b1f67d468fe033a1bcd4` (`12.1.0.69497`)
+- oUF baseline: `14.0.2` (`cbdb1d2f33bfcf4e9a5e44f02df3ebcefd35b491`)
 
 ## Why the migration is required
 
@@ -69,6 +69,7 @@ The migration therefore uses one managed `HARMFUL` group with `AuraContainerSort
 - TOC duplicate-entry and dependency-order checks.
 - Exact local/remote Git blob verification for the guard module.
 - Source review against Blizzard `CustomAuraContainer` implementation and oUF 14 aura/event elements.
+- Repository CI checks the TOC/XML load closure, exact metadata, order constraints, managed-aura boundary, every Lua file with `luac5.1 -p`, whitespace errors, and unresolved conflict markers.
 
 ## Required in-client verification
 
