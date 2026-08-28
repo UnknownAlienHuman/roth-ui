@@ -1,11 +1,12 @@
 -- Retail 12.1 managed-aura hardening loaded after aura_runtime_12_1.lua.
 --
--- This guard closes three legacy compatibility gaps without reading AuraData:
+-- This guard closes legacy compatibility gaps without reading AuraData:
 -- 1. fail closed when oUF lacks frame:CreateAuras(), so legacy Buffs/Debuffs
 --    placeholders cannot reactivate the removed raw UNIT_AURA element;
 -- 2. preserve the old healer-watch "PLAYER" caster restriction through
 --    CustomAuraContainer:SetAuraGroupCandidateFilters();
--- 3. detach Roth UI's obsolete UNIT_AURA callback while preserving oUF's own
+-- 3. apply that candidate-filter upgrade only once per managed group;
+-- 4. detach Roth UI's obsolete UNIT_AURA callback while preserving oUF's own
 --    element handlers via per-function UnregisterEvent.
 
 local addonName, ns = ...
@@ -17,9 +18,10 @@ local tonumber = tonumber
 local next = next
 local UnitClass = UnitClass
 
-local IsSecretValue = func.IsSecretValue or function()
-  return false
-end
+local IsSecretValue = assert(
+  type(func.IsSecretValue) == "function" and func.IsSecretValue,
+  "Roth_UI: func.IsSecretValue is required by aura_runtime_12_1_guard.lua"
+)
 
 local SPELL_IDS_BY_CLASS = {
   PRIEST = { 139, 17, 77489, 41635 },
@@ -42,10 +44,20 @@ local function HasManagedAuraAPI(frame)
   return frame and type(frame.CreateAuras) == "function"
 end
 
-local function FailClosed(frame, field)
-  if frame and field then
-    frame[field] = nil
+local function ClearLegacyField(frame, field)
+  if not (frame and field) then
+    return
   end
+
+  frame[field] = nil
+  if field == "AuraWatch" then
+    frame.__rothAuraWatch = nil
+    frame.__rothManagedAuraWatch = nil
+  end
+end
+
+local function FailClosed(frame, field)
+  ClearLegacyField(frame, field)
   WarnOnce(
     "missingCreateAuras",
     "oUF 14.0.2 or newer is required for Retail 12.1 managed auras; aura display was disabled."
@@ -89,12 +101,12 @@ end
 
 local function ResolvePlayerClassToken()
   local classToken = cfg and cfg.playerclass
-  if type(classToken) == "string" and classToken ~= "" and not IsSecretValue(classToken) then
+  if not IsSecretValue(classToken) and type(classToken) == "string" and classToken ~= "" then
     return classToken
   end
 
   local _, fallback = UnitClass("player")
-  if type(fallback) == "string" and fallback ~= "" and not IsSecretValue(fallback) then
+  if not IsSecretValue(fallback) and type(fallback) == "string" and fallback ~= "" then
     return fallback
   end
   return nil
@@ -125,9 +137,17 @@ local function BuildHealerWatchFilters()
 end
 
 local function HardenAuraWatch(element)
-  local groupKey = element and element.__rothAuraWatchGroupKey
+  if not element or element.__rothOwnCasterFilterApplied == true then
+    return element
+  end
+
+  local groupKey = element.__rothAuraWatchGroupKey
+  if not groupKey or type(element.SetAuraGroupCandidateFilters) ~= "function" then
+    return element
+  end
+
   local filters = BuildHealerWatchFilters()
-  if not groupKey or not filters or type(element.SetAuraGroupCandidateFilters) ~= "function" then
+  if not filters then
     return element
   end
 
@@ -156,14 +176,17 @@ if type(refreshSafeAuraWatch) == "function" then
   end
 end
 
-func.QueueGroupAuraColorUpdate = function(frame)
+local function DetachLegacyUnitAuraCallback(frame)
   if frame and type(frame.UnregisterEvent) == "function" then
-    frame:UnregisterEvent("UNIT_AURA", func.QueueGroupAuraColorUpdate)
+    frame:UnregisterEvent("UNIT_AURA", DetachLegacyUnitAuraCallback)
   end
 end
+
+func.QueueGroupAuraColorUpdate = DetachLegacyUnitAuraCallback
 
 ns.auraRuntime12_1Guard = {
   failClosedWithoutManagedAPI = true,
   healerWatchOwnCasterOnly = true,
+  healerWatchFilterAppliedOnce = true,
   legacyUnitAuraCallbackDetached = true,
 }
