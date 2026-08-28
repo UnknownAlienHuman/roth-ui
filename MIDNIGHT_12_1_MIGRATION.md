@@ -1,7 +1,8 @@
 # Midnight 12.1 migration record
 
-- Date: 2026-08-27
+- Date: 2026-08-28
 - Addon target: World of Warcraft Retail `12.1.0` / Interface `120100`
+- Addon version: `3.3.8-v57.8-B4.1`
 - Blizzard UI source pin: `Gethe/wow-ui-source@027d26c3406d3de2cbd2b1f67d468fe033a1bcd4` (`12.1.0.69497`)
 - oUF baseline: `14.0.2` (`cbdb1d2f33bfcf4e9a5e44f02df3ebcefd35b491`)
 
@@ -9,11 +10,11 @@
 
 Retail 12.1 replaces the legacy general-unit-aura model used by older oUF layouts. Roth UI previously constructed plain frames, assigned them to `self.Buffs` / `self.Debuffs`, attached Lua filters and read `AuraData` or `UNIT_AURA` payloads for timers, healer watches and dispel-color inference.
 
-The supported 12.1 path is a Blizzard-managed `CustomAuraContainerTemplate`, exposed by oUF 14 as `frame:CreateAuras()`, with `AddAuraGroup` / `AddAuraSlot` and native AuraButton visual bindings. Raw aura values can be secret in restricted contexts and must not be used as application state.
+The supported 12.1 path is a Blizzard-managed `CustomAuraContainerTemplate`, exposed by oUF 14 as `frame:CreateAuras()`, with managed aura groups/slots and native AuraButton visual bindings. Raw aura values can be secret in restricted contexts and must not be used as application state.
 
 ## Implemented compatibility boundary
 
-`core/aura_runtime_12_1.lua` is loaded after the old compatibility modules and before unit-frame construction. It replaces the active aura entry points while keeping the surrounding unit-layout code stable:
+`core/aura_runtime_12_1.lua` is loaded after the legacy compatibility helpers in `core/lib.lua` and before unit-frame construction. It replaces the active aura entry points while keeping the surrounding unit-layout code stable:
 
 - `func.SetupNativeAuraFrame`
 - `func.createBuffs`
@@ -27,9 +28,12 @@ The supported 12.1 path is a Blizzard-managed `CustomAuraContainerTemplate`, exp
 
 - missing `frame:CreateAuras()` fails closed instead of returning a legacy `Buffs` / `Debuffs` placeholder;
 - healer-watch groups retain the previous `PLAYER` caster restriction through `SetAuraGroupCandidateFilters()` with `isFromPlayerOrPlayerPet`;
+- the own-caster candidate-filter upgrade is applied once per managed group, avoiding a redundant `UpdateAllAuras()` on every refresh;
 - the obsolete Roth `UNIT_AURA` callback unregisters only itself through oUF's per-function `UnregisterEvent`, preserving unrelated oUF element handlers.
 
-The older scanner implementations remain in the tree for history and diffability, but the 12.1 runtime overrides them before unit styles are registered. The guard prevents an older oUF release from accidentally reactivating those legacy element paths. They are not the active state path.
+The old `core/group_aura_watch.lua` scanner remains in the repository for history and diffability but is no longer listed in `Roth_UI.toc`. It therefore cannot register its raw `AuraUtil.ForEachAura`, `C_UnitAuras.GetAuraDataByAuraInstanceID`, payload caching or incremental scanner path at runtime. The static validator rejects any future attempt to return it to the load graph.
+
+Dormant legacy aura helper bodies still exist in `core/lib.lua`; the managed adapter overrides their public entry points before unit styles are registered. They should be removed only after the managed migration has been proven in the Retail client.
 
 ## Behavior mapping
 
@@ -43,8 +47,9 @@ The older scanner implementations remain in the tree for history and diffability
 | Stealable border | Native stealable-filter texture sink through oUF |
 | `onlyShowPlayer` | `candidateFilters.isFromPlayerOrPlayerPet` |
 | Raid helpful whitelist | `candidateFilters.includeSpellIDs` |
-| Party healer aura watch | Managed helpful group with `includeSpellIDs` and `isFromPlayerOrPlayerPet` |
+| Party/raid healer aura watch | Managed helpful group with `includeSpellIDs` and `isFromPlayerOrPlayerPet` |
 | Raw harmful-aura scan for health-frame glow | Removed; native per-aura dispel border is authoritative |
+| Raw healer-watch scanner | Excluded from the TOC runtime graph |
 | Legacy Roth `UNIT_AURA` recolor callback | Detached per handler; managed containers refresh natively |
 
 ## Deliberate behavior change: raid harmful filtering
@@ -61,15 +66,19 @@ The migration therefore uses one managed `HARMFUL` group with `AuraContainerSort
 
 `Roth_UI.disableProtectedActionBarOwnership` remains enabled and `cfg.bars.secureOwnerBars` remains disabled. This migration does not claim that custom ownership of Blizzard action buttons is combat-safe. The fallback must remain until vehicle, override, possess, shapeshift, paging, binding and combat-lockdown scenarios are proven in the Retail client.
 
-## Static verification completed
+## Static and source verification completed
 
-- Lua compilation checks for the managed runtime and guard with LuaTeX `loadfile`.
-- Mock construction test for managed harmful/helpful containers and party aura watch.
-- Guard mock for fail-closed behavior, own-caster candidate filters, explicit `ForceUpdate` and per-handler `UNIT_AURA` detachment.
-- TOC duplicate-entry and dependency-order checks.
-- Exact local/remote Git blob verification for the guard module.
-- Source review against Blizzard `CustomAuraContainer` implementation and oUF 14 aura/event elements.
-- Repository CI checks the TOC/XML load closure, exact metadata, order constraints, managed-aura boundary, every Lua file with `luac5.1 -p`, whitespace errors, and unresolved conflict markers.
+- The complete TOC/XML closure resolves without missing, duplicate or case-colliding paths.
+- Exact metadata is enforced: Interface `120100`, author Neomorph, Blizzard build `12.1.0.69497`, oUF minimum `14.0.2`.
+- Critical initialization and aura-boundary load-order constraints are enforced.
+- The retired raw healer-watch scanner is rejected if it re-enters the runtime graph.
+- The managed adapter/guard are rejected if they reintroduce raw `C_UnitAuras`, `AuraUtil.ForEachAura` or AuraData resolver calls.
+- The healer-watch filter includes both the spell whitelist and own-caster predicate, with an idempotence guard against repeated full updates.
+- Every repository Lua source parses with `luac5.1 -p`.
+- Whitespace errors and unresolved merge-conflict markers are rejected.
+- The implementation was reviewed against pinned Blizzard `CustomAuraContainer` source and oUF 14 aura/event elements.
+
+The repository owner directed this source/static-validated changeset to be integrated into `main`. That decision does not convert the checks below into completed evidence.
 
 ## Required in-client verification
 
@@ -84,4 +93,4 @@ The migration therefore uses one managed `HARMFUL` group with `AuraContainerSort
 9. Edit Mode, movers, settings changes and SavedVariables migration.
 10. `/console taintLog 1`, BugSack/BugGrabber and CPU profiling with no secret-value or forbidden-action errors.
 
-Runtime verification is not represented as completed until client evidence is attached to a commit or release record.
+Runtime verification is not represented as completed until client evidence is attached to a commit, issue, pull request or release record.
