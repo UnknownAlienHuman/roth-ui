@@ -23,7 +23,13 @@ The supported 12.1 path is a Blizzard-managed `CustomAuraContainerTemplate`, exp
 - `func.checkColors`
 - `func.QueueGroupAuraColorUpdate`
 
-The older scanner implementations remain in the tree for history and diffability, but the 12.1 runtime overrides them before unit styles are registered. They are not the active state path.
+`core/aura_runtime_12_1_guard.lua` loads immediately afterward and hardens that boundary before any unit style is registered:
+
+- missing `frame:CreateAuras()` fails closed instead of returning a legacy `Buffs` / `Debuffs` placeholder;
+- healer-watch groups retain the previous `PLAYER` caster restriction through `SetAuraGroupCandidateFilters()` with `isFromPlayerOrPlayerPet`;
+- the obsolete Roth `UNIT_AURA` callback unregisters only itself through oUF's per-function `UnregisterEvent`, preserving unrelated oUF element handlers.
+
+The older scanner implementations remain in the tree for history and diffability, but the 12.1 runtime overrides them before unit styles are registered. The guard prevents an older oUF release from accidentally reactivating those legacy element paths. They are not the active state path.
 
 ## Behavior mapping
 
@@ -37,8 +43,9 @@ The older scanner implementations remain in the tree for history and diffability
 | Stealable border | Native stealable-filter texture sink through oUF |
 | `onlyShowPlayer` | `candidateFilters.isFromPlayerOrPlayerPet` |
 | Raid helpful whitelist | `candidateFilters.includeSpellIDs` |
-| Party healer aura watch | Managed helpful group with `includeSpellIDs` |
+| Party healer aura watch | Managed helpful group with `includeSpellIDs` and `isFromPlayerOrPlayerPet` |
 | Raw harmful-aura scan for health-frame glow | Removed; native per-aura dispel border is authoritative |
+| Legacy Roth `UNIT_AURA` recolor callback | Detached per handler; managed containers refresh natively |
 
 ## Deliberate behavior change: raid harmful filtering
 
@@ -56,10 +63,12 @@ The migration therefore uses one managed `HARMFUL` group with `AuraContainerSort
 
 ## Static verification completed
 
-- Lua compilation check for the new runtime with LuaTeX `loadfile`.
+- Lua compilation checks for the managed runtime and guard with LuaTeX `loadfile`.
 - Mock construction test for managed harmful/helpful containers and party aura watch.
+- Guard mock for fail-closed behavior, own-caster candidate filters, explicit `ForceUpdate` and per-handler `UNIT_AURA` detachment.
 - TOC duplicate-entry and dependency-order checks.
-- Source review against Blizzard `CustomAuraContainer` implementation and oUF 14 aura element.
+- Exact local/remote Git blob verification for the guard module.
+- Source review against Blizzard `CustomAuraContainer` implementation and oUF 14 aura/event elements.
 
 ## Required in-client verification
 
