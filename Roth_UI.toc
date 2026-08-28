@@ -1,12 +1,14 @@
-## Interface: 120001, 120005
+## Interface: 120100
 ## Author: Neomorph
 ## Title: Roth UI
-## Version: 3.3.8-v57.8-B3.5
-## Notes: Galaxy's oUF layout with Diablo flavor! (Ace3 removed)
+## Version: 3.3.8-v57.8-B4.0
+## Notes: Galaxy's oUF layout with Diablo flavor! Retail 12.1 managed-aura edition. (Ace3 removed)
 ## RequiredDeps: oUF
 ## OptionalDeps: RothFont, RothLib
 ## SavedVariables: Roth_UI_DB
 ## SavedVariablesPerCharacter: Roth_UI_DB_Char
+## X-oUF-Min-Version: 14.0.2
+## X-Target-Build: 12.1.0.69497
 
 embeds/rLib/rLib.xml
 
@@ -66,13 +68,13 @@ core/micromenu_bar.lua
 core/bags_bar.lua
 core/orb_runtime.lua
 core/settings_main.lua
+core/settings_actions.lua
 core/settings_general.lua
 core/target_castbar.lua
 core/settings_target.lua
 core/settings_groups.lua
 core/settings_orbs.lua
 core/transfer.lua
-core/settings_actions.lua
 core/settings_transfer.lua
 core/debug_commands.lua
 core/slashcmd.lua
@@ -81,6 +83,7 @@ core/mover_runtime.lua
 core/unit_value_runtime.lua
 core/unit_misc_runtime.lua
 core/group_aura_watch.lua
+core/aura_runtime_12_1.lua
 core/frame_policy.lua
 core/font_policy.lua
 core/group_policy.lua
