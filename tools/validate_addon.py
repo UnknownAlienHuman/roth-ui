@@ -3,7 +3,8 @@
 
 The validator intentionally checks only properties that can be proven without a
 running World of Warcraft client: TOC metadata/order, path resolution (including
-XML expansions), duplicate load entries, and the 12.1 managed-aura boundary.
+XML expansions), duplicate load entries, retired runtime modules, and the 12.1
+managed-aura boundary.
 """
 
 from __future__ import annotations
@@ -16,6 +17,10 @@ from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
 TOC_PATH = ROOT / "Roth_UI.toc"
+
+RETIRED_RUNTIME_PATHS = {
+    PurePosixPath("core/group_aura_watch.lua"),
+}
 
 
 class ValidationError(RuntimeError):
@@ -54,7 +59,9 @@ def parse_toc() -> tuple[dict[str, str], list[LoadedEntry]]:
 
     for line_number, raw_line in enumerate(text.splitlines(), start=1):
         line = raw_line.strip()
-        if not line or line.startswith("#") and not line.startswith("##"):
+        if not line:
+            continue
+        if line.startswith("#") and not line.startswith("##"):
             continue
         if line.startswith("##"):
             match = re.match(r"^##\s*([^:]+):\s*(.*)$", line)
@@ -125,11 +132,17 @@ def assert_metadata(metadata: dict[str, str]) -> None:
         )
     if metadata.get("Author") != "Neomorph":
         raise ValidationError(f"Author must remain Neomorph; got {metadata.get('Author')!r}")
+    if metadata.get("X-Target-Build") != "12.1.0.69497":
+        raise ValidationError(
+            "X-Target-Build must remain pinned to the verified 12.1.0.69497 source snapshot"
+        )
     required_deps = {item.strip() for item in metadata.get("RequiredDeps", "").split(",") if item.strip()}
     if "oUF" not in required_deps:
         raise ValidationError("Roth UI must declare oUF in RequiredDeps")
     if metadata.get("X-oUF-Min-Version") != "14.0.2":
         raise ValidationError("X-oUF-Min-Version must remain pinned to 14.0.2 for this migration")
+    if not metadata.get("Version"):
+        raise ValidationError("Roth UI must declare a non-empty addon Version")
 
 
 def assert_unique_paths(entries: list[LoadedEntry]) -> None:
@@ -150,6 +163,14 @@ def assert_unique_paths(entries: list[LoadedEntry]) -> None:
         folded[key] = entry.path
 
 
+def assert_retired_runtime_paths(entries: list[LoadedEntry]) -> None:
+    loaded = {entry.path for entry in entries}
+    retired_but_loaded = sorted(RETIRED_RUNTIME_PATHS & loaded, key=str)
+    if retired_but_loaded:
+        joined = ", ".join(str(path) for path in retired_but_loaded)
+        raise ValidationError(f"retired raw-scanner module re-entered the runtime load graph: {joined}")
+
+
 def assert_order(entries: list[LoadedEntry]) -> None:
     positions = {entry.path: index for index, entry in enumerate(entries)}
 
@@ -166,6 +187,7 @@ def assert_order(entries: list[LoadedEntry]) -> None:
     before("init.lua", "config.lua")
     before("core/settings_main.lua", "core/settings_actions.lua")
     before("core/settings_actions.lua", "core/settings_general.lua")
+    before("core/lib.lua", "core/aura_runtime_12_1.lua")
     before("core/aura_runtime_12_1.lua", "core/aura_runtime_12_1_guard.lua")
     before("core/aura_runtime_12_1_guard.lua", "units/target.lua")
     before("core/aura_runtime_12_1_guard.lua", "units/party.lua")
@@ -185,6 +207,8 @@ def assert_managed_aura_boundary() -> None:
         "includeSpellIDs",
         "isFromPlayerOrPlayerPet",
         "SetAuraGroupCandidateFilters",
+        "__rothOwnCasterFilterApplied",
+        "UnregisterEvent(\"UNIT_AURA\"",
     )
     for token in required_tokens:
         if token not in combined:
@@ -201,12 +225,16 @@ def assert_managed_aura_boundary() -> None:
         if re.search(pattern, combined):
             raise ValidationError(f"raw aura access reintroduced into the 12.1 boundary: {pattern}")
 
+    if "element.__rothOwnCasterFilterApplied == true" not in guard:
+        raise ValidationError("healer-watch candidate filters must be guarded against repeated full updates")
+
 
 def main() -> int:
     metadata, toc_entries = parse_toc()
     expanded = expand_load_graph(toc_entries)
     assert_metadata(metadata)
     assert_unique_paths(expanded)
+    assert_retired_runtime_paths(expanded)
     assert_order(expanded)
     assert_managed_aura_boundary()
 
@@ -215,7 +243,8 @@ def main() -> int:
     print(
         "Roth UI static structure OK: "
         f"{len(expanded)} loaded entries ({lua_count} Lua, {xml_count} XML), "
-        "Interface 120100, oUF >= 14.0.2."
+        "Interface 120100, build 12.1.0.69497, oUF >= 14.0.2, "
+        "legacy aura scanner excluded."
     )
     return 0
 
