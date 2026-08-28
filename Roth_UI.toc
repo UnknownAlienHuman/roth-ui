@@ -1,7 +1,7 @@
 ## Interface: 120100
 ## Author: Neomorph
 ## Title: Roth UI
-## Version: 3.3.8-v57.8-B4.0
+## Version: 3.3.8-v57.8-B4.1
 ## Notes: Galaxy's oUF layout with Diablo flavor! Retail 12.1 managed-aura edition. (Ace3 removed)
 ## RequiredDeps: oUF
 ## OptionalDeps: RothFont, RothLib
@@ -82,7 +82,6 @@ core/lib.lua
 core/mover_runtime.lua
 core/unit_value_runtime.lua
 core/unit_misc_runtime.lua
-core/group_aura_watch.lua
 core/aura_runtime_12_1.lua
 core/aura_runtime_12_1_guard.lua
 core/frame_policy.lua
