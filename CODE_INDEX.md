@@ -5,7 +5,7 @@
 | Bootstrap | `init.lua`, `core/bootstrap.lua` | Namespace, load sequencing and runtime startup |
 | Persistence | `core/persistence_*.lua`, `core/sv_store.lua`, `config.lua` | SavedVariables, schema, transfer, drift and reports |
 | Safety/policy | `core/safety.lua`, `core/frame_policy.lua`, `core/unit_policy.lua` | Combat-safe and reversible Blizzard-frame policy |
-| Auras (Retail 12.1) | `core/aura_runtime_12_1.lua`, `core/group_aura_watch.lua`, `core/unit_misc_runtime.lua` | Active managed `AuraContainer` adapter, managed healer watch and inert legacy raw-scanner facades; see `MIDNIGHT_12_1_MIGRATION.md` |
+| Auras (Retail 12.1) | `core/aura_runtime_12_1.lua`, `core/aura_runtime_12_1_guard.lua`, `core/group_aura_watch.lua`, `core/unit_misc_runtime.lua` | Active managed `AuraContainer` adapter, fail-closed/own-caster/event-detachment guard, managed healer watch and inert legacy raw-scanner facades; see `MIDNIGHT_12_1_MIGRATION.md` |
 | Action bars | `core/action_bar_*.lua`, `core/bar_runtime_registry.lua` | Secure bars, dock, override, vehicle and visibility paths; protected ownership remains disabled by default |
 | Movers | `core/mover_runtime.lua`, `core/movegrid.lua`, `embeds/rLib/dragframe.lua` | Registration, drag and persisted placement |
 | Orbs/bars | `core/orb_*.lua`, `core/bars.lua` | Player resources and status bars |
