@@ -1,0 +1,232 @@
+name: Final B4.2 gate and release
+
+on:
+  push:
+    branches:
+      - codex/roth-ui-final-b4-2-v5-20260828
+
+permissions:
+  contents: write
+
+concurrency:
+  group: roth-ui-final-b4-2-release
+  cancel-in-progress: false
+
+jobs:
+  gate-push-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out final gate branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/roth-ui-final-b4-2-v5-20260828
+          fetch-depth: 0
+
+      - name: Select newest complete B4.2 source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          for branch in \
+            codex/roth-ui-final-b4-2-v4-20260828 \
+            codex/roth-ui-final-b4-2-v3-20260828 \
+            codex/roth-ui-final-b4-2-20260828
+          do
+            git fetch origin "$branch:refs/remotes/origin/$branch" || true
+          done
+
+          SOURCE=''
+          for ref in \
+            origin/codex/roth-ui-final-b4-2-v4-20260828 \
+            origin/codex/roth-ui-final-b4-2-v3-20260828 \
+            origin/codex/roth-ui-final-b4-2-20260828
+          do
+            if git show-ref --verify --quiet "refs/remotes/$ref" \
+              && git show "$ref:Roth_UI.toc" 2>/dev/null | grep -q '^## Version: 3.3.8-v57.8-B4.2$' \
+              && git cat-file -e "$ref:core/castbar_interruptibility_12_1.lua" 2>/dev/null \
+              && git cat-file -e "$ref:tools/validate_release.py" 2>/dev/null \
+              && git cat-file -e "$ref:tools/package_addon.py" 2>/dev/null \
+              && git cat-file -e "$ref:tests/test_castbar_interruptibility.lua" 2>/dev/null
+            then
+              SOURCE="$ref"
+              break
+            fi
+          done
+
+          if test -n "$SOURCE"; then
+            git checkout "$SOURCE" -- .
+          else
+            OLD='origin/codex/roth-ui-final-b4-2-20260828'
+            SOURCE_COMMIT=$(git log "$OLD" --format='%H' -- .github/scripts/apply_b4_2.py | head -n 1)
+            test -n "$SOURCE_COMMIT"
+            mkdir -p .github/scripts
+            git show "$SOURCE_COMMIT:.github/scripts/apply_b4_2.py" > .github/scripts/apply_b4_2.py
+            python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/apply_b4_2.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              '(?:RegisterEvent|RegisterUnitEvent|UnregisterEvent)',
+              '(?:RegisterEvent|RegisterUnitEvent)',
+          )
+          path.write_text(text, encoding='utf-8', newline='\n')
+          PY
+            python3 .github/scripts/apply_b4_2.py
+          fi
+
+          grep -q '^## Version: 3.3.8-v57.8-B4.2$' Roth_UI.toc
+
+      - name: Normalize final source and release ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          guard = Path('core/aura_runtime_12_1_guard.lua')
+          if not guard.is_file():
+              raise SystemExit('core/aura_runtime_12_1_guard.lua is missing')
+          text = guard.read_text(encoding='utf-8-sig')
+          replacement = '''local function DetachLegacyUnitAuraCallback(frame)\n  if frame and type(frame.UnregisterEvent) == "function" then\n    frame:UnregisterEvent("UNIT_AURA", DetachLegacyUnitAuraCallback)\n  end\nend'''
+          pattern = re.compile(r'local function DetachLegacyUnitAuraCallback\(frame\).*?\nend', re.S)
+          if pattern.search(text):
+              text = pattern.sub(replacement, text, count=1)
+          else:
+              marker = 'func.QueueGroupAuraColorUpdate = DetachLegacyUnitAuraCallback'
+              if marker not in text:
+                  raise SystemExit('cannot restore legacy UNIT_AURA detachment callback')
+              text = text.replace(marker, replacement + '\n\n' + marker, 1)
+          guard.write_text(text, encoding='utf-8', newline='\n')
+
+          workflow = Path('.github/workflows/addon-static-validation.yml')
+          if not workflow.is_file():
+              raise SystemExit('main validation/release workflow is missing')
+          content = workflow.read_text(encoding='utf-8')
+          content = content.replace('git diff --check HEAD^ HEAD || true', 'git diff --check')
+          marker = '# Force the release tag to the exact validated main commit.'
+          if marker not in content:
+              needle = '          ZIP="dist/Roth_UI-${VERSION}.zip"\n'
+              if needle not in content:
+                  raise SystemExit('cannot locate release ZIP assignment in main workflow')
+              insertion = needle + '''          # Force the release tag to the exact validated main commit.\n          git tag --force "$TAG" "$GITHUB_SHA"\n          git push origin "refs/tags/$TAG" --force\n'''
+              content = content.replace(needle, insertion, 1)
+          workflow.write_text(content, encoding='utf-8', newline='\n')
+          PY
+
+          rm -f core/group_aura_watch.lua
+          rm -f _probe_do_not_keep.txt _branch_marker.txt STOP.txt oops.txt
+          rm -f .github/scripts/apply_b4_2.py
+          rm -f .github/workflows/apply-b4-2.yml
+          rm -f .github/workflows/finalize-b4-2.yml
+          rm -f .github/workflows/verify-merge-b4-2.yml
+          rm -f .github/workflows/verify-merge-b4-2-v2.yml
+          rm -f .github/workflows/verify-merge-b4-2-v3.yml
+          rm -f .github/workflows/verify-merge-b4-2-v4.yml
+          rm -f .github/workflows/source-audit-snapshot.yml
+
+      - name: Commit and rebase exact source before validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m 'Finalize corrected Retail 12.1 B4.2 source and clean release'
+          fi
+          git fetch origin main
+          git rebase origin/main
+          test -z "$(git status --porcelain=v1)"
+
+      - name: Install exact validation toolchain
+        run: sudo apt-get update && sudo apt-get install --yes lua5.1 unzip
+
+      - name: Validate all source and ownership invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_addon.py
+          python3 tools/validate_release.py
+          git diff --check
+          while IFS= read -r -d '' file; do
+            luac5.1 -p "$file"
+          done < <(find . -type f -name '*.lua' -not -path './.git/*' -print0)
+          lua5.1 tests/test_castbar_interruptibility.lua
+          if git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- ':!Libs/**'; then
+            echo 'merge conflict marker found' >&2
+            exit 1
+          fi
+
+      - name: Build deterministic runtime-only ZIP twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION='3.3.8-v57.8-B4.2'
+          mkdir -p dist/a dist/b dist/final
+          python3 tools/package_addon.py --output "dist/a/Roth_UI-${VERSION}.zip"
+          python3 tools/package_addon.py --output "dist/b/Roth_UI-${VERSION}.zip"
+          cmp "dist/a/Roth_UI-${VERSION}.zip" "dist/b/Roth_UI-${VERSION}.zip"
+          cp "dist/a/Roth_UI-${VERSION}.zip" "dist/final/Roth_UI-${VERSION}.zip"
+          python3 tools/package_addon.py --output /tmp/not-used.zip --verify "dist/final/Roth_UI-${VERSION}.zip"
+          sha256sum "dist/final/Roth_UI-${VERSION}.zip" | tee dist/final/SHA256SUMS.txt
+          unzip -Z1 "dist/final/Roth_UI-${VERSION}.zip" | tee dist/final/ZIP-CONTENTS.txt
+          if grep -Eqi '(^|/)(todo([^/]*)?|audit([^/]*)?|history([^/]*)?|readme([^/]*)?|agent_guide([^/]*)?|architecture([^/]*)?|code_(graph|index)([^/]*)?|current_status([^/]*)?|midnight_[^/]*|tools|tests|\.github)(/|$)' dist/final/ZIP-CONTENTS.txt; then
+            echo 'service or development file leaked into release ZIP' >&2
+            exit 1
+          fi
+
+      - name: Push only the validated commit to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin HEAD:main
+
+      - name: Publish or replace release from the same validated commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION='3.3.8-v57.8-B4.2'
+          TAG="v${VERSION}"
+          ZIP="dist/final/Roth_UI-${VERSION}.zip"
+          HEAD_SHA=$(git rev-parse HEAD)
+          git tag --force "$TAG" "$HEAD_SHA"
+          git push origin "refs/tags/$TAG" --force
+
+          NOTES=$(mktemp)
+          cat > "$NOTES" <<EOF
+          Roth UI ${VERSION} for World of Warcraft Retail / Midnight 12.1.0 (Interface 120100).
+
+          Verified source/static boundaries:
+          - `core/config_persistence_owner.lua` is the only first-party writer that may replace `Roth_UI_DB` or `Roth_UI_DB_Char`;
+          - Settings category registration is single-owned by `core/settings_main.lua`, while mutations/actions are routed through `core/settings_actions.lua`;
+          - target and focus castbars consume the exact oUF 14 `PostCastStart` and `PostCastInterruptible` contracts;
+          - the potentially secret `notInterruptible` boolean is forwarded unchanged to native conditional widget sinks, without Lua comparison or branching;
+          - active first-party code has no raw aura scanner and no Roth-owned `UNIT_AURA` registration;
+          - the package is deterministic and contains runtime files/assets, license and credits only; TODO, audits, repository documentation, CI, tools and tests are excluded.
+
+          Static verification cannot replace Retail-client combat, taint and visual testing. The release is source/static verified, not yet client-certified.
+          EOF
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" dist/final/SHA256SUMS.txt dist/final/ZIP-CONTENTS.txt --clobber
+            gh release edit "$TAG" --title "Roth UI ${VERSION}" --notes-file "$NOTES" --latest
+          else
+            gh release create "$TAG" "$ZIP" dist/final/SHA256SUMS.txt dist/final/ZIP-CONTENTS.txt \
+              --target "$HEAD_SHA" \
+              --title "Roth UI ${VERSION}" \
+              --notes-file "$NOTES" \
+              --latest
+          fi
+
+      - name: Upload retained CI evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: roth-ui-b4-2-final-release-${{ github.sha }}
+          path: dist/final/
+          if-no-files-found: error
+          retention-days: 90
