@@ -2,7 +2,9 @@
 
 ## Start here
 
-Read [`Roth_UI.toc`](Roth_UI.toc) first, then follow `init.lua` -> `config.lua` -> `core/bootstrap.lua`. `init.lua` receives `(addonName, ns)`, publishes `_G.Roth_UI`, and is the namespace contract for every main-addon chunk. `core/bootstrap.lua` calls `Roth_UI:InitConfig()` after the persistence/config files have been loaded. `config.lua` defines defaults; it is not the runtime owner of SavedVariables.
+Read [`Roth_UI.toc`](Roth_UI.toc) first, then [`CURRENT_STATUS.md`](CURRENT_STATUS.md), and then follow `init.lua` -> `config.lua` -> `core/bootstrap.lua`. `CURRENT_STATUS.md` is authoritative for the active Retail migration; `todo.md`, `todo.archive.md`, `history.md`, and older audit sections contain historical findings that must be revalidated before implementation.
+
+`init.lua` receives `(addonName, ns)`, publishes `_G.Roth_UI`, and is the namespace contract for every main-addon chunk. `core/bootstrap.lua` calls `Roth_UI:InitConfig()` after the persistence/config files have been loaded. `config.lua` defines defaults; it is not the runtime owner of SavedVariables.
 
 The main TOC loads embedded `rLib` through `embeds/rLib/rLib.xml`, bundled libraries, `init.lua`, oUF elements/defaults, safety and persistence services, settings/mover/frame policy, unit definitions, and action-bar files. Its XML entries are expanded in place: `modules/Roth_UI_rActionBarStyler/rActionBar.xml` loads `hide_blizzart.lua`, `slashcmd.lua`, `spellflyout.lua`, and `cooldown.lua`; the two button XML files load their respective `core.lua`/`theme.lua`. The separate module TOCs under `modules/` are optional addon wrappers and are not required to understand the main package load.
 
@@ -28,7 +30,8 @@ Declared stores are `Roth_UI_DB` (account settings and shared orb templates) and
 
 - Keep one owner for each persistence domain; do not reintroduce a parallel `ns.cfg`/SavedVariables write path.
 - `Roth_UI.disableProtectedActionBarOwnership` is intentionally `true`. Secure action bars, `SecureHandlerStateTemplate`, protected buttons, `InCombatLockdown`, and `PLAYER_REGEN_ENABLED` queues are the primary taint/combat boundary.
-- Unit/group/raid code handles `UNIT_AURA`, threat, vehicle, arena-prep, and regen events. The active DK rune path is the loaded `core/bars.lua:203-265,778-875`; the on-disk `oUF/elements/rune_orbs.lua` is not listed by `Roth_UI.toc` and is absent from the manifest `loadedFiles`, so treat it as inactive unless the TOC changes. The component wrapper files `modules/Roth_UI_rActionBarStyler/bootstrap.lua`, `modules/Roth_UI_rButtonTemplate/bootstrap.lua`, and `modules/Roth_UI_rButtonTemplate_Roth/bootstrap.lua` are likewise not reached by the current root TOC/XML closure; the root loads their active XML/Lua paths directly. Action-bar and mover refreshes must stay deferred where the code already queues them.
+- Retail 12.1 unit auras are owned by `core/aura_runtime_12_1.lua` plus `core/aura_runtime_12_1_guard.lua`. Do not reactivate legacy raw aura scanners, infer state from managed button visibility/layout, or silently fall back when `frame:CreateAuras()` is unavailable.
+- Unit/group/raid code handles aura containers, threat, vehicle, arena-prep, and regen events. The active DK rune path is the loaded `core/bars.lua:203-265,778-875`; the on-disk `oUF/elements/rune_orbs.lua` is not listed by `Roth_UI.toc` and is absent from the manifest `loadedFiles`, so treat it as inactive unless the TOC changes. The component wrapper files `modules/Roth_UI_rActionBarStyler/bootstrap.lua`, `modules/Roth_UI_rButtonTemplate/bootstrap.lua`, and `modules/Roth_UI_rButtonTemplate_Roth/bootstrap.lua` are likewise not reached by the current root TOC/XML closure; the root loads their active XML/Lua paths directly. Action-bar and mover refreshes must stay deferred where the code already queues them.
 - Blizzard party/raid restore diagnostics in `core/blizzard_restore_debug.lua` can load/enable Blizzard addons; treat those commands as explicit diagnostic operations.
 - `oUF` color compatibility is patched in `init.lua`; preserve both array-style RGB and `GetRGB()` behavior.
 
@@ -43,4 +46,6 @@ Declared stores are `Roth_UI_DB` (account settings and shared orb templates) and
 
 ## Verification
 
-Static: compare every file listed by `Roth_UI.toc` (including XML expansions), run the repository Lua parser and TOC-reference checks, and inspect `git diff --check`. Runtime smoke commands are `/roth svtest`, `/roth svdoctor`, `/roth svreconcile`, `/roth svrebuild`, `/roth settingsschema`, and `/roth smoke full`; test settings/import/reset in and out of combat and confirm `PLAYER_REGEN_ENABLED` drains pending work. The current audit is source/static only; game-client behavior and exact current `oUF` API compatibility remain unverified here.
+Static: run `python3 tools/validate_addon.py`, compile every Lua file with Lua 5.1, inspect `git diff --check`, and require the `Addon static validation` workflow to pass. The validator expands every file listed by `Roth_UI.toc`, including XML script/include entries, and checks critical load-order and Retail 12.1 aura invariants.
+
+Runtime smoke commands are `/roth svtest`, `/roth svdoctor`, `/roth svreconcile`, `/roth svrebuild`, `/roth settingsschema`, and `/roth smoke full`; test settings/import/reset in and out of combat and confirm `PLAYER_REGEN_ENABLED` drains pending work. The current migration remains source/static only until the client matrix in `MIDNIGHT_12_1_MIGRATION.md` is completed.
