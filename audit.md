@@ -1,8 +1,8 @@
 # Roth UI audit report
 
-Initial audit date: 2026-03-14  
-Current compatibility update: 2026-08-27  
-Audit type: static source review; Retail client evidence remains pending.
+- Initial audit date: 2026-03-14
+- Current compatibility update: 2026-08-27
+- Audit type: static source review; Retail client evidence remains pending.
 
 ## Retail 12.1 status update
 
