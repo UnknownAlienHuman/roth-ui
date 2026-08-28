@@ -11,6 +11,7 @@
 | Orbs/bars | `core/orb_*.lua`, `core/bars.lua` | Player resources and status bars |
 | Units | loaded `units/*.lua`; loaded elements `oUF/elements/target_border.lua`, `experience.lua`, `reputation.lua` | oUF layouts, castbars and unit-specific elements; other on-disk element files are inactive unless added to the root TOC |
 | Settings | `core/settings_*.lua`, `core/settings_actions.lua` | In-game settings and apply/reset operations; `settings_actions.lua` must load before page builders that assert it |
+| Validation | `tools/validate_addon.py`, `.github/workflows/addon-static-validation.yml` | TOC/XML closure, metadata and order invariants, managed-aura boundary, full Lua 5.1 parsing, whitespace and conflict-marker checks |
 | Optional modules | `modules/Roth_UI_*/*` | ActionBarStyler, button templates and oUF helpers |
 
 Primary load order is recorded in [`Roth_UI.toc`](Roth_UI.toc). The Retail 12.1 compatibility boundary and required runtime matrix are recorded in [`MIDNIGHT_12_1_MIGRATION.md`](MIDNIGHT_12_1_MIGRATION.md). Historical/static findings are in [`history.md`](history.md) and [`audit.md`](audit.md).
