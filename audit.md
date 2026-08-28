@@ -1,113 +1,111 @@
-# Roth_UI audit report
+# Roth UI audit report
 
-Дата аудита: 2026-03-14
-Тип проверки: статический аудит кода + полная ревизия `todo.md`.
+Initial audit date: 2026-03-14  
+Current compatibility update: 2026-08-27  
+Audit type: static source review; Retail client evidence remains pending.
 
-## Update after audit
+## Retail 12.1 status update
 
-После составления этого отчёта код ушёл дальше:
+The March report below is a historical snapshot. The Retail 12.1 migration changes the current status of several findings:
 
-- legacy `RuneFrame` kill path уже убран;
-- group aura recolor переведён на incremental-aware cache, а `/roth aurastats` снова backed runtime counters.
+- `Roth_UI.toc` now targets Interface `120100` and records the verified Blizzard UI baseline `12.1.0.69497`.
+- The deterministic settings startup failure is repaired by loading `core/settings_actions.lua` before `core/settings_general.lua`.
+- The active target/focus/party/raid aura path now uses oUF 14 managed `AuraContainer` objects.
+- The old harmful-aura health-glow scan and healer-watch scanner remain on disk for history, but the 12.1 adapter overrides their public entry points before unit styles are registered.
+- A guard fails closed when the required managed oUF API is absent, preserves own-caster healer-watch filtering, and removes only Roth UI's obsolete `UNIT_AURA` callback.
+- Protected Blizzard action-bar ownership remains disabled. No action-bar runtime claim is upgraded without combat, vehicle, paging and binding evidence from the client.
+- Static CI now validates the TOC/XML closure, load order, managed-aura boundary, every Lua file, whitespace, and conflict markers.
 
-Поэтому разделы ниже про эти два хвоста нужно читать как исторический snapshot. Актуальное состояние смотреть в `history.md` и `todo.md`.
+The authoritative compatibility record and runtime matrix are in [`MIDNIGHT_12_1_MIGRATION.md`](MIDNIGHT_12_1_MIGRATION.md). Runtime-proof is still not complete; the migration must remain unreleased until the documented client matrix passes.
 
-## Итоговый вердикт
+## Update after the initial audit
 
-Основной pass от `2026-03-13` **в целом выполнен**.
+After the original report was written, the code had already moved forward:
 
-Это не выглядит как ситуация, где todo «написан вперёд», а код отстал. Наоборот: по коду видно, что большая часть верхнего implementation pass действительно приземлилась.
+- the legacy `RuneFrame` kill path was removed;
+- group aura recolor moved to an incremental-aware cache, and `/roth aurastats` again used runtime counters.
 
-Остаток работы сейчас другой по природе:
+The 12.1 migration subsequently superseded the raw group-aura state path entirely. Historical sections below should be read as evidence of the repository's prior state, not as the current compatibility verdict.
 
-1. **live-валидация** того, что уже переписано;
-2. **дожим ownership/service границ** в persistence и legacy mirrors;
-3. **perf/polish** для group aura stack и mini castbar paths;
-4. **дочистка монолитов и старого compat слоя**.
+## Initial verdict
 
-## Что я реально проверил
+The primary pass from 2026-03-13 was largely implemented.
 
-- Прочитан весь `todo.md` (`2711` строк в исходной версии).
-- Просмотрены ключевые runtime-файлы по верхнему backlog-блоку.
-- Прогнан синтаксический smoke по всем `.lua` файлам проекта: **92 файла, 0 parse errors**.
-- Отдельно проверены old-risk паттерны: `Show = Hide`, `UnregisterAllEvents`, `C_Timer.After`, registry mirrors, castbar ownership, BuffFrame legacy entrypoints.
+This was not a case where the todo list had been written ahead of the code. The source showed that most of the upper implementation pass had landed. The remaining work was different in nature:
 
-## Что сделано и подтверждено
+1. live validation of rewritten paths;
+2. consolidation of ownership/service boundaries in persistence and legacy mirrors;
+3. performance and polish for group aura and mini-castbar paths;
+4. cleanup of monoliths and the older compatibility layer.
 
-См. `history.md`.
+## What the initial audit checked
 
-Коротко:
+- Read the full `todo.md` snapshot (`2711` lines at that time).
+- Reviewed key runtime files from the upper backlog block.
+- Ran a Lua syntax smoke test over all project Lua files: `92` files, `0` parse errors.
+- Checked old-risk patterns including `Show = Hide`, `UnregisterAllEvents`, `C_Timer.After`, registry mirrors, castbar ownership, and BuffFrame legacy entry points.
 
-- combat-lockdown layout paths для micromenu / stance / bags закрыты;
-- irreversible kill path у player/pet Blizzard castbar убран;
-- default aura styling path для BuffFrame отрезан;
-- action-bar runtime и registry ownership реально вынесены;
-- ExtraAction / ZoneAbility уже идут по holder/follower модели;
-- frame policy стек реально разрезан;
-- safe group aura watch и часть settings/runtime surface уже на месте;
-- target/mini castbar runtime действительно переписан.
+## What was confirmed in the initial pass
 
-## Что НЕ сделано
+See [`history.md`](history.md).
 
-### 1. Runtime-proof нет
+In summary:
 
-Статический код выглядит правильно, но без клиента нельзя закрыть:
+- combat-lockdown layout paths for micromenu, stance and bags were guarded;
+- the irreversible player/pet Blizzard castbar kill path was removed;
+- the default aura styling path for BuffFrame was cut off;
+- action-bar runtime and registry ownership had been extracted;
+- ExtraAction and ZoneAbility used a holder/follower model;
+- the frame-policy stack had been split;
+- safe group aura watch and part of the settings/runtime surface existed;
+- target and mini-castbar runtime had been rewritten.
 
-- `BuffFrame` secret-taint retest;
-- Edit Mode ↔ player castbar retest (`CastingBarFrame.lua:722` / `StopFinishAnims`);
-- mini castbar matrix (`targettarget`, `focus`, `boss`);
-- vehicle / override / possess / ExtraAction / ZoneAbility переходы;
-- save/reload/reset/import/export/migration smoke.
+## What remained incomplete
 
-### 2. Persistence ещё не сжата до одного owner
+### 1. Runtime proof
 
-Да, стало лучше. Нет, ещё не закончено.
+Static code can establish structure, but it cannot close:
 
-Причина:
+- managed aura behavior under secret restrictions;
+- Edit Mode versus player castbar behavior;
+- mini-castbar matrix for `targettarget`, `focus` and `boss`;
+- vehicle, override, possess, ExtraAction and ZoneAbility transitions;
+- save/reload/reset/import/export/migration smoke tests.
 
-- `config.lua` всё ещё владеет defaults/schema/config-root логикой;
-- `core/sv_store.lua` всё ещё крупный owner + transfer + mirror + runtime слой;
-- `core/db.lua` всё ещё большой consumer/service слой;
-- compatibility surface `ns.cfgSaved` и `db.char` пока живы.
+This remains current.
 
-### 3. Group aura stack безопаснее, но не окончательно дожат
+### 2. Persistence is not reduced to one owner
 
-- safe watcher есть;
-- toggles есть;
-- queued recolor path есть;
-- но `core/unit_misc_runtime.lua:193-200` всё ещё делает полный harmful aura scan.
+The situation improved, but the consolidation is incomplete:
 
-То есть это уже не «сломано», но ещё и не финальная perf-модель.
+- `config.lua` still owns defaults/schema/config-root logic;
+- `core/sv_store.lua` remains a large owner, transfer, mirror and runtime layer;
+- `core/db.lua` remains a large consumer/service layer;
+- compatibility surfaces `ns.cfgSaved` and `db.char` remain.
 
-### 4. Monolith split всё ещё большой долг
+### 3. Group aura stack
 
-Самые тяжёлые файлы на текущем снимке:
+The March snapshot still contained a full harmful-aura scan in `core/unit_misc_runtime.lua`. Retail 12.1 no longer permits that as a general restricted-context state source. The current adapter makes the scan inactive and uses native managed aura-button borders instead.
 
-- `core/lib.lua` — `2351` строка;
-- `config.lua` — `1622`;
-- `core/sv_store.lua` — `1536`;
-- `core/bars.lua` — `1074`;
-- `units/player.lua` — `1049`;
-- `core/db.lua` — `970`.
+Client validation is still required to prove the resulting display behavior and CPU profile.
 
-## Обновлённый статус ранее найденного хвоста
+### 4. Monolith split remains technical debt
 
-`RuneFrame` kill/override path уже снят и больше не является активным issue; в текущем коде этот пункт должен считаться закрытым. Оставался в историческом аудите как stale note.
+The heaviest files in the original snapshot were:
 
-## Что я изменил в рабочем наборе файлов
+- `core/lib.lua` — `2351` lines;
+- `config.lua` — `1622` lines;
+- `core/sv_store.lua` — `1536` lines;
+- `core/bars.lua` — `1074` lines;
+- `units/player.lua` — `1049` lines;
+- `core/db.lua` — `970` lines.
 
-- создал `history.md` и вынес туда всё, что было отмечено как `done`;
-- сохранил полный старый файл как `todo.archive.md`;
-- переписал `todo.md` в короткий активный backlog;
-- собрал этот отчёт как `audit.md`.
+The 12.1 compatibility layer intentionally isolates patch migration risk; it does not claim to finish this architectural cleanup.
 
-## Практический вывод
+## Practical next order
 
-Новый `todo.md` теперь должен использоваться как **рабочий backlog**, а не как смесь архива, заметок и старых гипотез.
-
-Если продолжать работу дальше, правильный порядок такой:
-
-1. закрыть live verification;
-2. добить persistence ownership;
-3. решить, оставлять ли full harmful scan в group aura runtime;
-4. уже потом резать монолиты и чистить media/compat слой.
+1. Complete the Retail 12.1 client matrix and attach evidence.
+2. Fix any runtime regressions found by that matrix before merge/release.
+3. Consolidate persistence ownership.
+4. Decide the final removal boundary for legacy aura implementations after the migration is proven.
+5. Then split monoliths and clean media/compat surfaces.
