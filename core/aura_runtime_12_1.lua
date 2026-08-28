@@ -14,11 +14,9 @@ local cfg = ns.cfg
 
 local type = type
 local tonumber = tonumber
-local tostring = tostring
 local next = next
 local floor = math.floor
 local max = math.max
-local min = math.min
 local CreateFrame = CreateFrame
 local UnitClass = UnitClass
 local GetBuildInfo = GetBuildInfo
@@ -338,6 +336,16 @@ local function CreateManagedAuraElement(legacyFrame, showTimers)
     return legacyFrame
   end
 
+  -- oUF's native dispel-border initializer reads owner.colors.dispel.  Most
+  -- Roth styles set this themselves, but the adapter guarantees the invariant
+  -- for every mini/unit style before managed buttons are batch-created.
+  if type(owner.colors) ~= "table" then
+    owner.colors = (oUF and oUF.colors) or {}
+  end
+  if type(owner.colors.dispel) ~= "table" then
+    owner.colors.dispel = (oUF and oUF.colors and oUF.colors.dispel) or {}
+  end
+
   local geometry = ResolveLegacyGeometry(legacyFrame)
   local filter = ResolveAuraFilter(legacyFrame)
   local candidateFilters = ResolveCandidateFilters(legacyFrame, owner, filter)
@@ -516,13 +524,17 @@ local function CreateManagedAuraWatch(frame)
     return nil
   end
 
+  local existing = frame.__rothManagedAuraWatch
   local watchCfg = frame.cfg and frame.cfg.aurawatch
   if type(watchCfg) ~= "table" or watchCfg.show ~= true then
+    if existing and existing.Hide then
+      existing:Hide()
+    end
     return nil
   end
 
-  local existing = frame.__rothManagedAuraWatch
   if existing then
+    if existing.Show then existing:Show() end
     return existing
   end
 
@@ -548,7 +560,7 @@ local function CreateManagedAuraWatch(frame)
   local y = floor(size * 0.83 + 0.5)
 
   local createOptions = {
-    initialAnchor = "CENTER",
+    initialAnchor = "LEFT",
     growthX = "RIGHT",
     growthY = "UP",
     layoutLimit = width,
@@ -602,7 +614,7 @@ end
 -- container to refresh when explicitly requested.
 func.CreateSafeAuraWatch = CreateManagedAuraWatch
 func.RefreshSafeAuraWatch = function(frame)
-  local element = frame and frame.__rothManagedAuraWatch
+  local element = CreateManagedAuraWatch(frame)
   if element and type(element.ForceUpdate) == "function" then
     element:ForceUpdate()
   end
