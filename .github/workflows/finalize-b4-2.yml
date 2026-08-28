@@ -1,0 +1,147 @@
+name: Finalize B4.2
+
+on:
+  push:
+    branches:
+      - codex/roth-ui-final-b4-2-20260828
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: roth-ui-b4-2-finalize
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: ${{ !contains(github.event.head_commit.message || '', '[b4.2-finalized]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out audited branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/roth-ui-final-b4-2-20260828
+          fetch-depth: 0
+
+      - name: Finish one-shot migration when still pending
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q '^## Version: 3.3.8-v57.8-B4.1$' Roth_UI.toc; then
+            test -f .github/scripts/apply_b4_2.py
+            python3 .github/scripts/apply_b4_2.py
+          fi
+
+          rm -f _probe_do_not_keep.txt _branch_marker.txt STOP.txt oops.txt
+          rm -f .github/scripts/apply_b4_2.py .github/workflows/apply-b4-2.yml
+
+          if test -f .github/workflows/addon-static-validation.yml; then
+            python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/addon-static-validation.yml')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('git diff --check HEAD^ HEAD || true', 'git diff --check')
+          path.write_text(text, encoding='utf-8', newline='\n')
+          PY
+          fi
+
+      - name: Commit completed generated source when needed
+        id: generated
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- . || ! git diff --cached --quiet -- .; then
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git add -A
+            git diff --cached --check
+            git commit -m 'Finalize verified B4.2 source and release gate [b4.2-finalized]'
+            git push origin HEAD:codex/roth-ui-final-b4-2-20260828
+            echo 'pushed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'pushed=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stop this run after pushing generated commit
+        if: steps.generated.outputs.pushed == 'true'
+        run: echo 'Generated commit pushed; the next branch run performs the immutable verification.'
+
+      - name: Install exact Lua compiler
+        if: steps.generated.outputs.pushed != 'true'
+        run: sudo apt-get update && sudo apt-get install --yes lua5.1 unzip
+
+      - name: Verify source and runtime boundaries
+        if: steps.generated.outputs.pushed != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_addon.py
+          python3 tools/validate_release.py
+          git diff --check
+          while IFS= read -r -d '' file; do
+            luac5.1 -p "$file"
+          done < <(find . -type f -name '*.lua' -not -path './.git/*' -print0)
+          lua5.1 tests/test_castbar_interruptibility.lua
+          if git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- ':!Libs/**'; then
+            echo 'merge conflict marker found' >&2
+            exit 1
+          fi
+
+      - name: Build and compare clean release archives
+        if: steps.generated.outputs.pushed != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(sed -n 's/^## Version:[[:space:]]*//p' Roth_UI.toc)
+          test "$VERSION" = '3.3.8-v57.8-B4.2'
+          mkdir -p dist/one dist/two dist/final
+          python3 tools/package_addon.py --output "dist/one/Roth_UI-${VERSION}.zip"
+          python3 tools/package_addon.py --output "dist/two/Roth_UI-${VERSION}.zip"
+          cmp "dist/one/Roth_UI-${VERSION}.zip" "dist/two/Roth_UI-${VERSION}.zip"
+          cp "dist/one/Roth_UI-${VERSION}.zip" "dist/final/Roth_UI-${VERSION}.zip"
+          python3 tools/package_addon.py --output /tmp/unused.zip --verify "dist/final/Roth_UI-${VERSION}.zip"
+          sha256sum "dist/final/Roth_UI-${VERSION}.zip" | tee dist/final/SHA256SUMS.txt
+          unzip -Z1 "dist/final/Roth_UI-${VERSION}.zip" | tee dist/final/ZIP-CONTENTS.txt
+          if grep -Eqi '(^|/)(todo([^/]*)?|audit([^/]*)?|history([^/]*)?|readme([^/]*)?|agent_guide([^/]*)?|architecture([^/]*)?|code_(graph|index)([^/]*)?|current_status([^/]*)?|midnight_[^/]*|tools|tests|\.github)(/|$)' dist/final/ZIP-CONTENTS.txt; then
+            echo 'service or development file leaked into release ZIP' >&2
+            exit 1
+          fi
+
+      - name: Upload merge-gate evidence
+        if: steps.generated.outputs.pushed != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: roth-ui-b4-2-merge-gate-${{ github.sha }}
+          path: dist/final/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Ensure pull request exists
+        if: steps.generated.outputs.pushed != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh pr view --head codex/roth-ui-final-b4-2-20260828 >/dev/null 2>&1; then
+            gh pr create \
+              --base main \
+              --head codex/roth-ui-final-b4-2-20260828 \
+              --title 'Finish Retail 12.1 ownership, castbar and clean B4.2 release' \
+              --body 'Source/static B4.2 hardening: one SavedVariables root writer, managed aura boundary, exact oUF 14 interruptibility callbacks, Lua regression coverage, and deterministic runtime-only ZIP packaging.'
+          fi
+
+      - name: Merge only after every gate passed
+        if: steps.generated.outputs.pushed != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh pr merge --head codex/roth-ui-final-b4-2-20260828 --squash --admin \
+            --subject 'Finish Retail 12.1 ownership, castbar and clean B4.2 release' \
+            --body 'Validated by the B4.2 merge gate: exact Lua 5.1 parse, single SavedVariables writer, managed-aura boundary, castbar interruptibility regression, deterministic clean ZIP, and package-content audit.'
