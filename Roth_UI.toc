@@ -84,6 +84,7 @@ core/unit_value_runtime.lua
 core/unit_misc_runtime.lua
 core/group_aura_watch.lua
 core/aura_runtime_12_1.lua
+core/aura_runtime_12_1_guard.lua
 core/frame_policy.lua
 core/font_policy.lua
 core/group_policy.lua
