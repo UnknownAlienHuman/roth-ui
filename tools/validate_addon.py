@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Static structural checks for the Roth UI addon package.
-
-The validator intentionally checks only properties that can be proven without a
-running World of Warcraft client: TOC metadata/order, path resolution (including
-XML expansions), duplicate load entries, retired runtime modules, and the 12.1
-managed-aura boundary.
-"""
+"""Static release gate for Roth UI Retail 12.1 / oUF 14."""
 
 from __future__ import annotations
 
@@ -16,11 +10,33 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
-TOC_PATH = ROOT / "Roth_UI.toc"
+VERSION = "3.3.8-v57.8-B4.3.1"
+INTERFACE = "120100"
+TARGET_BUILD = "12.1.0.69497"
+OUF_MIN = "14.0.2"
+MAIN_TOC = ROOT / "Roth_UI.toc"
 
-RETIRED_RUNTIME_PATHS = {
-    PurePosixPath("core/group_aura_watch.lua"),
+RETIRED_PATHS = {
+    "Roth_UI_Options", "core/options_loader.lua",
+    "STOP.txt", "_branch_marker.txt", "_probe_do_not_keep.txt", "oops.txt",
+    "core/aura_runtime_12_1.lua", "core/aura_runtime_12_1_guard.lua",
+    "core/group_aura_watch.lua", "oUF/elements/rune_orbs.lua",
+    "core/action_bar_secure_runtime.lua", "core/action_bar_dock.lua",
+    "core/action_bar_bar1.lua", "core/action_bar_bar2.lua", "core/action_bar_bar3.lua",
+    "core/action_bar_bar4.lua", "core/action_bar_bar5.lua",
+    "core/action_bar_overridebar.lua", "core/action_bar_multibar_visibility.lua",
+    "core/bar_runtime_registry.lua", "core/pet_action_bar.lua", "core/stance_bar.lua",
+    "core/micromenu_bar.lua", "core/bags_bar.lua", "core/extrabar_holder.lua",
+    "core/leave_vehicle_bar.lua", "core/hide_endcaps.lua",
+    "modules/Roth_UI_oUFModules/modules/oUF_Smooth.lua",
+    "Libs/LibActionButton-1.0-GE/LibActionButton-1.0-GE.lua",
+    "Libs/LibKeyBound-1.0/LibKeyBound-1.0.lua",
 }
+
+FIRST_PARTY_PREFIXES = (
+    "init.lua", "config.lua", "charspecific.lua", "defaults/", "core/", "units/", "oUF/",
+    "embeds/rLib/",
+)
 
 
 class ValidationError(RuntimeError):
@@ -28,52 +44,52 @@ class ValidationError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class LoadedEntry:
+class Entry:
     path: PurePosixPath
     source: PurePosixPath
 
 
-def normalize_path(raw: str) -> PurePosixPath:
+def fail(message: str) -> None:
+    raise ValidationError(message)
+
+
+def read(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8-sig")
+    except FileNotFoundError as exc:
+        fail(f"missing file: {path.relative_to(ROOT)}")
+        raise exc
+
+
+def normalize(raw: str) -> PurePosixPath:
     value = raw.strip().replace("\\", "/")
     while value.startswith("./"):
         value = value[2:]
     path = PurePosixPath(value)
     if not value or path.is_absolute() or ".." in path.parts:
-        raise ValidationError(f"unsafe or empty addon path: {raw!r}")
+        fail(f"unsafe addon path: {raw!r}")
     return path
 
 
-def read_text(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8-sig")
-    except FileNotFoundError as exc:
-        raise ValidationError(f"missing file: {path.relative_to(ROOT)}") from exc
-    except UnicodeDecodeError as exc:
-        raise ValidationError(f"file is not UTF-8: {path.relative_to(ROOT)}") from exc
-
-
-def parse_toc() -> tuple[dict[str, str], list[LoadedEntry]]:
-    text = read_text(TOC_PATH)
+def parse_toc(toc: Path) -> tuple[dict[str, str], list[Entry]]:
     metadata: dict[str, str] = {}
-    entries: list[LoadedEntry] = []
-
-    for line_number, raw_line in enumerate(text.splitlines(), start=1):
-        line = raw_line.strip()
+    entries: list[Entry] = []
+    source = PurePosixPath(toc.relative_to(ROOT).as_posix())
+    for line_no, raw in enumerate(read(toc).splitlines(), 1):
+        line = raw.strip()
         if not line:
             continue
         if line.startswith("#") and not line.startswith("##"):
             continue
         if line.startswith("##"):
-            match = re.match(r"^##\s*([^:]+):\s*(.*)$", line)
+            match = re.match(r"^##\s*([^:]+):\s*(.*?)\s*$", line)
             if not match:
-                raise ValidationError(f"malformed TOC metadata at line {line_number}: {raw_line!r}")
+                fail(f"malformed metadata in {source}:{line_no}")
             metadata[match.group(1).strip()] = match.group(2).strip()
             continue
-
-        entries.append(LoadedEntry(normalize_path(line), PurePosixPath("Roth_UI.toc")))
-
+        entries.append(Entry(normalize(line), source))
     if not entries:
-        raise ValidationError("Roth_UI.toc has no load entries")
+        fail(f"{source} has no load entries")
     return metadata, entries
 
 
@@ -81,170 +97,209 @@ def local_tag(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
-def expand_xml(entry: LoadedEntry, stack: tuple[PurePosixPath, ...]) -> list[LoadedEntry]:
-    xml_path = ROOT / entry.path
+def expand_xml(entry: Entry, stack: tuple[PurePosixPath, ...]) -> list[Entry]:
     if entry.path in stack:
-        chain = " -> ".join(str(item) for item in (*stack, entry.path))
-        raise ValidationError(f"recursive XML include: {chain}")
-
-    text = read_text(xml_path)
+        fail("recursive XML include: " + " -> ".join(map(str, (*stack, entry.path))))
     try:
-        root = ET.fromstring(text)
+        root = ET.fromstring(read(ROOT / entry.path))
     except ET.ParseError as exc:
-        raise ValidationError(f"invalid XML in {entry.path}: {exc}") from exc
-
-    expanded: list[LoadedEntry] = [entry]
-    parent = entry.path.parent
-    next_stack = (*stack, entry.path)
-
+        fail(f"invalid XML in {entry.path}: {exc}")
+    result = [entry]
     for node in root.iter():
         if local_tag(node.tag) not in {"Script", "Include"}:
             continue
-        raw_file = node.attrib.get("file")
-        if not raw_file:
+        raw = node.attrib.get("file")
+        if not raw:
             continue
-        child_path = normalize_path(str(parent / normalize_path(raw_file)))
-        child = LoadedEntry(child_path, entry.path)
-        if child_path.suffix.lower() == ".xml":
-            expanded.extend(expand_xml(child, next_stack))
+        child = Entry(normalize((entry.path.parent / normalize(raw)).as_posix()), entry.path)
+        if child.path.suffix.lower() == ".xml":
+            result.extend(expand_xml(child, (*stack, entry.path)))
         else:
-            read_text(ROOT / child_path)
-            expanded.append(child)
+            read(ROOT / child.path)
+            result.append(child)
+    return result
 
-    return expanded
 
-
-def expand_load_graph(entries: list[LoadedEntry]) -> list[LoadedEntry]:
-    expanded: list[LoadedEntry] = []
+def expand(entries: list[Entry]) -> list[Entry]:
+    result: list[Entry] = []
     for entry in entries:
-        read_text(ROOT / entry.path)
-        if entry.path.suffix.lower() == ".xml":
-            expanded.extend(expand_xml(entry, ()))
-        else:
-            expanded.append(entry)
-    return expanded
+        read(ROOT / entry.path)
+        result.extend(expand_xml(entry, ()) if entry.path.suffix.lower() == ".xml" else [entry])
+    return result
 
 
-def assert_metadata(metadata: dict[str, str]) -> None:
-    if metadata.get("Interface") != "120100":
-        raise ValidationError(
-            f"Interface must be exactly 120100 for the Retail 12.1 package; got {metadata.get('Interface')!r}"
-        )
-    if metadata.get("Author") != "Neomorph":
-        raise ValidationError(f"Author must remain Neomorph; got {metadata.get('Author')!r}")
-    if metadata.get("X-Target-Build") != "12.1.0.69497":
-        raise ValidationError(
-            "X-Target-Build must remain pinned to the verified 12.1.0.69497 source snapshot"
-        )
-    required_deps = {item.strip() for item in metadata.get("RequiredDeps", "").split(",") if item.strip()}
-    if "oUF" not in required_deps:
-        raise ValidationError("Roth UI must declare oUF in RequiredDeps")
-    if metadata.get("X-oUF-Min-Version") != "14.0.2":
-        raise ValidationError("X-oUF-Min-Version must remain pinned to 14.0.2 for this migration")
-    if not metadata.get("Version"):
-        raise ValidationError("Roth UI must declare a non-empty addon Version")
-
-
-def assert_unique_paths(entries: list[LoadedEntry]) -> None:
-    exact: dict[PurePosixPath, LoadedEntry] = {}
+def assert_unique(entries: list[Entry]) -> None:
+    exact: set[PurePosixPath] = set()
     folded: dict[str, PurePosixPath] = {}
     for entry in entries:
-        prior = exact.get(entry.path)
-        if prior is not None:
-            raise ValidationError(
-                f"duplicate load entry {entry.path} (from {prior.source} and {entry.source})"
-            )
-        exact[entry.path] = entry
-
+        if entry.path in exact:
+            fail(f"duplicate load: {entry.path}")
+        exact.add(entry.path)
         key = str(entry.path).casefold()
-        prior_path = folded.get(key)
-        if prior_path is not None and prior_path != entry.path:
-            raise ValidationError(f"case-colliding paths in load graph: {prior_path} and {entry.path}")
+        if key in folded and folded[key] != entry.path:
+            fail(f"case-colliding paths: {folded[key]} and {entry.path}")
         folded[key] = entry.path
 
 
-def assert_retired_runtime_paths(entries: list[LoadedEntry]) -> None:
-    loaded = {entry.path for entry in entries}
-    retired_but_loaded = sorted(RETIRED_RUNTIME_PATHS & loaded, key=str)
-    if retired_but_loaded:
-        joined = ", ".join(str(path) for path in retired_but_loaded)
-        raise ValidationError(f"retired raw-scanner module re-entered the runtime load graph: {joined}")
+def assert_metadata(meta: dict[str, str]) -> None:
+    expected = {
+        "Interface": INTERFACE,
+        "Author": "Neomorph",
+        "Version": VERSION,
+        "RequiredDeps": "oUF",
+        "X-oUF-Min-Version": OUF_MIN,
+        "X-Target-Build": TARGET_BUILD,
+    }
+    for key, value in expected.items():
+        if meta.get(key) != value:
+            fail(f"Roth_UI.toc {key} must be {value!r}, got {meta.get(key)!r}")
 
 
-def assert_order(entries: list[LoadedEntry]) -> None:
-    positions = {entry.path: index for index, entry in enumerate(entries)}
+def assert_order(entries: list[Entry]) -> None:
+    pos = {str(e.path): i for i, e in enumerate(entries)}
 
-    def before(left: str, right: str) -> None:
-        lhs = PurePosixPath(left)
-        rhs = PurePosixPath(right)
-        if lhs not in positions:
-            raise ValidationError(f"required load entry missing: {lhs}")
-        if rhs not in positions:
-            raise ValidationError(f"required load entry missing: {rhs}")
-        if positions[lhs] >= positions[rhs]:
-            raise ValidationError(f"load-order violation: {lhs} must load before {rhs}")
+    def before(a: str, b: str) -> None:
+        if a not in pos or b not in pos:
+            fail(f"required load-order entry missing: {a} or {b}")
+        if pos[a] >= pos[b]:
+            fail(f"load order: {a} must load before {b}")
 
-    before("init.lua", "config.lua")
-    before("core/settings_main.lua", "core/settings_actions.lua")
+    before("init.lua", "core/config_persistence_owner.lua")
+    before("core/config_persistence_owner.lua", "config.lua")
+    before("core/lib.lua", "core/mover_runtime.lua")
+    before("core/mover_runtime.lua", "core/combat_fader.lua")
+    before("core/combat_fader.lua", "core/bars.lua")
     before("core/settings_actions.lua", "core/settings_general.lua")
-    before("core/lib.lua", "core/aura_runtime_12_1.lua")
-    before("core/aura_runtime_12_1.lua", "core/aura_runtime_12_1_guard.lua")
-    before("core/aura_runtime_12_1_guard.lua", "units/target.lua")
-    before("core/aura_runtime_12_1_guard.lua", "units/party.lua")
-    before("core/aura_runtime_12_1_guard.lua", "units/raid.lua")
+    before("core/debug_commands.lua", "core/slashcmd.lua")
+    before("core/settings_main.lua", "core/settings_general.lua")
+    before("core/persistence_report_service.lua", "core/sv_doctor.lua")
+    before("core/transfer.lua", "core/settings_transfer.lua")
+    before("core/aura_runtime.lua", "units/target.lua")
 
 
-def assert_managed_aura_boundary() -> None:
-    runtime_path = ROOT / "core/aura_runtime_12_1.lua"
-    guard_path = ROOT / "core/aura_runtime_12_1_guard.lua"
-    runtime = read_text(runtime_path)
-    guard = read_text(guard_path)
-    combined = runtime + "\n" + guard
+def strip_lua_comments(text: str) -> str:
+    out: list[str] = []
+    i = 0
+    quote: str | None = None
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            out.append(ch)
+            if ch == "\\" and i + 1 < len(text):
+                i += 1
+                out.append(text[i])
+            elif ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in {"'", '"'}:
+            quote = ch
+            out.append(ch)
+            i += 1
+            continue
+        if text.startswith("--[[", i):
+            end = text.find("]]", i + 4)
+            if end == -1:
+                return "".join(out)
+            out.append("\n" * text[i:end + 2].count("\n"))
+            i = end + 2
+            continue
+        if text.startswith("--", i):
+            end = text.find("\n", i + 2)
+            if end == -1:
+                break
+            out.append("\n")
+            i = end + 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
 
-    required_tokens = (
-        "CreateAuras",
-        "AddGroup",
-        "includeSpellIDs",
-        "isFromPlayerOrPlayerPet",
-        "SetAuraGroupCandidateFilters",
-        "__rothOwnCasterFilterApplied",
-        "UnregisterEvent(\"UNIT_AURA\"",
-    )
-    for token in required_tokens:
-        if token not in combined:
-            raise ValidationError(f"12.1 managed-aura boundary is missing required token: {token}")
 
-    forbidden_calls = (
-        r"\bC_UnitAuras\s*\.",
-        r"\bAuraUtil\s*\.\s*ForEachAura\s*\(",
-        r"\bGetAuraDataBy(?:AuraInstanceID|Index|Slot)\s*\(",
-        r"\bGetUnitAuras\s*\(",
-        r"\bGetUnitAuraInstanceIDs\s*\(",
-    )
-    for pattern in forbidden_calls:
-        if re.search(pattern, combined):
-            raise ValidationError(f"raw aura access reintroduced into the 12.1 boundary: {pattern}")
+def first_party_lua(entries: list[Entry]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for entry in entries:
+        path = str(entry.path)
+        if entry.path.suffix.lower() != ".lua":
+            continue
+        if any(path == prefix or path.startswith(prefix) for prefix in FIRST_PARTY_PREFIXES):
+            result[path] = strip_lua_comments(read(ROOT / entry.path))
+    return result
 
-    if "element.__rothOwnCasterFilterApplied == true" not in guard:
-        raise ValidationError("healer-watch candidate filters must be guarded against repeated full updates")
+
+def assert_retired_absent() -> None:
+    present = sorted(path for path in RETIRED_PATHS if (ROOT / path).exists())
+    if present:
+        fail("retired/service paths still present: " + ", ".join(present))
+
+
+def assert_runtime_boundaries(graph: list[Entry]) -> None:
+    sources = first_party_lua(graph)
+    combined = "\n".join(sources.values())
+    forbidden = {
+        "raw aura enumeration": r"\bC_UnitAuras\s*\.|\bAuraUtil\s*\.\s*ForEachAura\s*\(|\bUnit(?:Aura|Buff|Debuff)\s*\(",
+        "addon-owned UNIT_AURA": r"[\"']UNIT_AURA[\"']",
+        "raw cast polling": r"\bUnitCastingInfo\s*\(|\bUnitChannelInfo\s*\(",
+        "legacy smoothing": r"\.Smooth\b|oUF_Smooth",
+        "removed action libraries": r"LibActionButton|LibKeyBound|KeyBound",
+        "removed mouse-over global": r"\bMouseIsOver\s*\(",
+        "old mouse focus API": r"\bGetMouseFocus\s*\(",
+    }
+    for label, pattern in forbidden.items():
+        if re.search(pattern, combined, re.MULTILINE):
+            fail(f"{label} reintroduced into first-party runtime")
+
+    for path, text in sources.items():
+        if path != "core/aura_runtime.lua" and re.search(r"\b(?:CreateAuras|AddGroup|AddSlot)\s*\(", text):
+            fail(f"managed aura ownership escaped core/aura_runtime.lua: {path}")
+        if re.search(r"(?:Set|Hook)Script\s*\(\s*[\"']OnUpdate", text) and path != "embeds/rLib/dragframe.lua":
+            fail(f"unapproved first-party OnUpdate: {path}")
+
+    bars = sources.get("core/bars.lua", "")
+    if "AttachCombatFader(" not in bars and "rCombatFrameFader(" not in bars:
+        fail("class bars must attach through the combat-fader owner")
+    combat = sources.get("core/combat_fader.lua", "")
+    for token in ("PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "func.AttachCombatFader", "_G.rCombatFrameFader"):
+        if token not in combat:
+            fail(f"combat fader contract missing: {token}")
+
+    settings_registrars = [path for path, text in sources.items() if "RegisterVerticalLayoutCategory" in text]
+    if settings_registrars != ["core/settings_main.lua"]:
+        fail(f"Settings category must have one main-addon owner, got {settings_registrars}")
+
+    root_writers: list[str] = []
+    writer_pattern = re.compile(r"(?:\bRoth_UI_DB(?:_Char)?\s*=|rawset\s*\(\s*_G\s*,\s*[^,]*(?:Roth_UI_DB))")
+    for path, text in sources.items():
+        if writer_pattern.search(text):
+            root_writers.append(path)
+    if any(path != "core/config_persistence_owner.lua" for path in root_writers):
+        fail(f"SavedVariables root writer escaped owner: {root_writers}")
+
+
+def assert_no_case_collisions_repo() -> None:
+    seen: dict[str, Path] = {}
+    for path in ROOT.rglob("*"):
+        if ".git" in path.parts:
+            continue
+        rel = path.relative_to(ROOT)
+        key = rel.as_posix().casefold()
+        if key in seen and seen[key] != rel:
+            fail(f"case-colliding repository paths: {seen[key]} and {rel}")
+        seen[key] = rel
 
 
 def main() -> int:
-    metadata, toc_entries = parse_toc()
-    expanded = expand_load_graph(toc_entries)
-    assert_metadata(metadata)
-    assert_unique_paths(expanded)
-    assert_retired_runtime_paths(expanded)
-    assert_order(expanded)
-    assert_managed_aura_boundary()
-
-    lua_count = sum(1 for entry in expanded if entry.path.suffix.lower() == ".lua")
-    xml_count = sum(1 for entry in expanded if entry.path.suffix.lower() == ".xml")
+    meta, direct = parse_toc(MAIN_TOC)
+    graph = expand(direct)
+    assert_metadata(meta)
+    assert_unique(graph)
+    assert_order(graph)
+    assert_retired_absent()
+    assert_no_case_collisions_repo()
+    assert_runtime_boundaries(graph)
     print(
-        "Roth UI static structure OK: "
-        f"{len(expanded)} loaded entries ({lua_count} Lua, {xml_count} XML), "
-        "Interface 120100, build 12.1.0.69497, oUF >= 14.0.2, "
-        "legacy aura scanner excluded."
+        f"Roth UI {VERSION} static gate OK: {len(graph)} entries, "
+        f"Interface={INTERFACE}, build={TARGET_BUILD}, oUF>={OUF_MIN}, single addon root"
     )
     return 0
 

@@ -1,4 +1,5 @@
-local addonName, ns = ...
+local addonName = ...
+local ns = assert(_G.Roth_UI, "Roth_UI_Options: main Roth_UI namespace is required")
 
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by transfer.lua")
 local CopySerializable = assert(safety.CopySerializable, "Roth_UI: safety.CopySerializable is required by transfer.lua")

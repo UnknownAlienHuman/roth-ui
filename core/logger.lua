@@ -3,7 +3,8 @@
 -- Stores up to MAX lines in addon runtime memory.
 -- This keeps debugging noise out of persisted SavedVariables.
 --
-local addonName, ns = ...
+local addonName = ...
+local ns = assert(_G.Roth_UI, "Roth_UI_Options: Roth_UI namespace is required")
 
 local MAX = 200
 

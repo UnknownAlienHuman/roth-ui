@@ -15,15 +15,11 @@ ns.defaults.units.raid = {
   alpha = {
     notinrange = 0.4,
   },
-  range = {
-    driver = "blizzard",
-  },
   scale = 1.3,
   -- Default anchor: moved slightly left (requested).
   pos = { a1 = "TOPLEFT", a2 = "TOPLEFT", af = "UIParent", x = -15, y = -5 },
   health = {
     texture = (mediapath .. "statusbar3"),
-    tag = "[diablo:misshp]",
   },
   power = {
     texture = (mediapath .. "statusbar3"),
@@ -47,17 +43,11 @@ ns.defaults.units.raid = {
       48438,
       335305,
     },
-    blacklist = {
-      164545,
-      164547,
-      54149,
-    },
     show = false,
     disableCooldown = false,
     showBuffType = true,
     onlyShowPlayer = true,
     showDebuffType = true,
-    useCustomFilter = true,
     size = 13,
     num = 5,
     spacing = 3,

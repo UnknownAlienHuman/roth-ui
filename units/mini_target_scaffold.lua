@@ -38,7 +38,7 @@ function func.buildMiniTargetScaffold(self, opts)
   health.highlight:SetAllPoints(self)
 
   self.Health = health
-  self.Health.Smooth = true
+  self.Health.smoothing = func.ResolveStatusBarSmoothing(healthCfg and healthCfg.smooth)
 
   local power = CreateFrame("StatusBar", nil, self.Health)
   power:SetPoint("TOP", 0, -13)
@@ -62,7 +62,7 @@ function func.buildMiniTargetScaffold(self, opts)
 
   self.Power = power
   if opts.smoothPower then
-    self.Power.Smooth = true
+    self.Power.smoothing = func.ResolveStatusBarSmoothing(powerCfg and powerCfg.smooth)
   end
 
   local name = func.createFontString(self, cfg.font, 14, "THINOUTLINE")
@@ -81,7 +81,7 @@ function func.buildMiniTargetScaffold(self, opts)
     perphp:SetJustifyH("CENTER")
   end
 
-  self:Tag(name, "[diablo:name]")
+  self:Tag(name, "[roth:namecolor][name<$|r]")
 
   self.Health.valueText = hpval
   self.Health.valueTextMode = func.ResolveHealthValueMode()

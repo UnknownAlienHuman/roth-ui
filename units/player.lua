@@ -134,7 +134,6 @@ local CoerceVisibleNumber = func.CoerceAccessibleNumber
 if type(CoerceVisibleNumber) ~= "function" then
   local CanAccessValue = _G.canaccessvalue
   CoerceVisibleNumber = function(v)
-    if v == nil then return nil end
     if IsSecretValue(v) then
       if type(CanAccessValue) == "function" and CanAccessValue(v) then
         local n = tonumber(v)
@@ -144,6 +143,7 @@ if type(CoerceVisibleNumber) ~= "function" then
       end
       return nil
     end
+    if v == nil then return nil end
     if type(v) == "number" then
       return v
     end
@@ -160,12 +160,7 @@ end
 local SafeSetText = func.SafeSetText or function(fs, v)
   if not fs then return end
   if IsSecretValue(v) then
-    local n = CoerceVisibleNumber(v)
-    if type(n) == "number" then
-      fs:SetText(func.numFormat(n))
-    else
-      fs:SetText("")
-    end
+    fs:SetText(v)
     return
   end
   if v == nil then
@@ -176,12 +171,12 @@ local SafeSetText = func.SafeSetText or function(fs, v)
 end
 local SafeSetPercentText = func.SetPercentText or function(fs, v)
   if not fs then return end
-  if v == nil then
-    SafeSetText(fs, "")
+  if IsSecretValue(v) then
+    fs:SetFormattedText("%.0f%%", v)
     return
   end
-  if IsSecretValue(v) then
-    SafeSetText(fs, v)
+  if v == nil then
+    SafeSetText(fs, "")
     return
   end
   local n = tonumber(v)
@@ -229,10 +224,10 @@ end
 -- Helper: coerce a potentially-secret value to a plain number for formatting.
 -- Returns the number on success, nil on failure (value stays secret/unusable).
 local function CoerceNum(v)
-  if v == nil then return nil end
   if IsSecretValue(v) then
     return CoerceVisibleNumber(v)
   end
+  if v == nil then return nil end
   if type(v) == "number" then return v end
   return tonumber(v)
 end
@@ -248,12 +243,11 @@ local function FmtPercent(d, withSign)
   return nil
 end
 
-local function FormatShortSecret(v)
-  if not v then return "" end
-  if type(func.TryBlizzardAbbrev) == "function" then
-    local str = func.TryBlizzardAbbrev(v)
-    if str then return str end
+local function FormatAccessibleNumber(v)
+  if IsSecretValue(v) then
+    return v
   end
+  if v == nil then return "" end
   local n = CoerceNum(v)
   if type(n) == "number" then
     return func.numFormat(n)
@@ -264,14 +258,14 @@ end
 local function ResolveNumericOrbText(rawValue)
   local useShort = ns and ns.cfg and ns.cfg.shortNumbers == true
   if useShort then
-    return FormatShortSecret(rawValue), true
+    return FormatAccessibleNumber(rawValue), true
   end
 
   local n = CoerceNum(rawValue)
   if type(n) == "number" then
     return FormatRawNumber(n), true
   end
-  if rawValue ~= nil and IsSecretValue(rawValue) then
+  if IsSecretValue(rawValue) then
     return rawValue, true, "%.0f"
   end
   return nil, false
@@ -279,12 +273,12 @@ end
 
 local function EvalOrbMode(mode, d, value, maxv)
   if mode == "percent" then
+    if IsSecretValue(d) then
+      return d, true, "%.0f%%"
+    end
     if d ~= nil then
       local s = FmtPercent(d, true)
       if s then return s, true end
-      if IsSecretValue(d) then
-        return d, true, "%.0f%%"
-      end
     end
     return nil, false
   end
@@ -353,7 +347,7 @@ local updateValue = function(bar, unit, cur, min, max)
       d = SafeUnitPowerPercent(unit)
     end
   end
-  local dIsNumber = (type(d) == "number") and (not IsSecretValue(d))
+  local dIsNumber = (not IsSecretValue(d)) and type(d) == "number"
 
   -- For player unit, compute percent from the non-secret values above.
   if (not dIsNumber) and isPlayerUnit and type(valueNum) == "number" and type(maxNum) == "number" and maxNum > 0 then
@@ -501,35 +495,8 @@ local updateValue = function(bar, unit, cur, min, max)
 
 end
 
-local function EnsureCastHold(bar)
-  if not bar then return end
-  local hold = bar.timeToHold or CASTBAR_INTERRUPT_HOLD
-  if type(hold) == "number" and hold > 0 then
-    if type(bar.holdTime) ~= "number" or bar.holdTime < hold then
-      bar.holdTime = hold
-    end
-  end
-  if bar.Show then bar:Show() end
-end
-
-local function PostPlayerCastInterrupted(bar, unit, interruptedBy)
-  if not (bar and bar.Text) then return end
-  local text = INTERRUPTED_TEXT
-  local src = func.ResolveInterruptSourceName and func.ResolveInterruptSourceName(interruptedBy) or nil
-  if not src and func.GetCachedInterruptSource then
-    src = func.GetCachedInterruptSource(unit)
-  end
-  if src and src ~= "" then
-    text = string.format("%s: %s", INTERRUPTED_TEXT, src)
-  end
-  bar.Text:SetText(text)
-  EnsureCastHold(bar)
-end
-
-local function PostPlayerCastFail(bar)
-  if not bar then return end
-  EnsureCastHold(bar)
-end
+-- oUF 14 owns cast failure/interruption hold state through Castbar.timeToHold.
+-- Roth UI does not mutate the framework's private cast state.
 
 --update statusbar color hook
 
@@ -871,23 +838,21 @@ local createOrb = function(self, orbType)
 
     fill.DamageAbsorb = absorbBar
     self.TotalAbsorb = absorbBar
-    self.TotalAbsorb.Smooth = self.cfg.absorb.smooth or false
+    self.TotalAbsorb.smoothing = func.ResolveStatusBarSmoothing(self.cfg.absorb and self.cfg.absorb.smooth)
   end
 
   if orb.type == "POWER" then
     self.Power = orb.fill
     ns.PowerOrb = orb --save the orb in the namespace
     hooksecurefunc(self.Power, "SetStatusBarColor", updateStatusBarColor)
-    self.Power.frequentUpdates = self.cfg.power.frequentUpdates or false
-    self.Power.Smooth = self.cfg.power.smooth or false
+    self.Power.smoothing = func.ResolveStatusBarSmoothing(self.cfg.power and self.cfg.power.smooth)
     self.Power.colorPower = orbcfg.filling.colorAuto or false
     self.Power.PostUpdate = updateValue
   else
     self.Health = orb.fill
     ns.HealthOrb = orb --save the orb in the namespace
     hooksecurefunc(self.Health, "SetStatusBarColor", updateStatusBarColor)
-    self.Health.frequentUpdates = self.cfg.health.frequentUpdates or false
-    self.Health.Smooth = self.cfg.health.smooth or false
+    self.Health.smoothing = func.ResolveStatusBarSmoothing(self.cfg.health and self.cfg.health.smooth)
     self.Health.colorClass = orbcfg.filling.colorAuto or false
     self.Health.colorHealth = orbcfg.filling.colorAuto or
         false --when player switches into a vehicle it will recolor the orb
@@ -989,7 +954,6 @@ local createStyle = function(self)
     func.createCastbar(self)
     if self.Castbar then
       self.Castbar.timeToHold = self.cfg.castbar.timeToHold or CASTBAR_INTERRUPT_HOLD
-      self.Castbar.PostCastInterrupted = PostPlayerCastInterrupted
     end
   end
 

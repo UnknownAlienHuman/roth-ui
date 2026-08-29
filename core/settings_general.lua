@@ -1,4 +1,5 @@
-local addonName, ns = ...
+local addonName = ...
+local ns = assert(_G.Roth_UI, "Roth_UI_Options: main Roth_UI namespace is required")
 
 local ui = assert(ns and ns.SettingsUI, "Roth_UI: SettingsUI is required by settings_general.lua")
 local type = type
@@ -7,9 +8,6 @@ local ipairs = ipairs
 local tonumber = tonumber
 local InCombatLockdown = InCombatLockdown
 local defer = ns and ns.defer
-local barRuntimeRegistry = assert(ns and ns.BarRuntimeRegistry, "Roth_UI: BarRuntimeRegistry is required by settings_general.lua")
-local ResolveBarRuntimeFrame = assert(barRuntimeRegistry.ResolveFrame, "Roth_UI: BarRuntimeRegistry.ResolveFrame is required by settings_general.lua")
-local RefreshBarRuntimeMouseover = assert(barRuntimeRegistry.RefreshMouseover, "Roth_UI: BarRuntimeRegistry.RefreshMouseover is required by settings_general.lua")
 local settingsActions = assert(ns and ns.settingsActions, "Roth_UI: settings actions are required by settings_general.lua")
 
 local LSM = (LibStub and LibStub("LibSharedMedia-3.0", true)) or nil
@@ -22,77 +20,9 @@ local function GetMoverRuntime()
   return moverRuntime
 end
 
-local function IterateFrameList(frames, callback, seen)
-  for i = 1, #frames do
-    local frame = frames[i]
-    if frame and not seen[frame] then
-      seen[frame] = true
-      callback(frame)
-    end
-  end
-end
-
-local function IterateHeaderChildren(header, callback, seen)
-  if not (header and header.GetChildren) then
-    return
-  end
-
-  local children = { header:GetChildren() }
-  IterateFrameList(children, callback, seen)
-end
-
-local function RefreshAuraFrames()
-  local function RefreshNativeAuraElement(element)
-    if element and type(element.ForceUpdate) == "function" then
-      element:ForceUpdate()
-      return true
-    end
-    return false
-  end
-
-  local function RefreshAuraFrame(frame)
-    if not frame then
-      return
-    end
-
-    local refreshed = false
-    refreshed = RefreshNativeAuraElement(frame.Auras) or refreshed
-    refreshed = RefreshNativeAuraElement(frame.Buffs) or refreshed
-    refreshed = RefreshNativeAuraElement(frame.Debuffs) or refreshed
-
-    if refreshed and type(frame.ForceUpdate) == "function" then
-      frame:ForceUpdate()
-    end
-  end
-
-  local seen = {}
-  local frames = {}
-
-  if ns and ns.unit then
-    frames[#frames + 1] = ns.unit.target
-    frames[#frames + 1] = ns.unit.targettarget
-    frames[#frames + 1] = ns.unit.focus
-    frames[#frames + 1] = ns.unit.focustarget
-    frames[#frames + 1] = ns.unit.pet
-    frames[#frames + 1] = ns.unit.pettarget
-  end
-
-  IterateFrameList(frames, function(frame)
-    RefreshAuraFrame(frame)
-  end, seen)
-
-  local partyHeader = ns and ns.partyHeader
-  IterateHeaderChildren(partyHeader, function(frame)
-    RefreshAuraFrame(frame)
-  end, seen)
-
-  local raidGroups = ns and ns.raidGroups
-  if type(raidGroups) == "table" then
-    for _, header in pairs(raidGroups) do
-      IterateHeaderChildren(header, function(frame)
-        RefreshAuraFrame(frame)
-      end, seen)
-    end
+local function RefreshAuraFilters()
+  if ns and type(ns.RefreshAllAuraFilters) == "function" then
+    ns.RefreshAllAuraFilters()
   end
 end
 
@@ -249,101 +179,6 @@ local function FormatAlpha(value)
   return string.format("%.2f", tonumber(value) or 0)
 end
 
-local function ResolveMouseoverBarFrame(barKey)
-  return ResolveBarRuntimeFrame(barKey)
-end
-
-local function RefreshMouseoverBar(barKey)
-  ui:RunOutOfCombat("settings_mouseover_" .. barKey, function()
-    local barCfg = ns and ns.cfg and ns.cfg.bars and ns.cfg.bars[barKey]
-    local frame = ResolveMouseoverBarFrame(barKey)
-    if type(barCfg) ~= "table" or type(barCfg.mouseover) ~= "table" or not frame then
-      return
-    end
-
-    if RefreshBarRuntimeMouseover(barKey) then
-      return
-    end
-
-    if type(_G.rButtonBarFaderUpdate) ~= "function" then
-      return
-    end
-
-    frame.mouseover = barCfg.mouseover
-    _G.rButtonBarFaderUpdate(
-      frame,
-      barCfg.mouseover.fadeIn,
-      barCfg.mouseover.fadeOut,
-      barCfg.mouseover.enable == true
-    )
-  end)
-end
-
-local function AddMouseoverSettings(spec)
-  local path = spec.path
-  local label = spec.label
-  local variablePrefix = spec.variablePrefix
-  local apply = function()
-    RefreshMouseoverBar(path)
-  end
-
-  ui:AddCheckbox({
-    category = "bars",
-    variable = variablePrefix .. "_ENABLED",
-    label = label .. " Mouseover Fade",
-    tooltip = "Enables mouseover fading for this bar and reapplies the live fader when the frame already exists.",
-    path = { "bars", path, "mouseover", "enable" },
-    defaultValue = ui:GetConfigDefault({ "bars", path, "mouseover", "enable" }, false),
-    reloadRequired = false,
-    apply = apply,
-  })
-
-  ui:AddSlider({
-    category = "bars",
-    variable = variablePrefix .. "_FADE_IN_TIME",
-    label = label .. " Fade In Time",
-    tooltip = "Controls how quickly the bar fades in on mouseover and updates the live fader when available.",
-    path = { "bars", path, "mouseover", "fadeIn", "time" },
-    defaultValue = ui:GetConfigDefault({ "bars", path, "mouseover", "fadeIn", "time" }, 0.4),
-    minValue = 0,
-    maxValue = 1.5,
-    step = 0.05,
-    reloadRequired = false,
-    labelFormatter = FormatTenths,
-    apply = apply,
-  })
-
-  ui:AddSlider({
-    category = "bars",
-    variable = variablePrefix .. "_FADE_OUT_TIME",
-    label = label .. " Fade Out Time",
-    tooltip = "Controls how quickly the bar fades out after the mouse leaves and updates the live fader when available.",
-    path = { "bars", path, "mouseover", "fadeOut", "time" },
-    defaultValue = ui:GetConfigDefault({ "bars", path, "mouseover", "fadeOut", "time" }, 0.3),
-    minValue = 0,
-    maxValue = 1.5,
-    step = 0.05,
-    reloadRequired = false,
-    labelFormatter = FormatTenths,
-    apply = apply,
-  })
-
-  ui:AddSlider({
-    category = "bars",
-    variable = variablePrefix .. "_FADE_OUT_ALPHA",
-    label = label .. " Fade Out Alpha",
-    tooltip = "Controls the idle alpha after fade-out and updates the live fader when available.",
-    path = { "bars", path, "mouseover", "fadeOut", "alpha" },
-    defaultValue = ui:GetConfigDefault({ "bars", path, "mouseover", "fadeOut", "alpha" }, 0),
-    minValue = 0,
-    maxValue = 1,
-    step = 0.05,
-    reloadRequired = false,
-    labelFormatter = FormatAlpha,
-    apply = apply,
-  })
-end
-
 local function ApplyGlobalHealthValueMode()
   if not (ns and type(ns.RefreshAllHealthValueText) == "function") then
     return
@@ -412,7 +247,7 @@ ui:RegisterBuilder("general", function()
       if ns and type(ns.RefreshOrbsVisual) == "function" then
         ns.RefreshOrbsVisual()
       end
-      RefreshAuraFrames()
+      RefreshAuraFilters()
     end,
   })
 
@@ -452,7 +287,7 @@ ui:RegisterBuilder("general", function()
     path = { "simpleAuras", "durationText" },
     defaultValue = ui:GetConfigDefault({ "simpleAuras", "durationText" }, false),
     reloadRequired = false,
-    apply = RefreshAuraFrames,
+    apply = RefreshAuraFilters,
   })
 
   ui:AddCheckbox({
@@ -463,7 +298,7 @@ ui:RegisterBuilder("general", function()
     path = { "simpleAuras", "cooldownSwipe" },
     defaultValue = ui:GetConfigDefault({ "simpleAuras", "cooldownSwipe" }, true),
     reloadRequired = false,
-    apply = RefreshAuraFrames,
+    apply = RefreshAuraFilters,
   })
 
   ui:AddCheckbox({
@@ -474,7 +309,7 @@ ui:RegisterBuilder("general", function()
     path = { "units", "target", "auras", "onlyShowPlayerBuffs" },
     defaultValue = ui:GetConfigDefault({ "units", "target", "auras", "onlyShowPlayerBuffs" }, false),
     reloadRequired = false,
-    apply = RefreshAuraFrames,
+    apply = RefreshAuraFilters,
   })
 
   ui:AddCheckbox({
@@ -485,7 +320,7 @@ ui:RegisterBuilder("general", function()
     path = { "units", "target", "auras", "onlyShowPlayerDebuffs" },
     defaultValue = ui:GetConfigDefault({ "units", "target", "auras", "onlyShowPlayerDebuffs" }, true),
     reloadRequired = false,
-    apply = RefreshAuraFrames,
+    apply = RefreshAuraFilters,
   })
 
   ui:AddDropdown({
@@ -511,27 +346,7 @@ ui:RegisterBuilder("general", function()
     apply = ApplyGlobalHealthValueMode,
   })
 
-  ui:AddCheckbox({
-    category = "bars",
-    variable = "ROTH_UI_SECURE_OWNER_BARS",
-    label = "Secure Bars (Experimental)",
-    tooltip = "Switches bar1 and bars 2-5 to Roth-owned secure buttons under the secureOwnerBars feature flag. Override/vehicle action pages now ride the secure main bar, while Blizzard override shell widgets remain follower-owned. Requires /reload.",
-    path = { "bars", "secureOwnerBars" },
-    defaultValue = ui:GetConfigDefault({ "bars", "secureOwnerBars" }, false),
-    reloadRequired = true,
-  })
 
-  AddMouseoverSettings({
-    path = "extrabar",
-    label = "Extra Bar",
-    variablePrefix = "ROTH_UI_EXTRABAR_MOUSEOVER",
-  })
-
-  AddMouseoverSettings({
-    path = "petbar",
-    label = "Pet Bar",
-    variablePrefix = "ROTH_UI_PETBAR_MOUSEOVER",
-  })
 
   ui:AddCheckbox({
     category = "data_bars",

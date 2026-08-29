@@ -9,8 +9,6 @@ local runtimeApi = assert(ns and ns.persistenceRuntime, "Roth_UI: ns.persistence
 local storeApi = ns.store or {}
 ns.store = storeApi
 
-local ACCOUNT_VAR = configOwner.ACCOUNT_DB_VAR or "Roth_UI_DB"
-local CHAR_VAR = configOwner.CHAR_DB_VAR or "Roth_UI_DB_Char"
 local PurgeLegacyRuntimeKeys = assert(runtimeApi.PurgeLegacyKeys, "Roth_UI: persistenceRuntime.PurgeLegacyKeys is required by persistence_root_store.lua")
 local MigrateLegacyRuntimeState = assert(runtimeApi.MigrateLegacyState, "Roth_UI: persistenceRuntime.MigrateLegacyState is required by persistence_root_store.lua")
 
@@ -27,6 +25,8 @@ local SetCanonicalConfigStore = ResolveConfigOwnerMethod("SetCanonicalConfigStor
 local SetCanonicalTemplateStore = ResolveConfigOwnerMethod("SetCanonicalTemplateStore")
 local SetCanonicalOrbCharStore = ResolveConfigOwnerMethod("SetCanonicalOrbCharStore")
 local AttachConfigProxy = ResolveConfigOwnerMethod("AttachCfgProxy")
+local ReplaceCanonicalRoots = ResolveConfigOwnerMethod("ReplaceCanonicalRoots")
+local ResetCanonicalRoots = ResolveConfigOwnerMethod("ResetCanonicalRoots")
 
 local function GetCanonicalStores()
   return EnsureCanonicalPersistenceStores()
@@ -206,19 +206,14 @@ end
 
 function ns.ReplacePersistenceRoots(opts)
   local payload = type(opts) == "table" and opts or {}
-  local replaced = false
-
+  local normalized = {}
   if payload.accountRoot ~= nil then
-    _G[ACCOUNT_VAR] = NormalizeAccountRoot(payload.accountRoot)
-    replaced = true
+    normalized.accountRoot = NormalizeAccountRoot(payload.accountRoot)
   end
-
   if payload.charRoot ~= nil then
-    _G[CHAR_VAR] = NormalizeCharRoot(payload.charRoot)
-    replaced = true
+    normalized.charRoot = NormalizeCharRoot(payload.charRoot)
   end
-
-  if not replaced then
+  if not ReplaceCanonicalRoots(normalized) then
     return false
   end
 
@@ -227,9 +222,7 @@ function ns.ReplacePersistenceRoots(opts)
 end
 
 function ns.ResetPersistenceRoots()
-  _G[ACCOUNT_VAR] = nil
-  _G[CHAR_VAR] = nil
-  return true
+  return ResetCanonicalRoots()
 end
 
 storeApi.GetCanonicalStores = GetCanonicalStores

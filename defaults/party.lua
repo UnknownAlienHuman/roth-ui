@@ -13,9 +13,6 @@ ns.defaults.units.party = {
   alpha = {
     notinrange = 0.5,
   },
-  range = {
-    driver = "blizzard",
-  },
   scale = 1.1,
   vertwidth = 228,
   vertheight = 64,
@@ -40,7 +37,6 @@ ns.defaults.units.party = {
   },
   health = {
     texture = (mediapath .. "statusbar3"),
-    tag = "[diablo:misshp]",
     fontSize = 11,
     point = "RIGHT",
     x = -20,

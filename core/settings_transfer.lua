@@ -1,4 +1,5 @@
-local addonName, ns = ...
+local addonName = ...
+local ns = assert(_G.Roth_UI, "Roth_UI_Options: main Roth_UI namespace is required")
 
 local ui = assert(ns and ns.SettingsUI, "Roth_UI: SettingsUI is required by settings_transfer.lua")
 local actions = assert(ns and ns.settingsActions, "Roth_UI: settings actions are required by settings_transfer.lua")

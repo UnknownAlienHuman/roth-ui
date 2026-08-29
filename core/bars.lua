@@ -8,7 +8,6 @@ ns.bars = bars
 --get the functions
 local func = ns.func
 local cfg = ns.cfg
-local barposition = ns.player
 local mediapath = ns.mediapath or "Interface\\AddOns\\Roth_UI\\media\\"
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by bars.lua")
 local IsSecretValue = (func and func.IsSecretValue) or
@@ -22,6 +21,12 @@ local function CoerceNumber(v)
   end
   return nil
 end
+local function PlayerHasVehicleUI()
+  if type(UnitHasVehicleUI) ~= "function" then return false end
+  local value = UnitHasVehicleUI("player")
+  return not IsSecretValue(value) and value == true
+end
+
 local function SafeNumber(v)
   if IsSecretValue(v) then return nil end
   if type(v) ~= "number" then return nil end
@@ -56,38 +61,6 @@ local function CallTooltipHook(name, frame)
   return handled and true or false
 end
 
-local function GetColorRGB(color)
-  if not color then return nil end
-  if type(color.GetRGB) == "function" then
-    local r, g, b = color:GetRGB()
-    if type(r) == "number" and type(g) == "number" and type(b) == "number" then
-      return r, g, b
-    end
-  end
-  local r = color.r or color[1]
-  local g = color.g or color[2]
-  local b = color.b or color[3]
-  if type(r) == "number" and type(g) == "number" and type(b) == "number" then
-    return r, g, b
-  end
-  return nil
-end
-
-local function ResolvePowerColorRGB(powerType, fallback)
-  local color
-  if powerType then
-    if oUF and oUF.colors and oUF.colors.power then
-      color = oUF.colors.power[powerType]
-    end
-    if not color and PowerBarColor then
-      color = PowerBarColor[powerType]
-    end
-  end
-  local r, g, b = GetColorRGB(color)
-  if r then return r, g, b end
-  return GetColorRGB(fallback)
-end
-
 local function AttachClassPower(self, bar, orbs)
   if not (self and bar and orbs) then return end
   local element = {}
@@ -97,103 +70,41 @@ local function AttachClassPower(self, bar, orbs)
     if fill and fill.SetValue then
       element[i] = fill
       fill.__rothOrb = orb
+      -- The StatusBar fill is the only active-state renderer. Avoid a second
+      -- Lua state machine that reads StatusBar:GetValue on every power update.
+      if orb.glow then orb.glow:Hide() end
+      if orb.highlight then orb.highlight:Hide() end
     end
   end
   if #element < 1 then return end
 
   element.__bar = bar
-  element.__orbs = orbs
-  element.__fallbackColor = bar.color
-  element.__fullColor = bar.fullColor
-  element.__colorize = bar.colorize
-
-  element.UpdateColor = function(elem, powerType)
-    if not elem.__colorize then return end
-    local r, g, b = ResolvePowerColorRGB(powerType, elem.__fallbackColor)
-    if not r then return end
-    for i = 1, #elem do
-      local fill = elem[i]
-      local tex = fill and fill.GetStatusBarTexture and fill:GetStatusBarTexture() or nil
-      if tex then tex:SetVertexColor(r, g, b) end
-      local orb = fill and fill.__rothOrb
-      if orb and orb.glow then
-        orb.glow:SetVertexColor(r, g, b)
-      end
-    end
-  end
 
   element.PostVisibility = function(elem, isVisible)
-    local b = elem.__bar
-    if b and b.SetShown then
-      b:SetShown(isVisible)
-    end
+    local owner = elem.__bar
+    if owner and owner.SetShown then owner:SetShown(isVisible) end
   end
 
-  element.PostUpdate = function(elem, cur, max, hasMaxChanged, powerType, ...)
-    local b = elem.__bar
-    if not b then return end
+  -- oUF 14 signature: (cur, max, hasCurChanged, hasMaxChanged, powerType, ...).
+  -- The framework owns values and colors; Roth only adjusts bounded layout when
+  -- the maximum number of pips changes.
+  element.PostUpdate = function(elem, cur, maxValue, hasCurChanged, hasMaxChanged, powerType, ...)
+    local owner = elem.__bar
+    if not owner then return end
     local total = #elem
     if total < 1 then return end
 
-    local maxNum = SafeNumber(max)
-    if not maxNum or maxNum < 1 then
-      maxNum = b.maxOrbs or total
-    end
+    local maxNum = SafeNumber(maxValue)
+    if not maxNum or maxNum < 1 then maxNum = owner.maxOrbs or total end
     if maxNum > total then maxNum = total end
 
-    if b.orbSize and b.edgeOrbs then
-      b:SetWidth(b.orbSize * (maxNum + b.edgeOrbs))
+    if owner.orbSize and owner.edgeOrbs and hasMaxChanged then
+      owner:SetWidth(owner.orbSize * (maxNum + owner.edgeOrbs))
     end
 
     for i = 1, total do
       local orb = elem[i] and elem[i].__rothOrb
-      if orb then
-        if i > maxNum then
-          orb:Hide()
-        else
-          orb:Show()
-        end
-      end
-    end
-
-    local curNum = SafeNumber(cur)
-    local isFull = (curNum and maxNum and curNum >= maxNum) or false
-
-    local baseR, baseG, baseB
-    local fullR, fullG, fullB
-    if elem.__colorize then
-      baseR, baseG, baseB = ResolvePowerColorRGB(powerType, elem.__fallbackColor)
-      if elem.__fullColor then
-        fullR, fullG, fullB = GetColorRGB(elem.__fullColor)
-      end
-    end
-
-    for i = 1, maxNum do
-      local fill = elem[i]
-      local orb = fill and fill.__rothOrb
-      if orb then
-        local value = (fill and fill.GetValue) and fill:GetValue() or 0
-        local active = (not IsSecretValue(value)) and value > 0
-        if active then
-          fill:Show()
-          if orb.glow then orb.glow:Show() end
-          if orb.highlight then orb.highlight:Show() end
-        else
-          fill:Hide()
-          if orb.glow then orb.glow:Hide() end
-          if orb.highlight then orb.highlight:Hide() end
-        end
-
-        if elem.__colorize and baseR then
-          local r, g, b = baseR, baseG, baseB
-          if isFull and fullR then
-            r, g, b = fullR, fullG, fullB
-          end
-          local tex = fill.GetStatusBarTexture and fill:GetStatusBarTexture() or nil
-          if tex then tex:SetVertexColor(r, g, b) end
-          if orb.glow then orb.glow:SetVertexColor(r, g, b) end
-        end
-      end
+      if orb then orb:SetShown(i <= maxNum) end
     end
   end
 
@@ -209,57 +120,17 @@ local function AttachRunes(self, bar, orbs)
     if fill and fill.SetValue then
       element[i] = fill
       fill.__rothOrb = orb
+      if orb.glow then orb.glow:Hide() end
+      if orb.highlight then orb.highlight:Hide() end
     end
   end
   if #element < 1 then return end
 
   element.__bar = bar
-  element.__orbs = orbs
   element.colorSpec = true
-
-  element.PostUpdateColor = function(elem, color)
-    local r, g, b = GetColorRGB(color)
-    if not r then
-      return
-    end
-
-    for i = 1, #elem do
-      local fill = elem[i]
-      if fill then
-        local tex = fill.GetStatusBarTexture and fill:GetStatusBarTexture() or nil
-        if tex then
-          tex:SetVertexColor(r, g, b)
-        end
-      end
-      local orb = fill and fill.__rothOrb
-      if orb and orb.glow then
-        orb.glow:SetVertexColor(r, g, b)
-      end
-    end
-  end
-
-  element.PostUpdate = function(elem, runemap)
-    local b = elem.__bar
-    if b and b.SetShown then
-      local show = true
-      if UnitHasVehicleUI and UnitHasVehicleUI("player") then
-        show = false
-      end
-      b:SetShown(show)
-    end
-
-    for i = 1, #elem do
-      local fill = elem[i]
-      local orb = fill and fill.__rothOrb
-      if orb and orb.glow then
-        local v = fill:GetValue()
-        if not IsSecretValue(v) and v >= 1 then
-          orb.glow:Show()
-        else
-          orb.glow:Hide()
-        end
-      end
-    end
+  element.PostUpdate = function(elem)
+    local owner = elem.__bar
+    if owner and owner.SetShown then owner:SetShown(not PlayerHasVehicleUI()) end
   end
 
   self.Runes = element

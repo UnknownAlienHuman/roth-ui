@@ -23,7 +23,6 @@ local UnitReaction = UnitReaction
 local GetPlayerInfoByGUID = GetPlayerInfoByGUID
 
 local IsSecretValue = assert(func.IsSecretValue, "Roth_UI: func.IsSecretValue is required by unit_value_runtime.lua")
-local ReportGuardFailure = safety and safety.ReportGuardFailure
 --update health func
 --
 -- WoW 12.x: Unit* APIs may return Secret Values in combat. Secret Values must never
@@ -44,19 +43,9 @@ local function SafeUnitHealthPercent(unit)
   end
   local curve = GetScaleTo100Curve()
   if curve then
-    local ok, val = pcall(fn, unit, true, curve)
-    if ok and val ~= nil then return val end
-    if not ok and type(ReportGuardFailure) == "function" then
-      ReportGuardFailure("UnitHealthPercent(curve)", val)
-    end
+    return fn(unit, true, curve)
   end
-  -- Fallback: call without curve args (plain 0-100 percent).
-  local ok, val = pcall(fn, unit)
-  if ok then return val end
-  if type(ReportGuardFailure) == "function" then
-    ReportGuardFailure("UnitHealthPercent", val)
-  end
-  return nil
+  return fn(unit, true)
 end
 
 local function SafeUnitPowerPercent(unit)
@@ -66,18 +55,9 @@ local function SafeUnitPowerPercent(unit)
   end
   local curve = GetScaleTo100Curve()
   if curve then
-    local ok, val = pcall(fn, unit, nil, true, curve)
-    if ok and val ~= nil then return val end
-    if not ok and type(ReportGuardFailure) == "function" then
-      ReportGuardFailure("UnitPowerPercent(curve)", val)
-    end
+    return fn(unit, nil, false, curve)
   end
-  local ok, val = pcall(fn, unit)
-  if ok then return val end
-  if type(ReportGuardFailure) == "function" then
-    ReportGuardFailure("UnitPowerPercent", val)
-  end
-  return nil
+  return fn(unit)
 end
 
 func.SafeUnitHealthPercent = SafeUnitHealthPercent
@@ -85,9 +65,6 @@ func.SafeUnitPowerPercent = SafeUnitPowerPercent
 
 local CanAccessValue = _G.canaccessvalue
 local function CoerceAccessibleNumber(v)
-  if v == nil then
-    return nil
-  end
   if IsSecretValue(v) then
     if type(CanAccessValue) == "function" and CanAccessValue(v) then
       local n = tonumber(v)
@@ -95,6 +72,9 @@ local function CoerceAccessibleNumber(v)
         return n
       end
     end
+    return nil
+  end
+  if v == nil then
     return nil
   end
   if type(v) == "number" then
@@ -110,32 +90,8 @@ local function CoerceAccessibleNumber(v)
 end
 func.CoerceAccessibleNumber = CoerceAccessibleNumber
 
--- Try Blizzard abbreviation functions for secret values (they may handle secrets internally).
-local _cachedAbbrevFn = nil
-local function TryBlizzardAbbrev(v)
-  if v == nil then return nil end
-  local function tryFn(fn)
-    if type(fn) ~= "function" then return nil end
-    local ok, res = pcall(fn, v)
-    if not ok or res == nil then return nil end
-    return res
-  end
-  if _cachedAbbrevFn then
-    local res = tryFn(_cachedAbbrevFn)
-    if res then return res end
-    _cachedAbbrevFn = nil
-  end
-  local fns = { _G.AbbreviateNumbers, _G.AbbreviateLargeNumbers, _G.AbbreviateNumber, _G.AbbreviateLargeNumber }
-  for i = 1, #fns do
-    local res = tryFn(fns[i])
-    if res then
-      _cachedAbbrevFn = fns[i]
-      return res
-    end
-  end
-  return nil
-end
-func.TryBlizzardAbbrev = TryBlizzardAbbrev
+-- Secret-capable numbers are never routed through Lua formatters. If a value
+-- cannot be accessed, it is forwarded only to a documented native text sink.
 
 local function SetTextCached(fs, v)
   if not fs then return end
@@ -203,23 +159,10 @@ local function SafeSetText(fs, v)
   SetTextCached(fs, v)
 end
 
-local _truncateWhenZero = _G.C_StringUtil and _G.C_StringUtil.TruncateWhenZero
-local function TryTruncateWhenZero(v)
-  if type(_truncateWhenZero) == "function" then
-    return _truncateWhenZero(v)
-  end
-  return nil
-end
-
 local function SafeSetStackText(fs, v)
   if not fs then return end
   if IsSecretValue(v) then
     fs._rothLastText = nil
-    local text = TryTruncateWhenZero(v)
-    if text ~= nil then
-      SetTextCached(fs, text or "")
-      return
-    end
     fs:SetText(v)
     return
   end
@@ -246,15 +189,15 @@ end
 
 local function SetPercentText(fs, d)
   if not fs then return end
-  if d == nil then
-    SetTextCached(fs, "")
-    return
-  end
   if IsSecretValue(d) then
     -- Formatting secret percentages using Lua triggers taint errors when fractions appear.
     -- Calling FontString:SetFormattedText natively rounds and appends the '%' safely in C!
     fs._rothLastText = nil
     fs:SetFormattedText("%.0f%%", d)
+    return
+  end
+  if d == nil then
+    SetTextCached(fs, "")
     return
   end
   local n = tonumber(d)
@@ -271,8 +214,8 @@ func.SetPercentText          = SetPercentText
 func.SetVertexColorCached    = SetVertexColorCached
 
 -----------------------------------------------------------------------------
--- PERF: avoid per-update table allocations in frequently-called PostUpdate
---       handlers (reduces GC churn on unitframe frequentUpdates).
+-- PERF: avoid per-update table allocations in frequently-called oUF PostUpdate
+--       handlers (reduces GC churn during health/power event bursts).
 -----------------------------------------------------------------------------
 
 local COLOR_TAP_DENIED       = { r = 0.65, g = 0.65, b = 0.65, a = 1 }
@@ -309,17 +252,17 @@ local function GetClassColorForUnit(unit)
 
   local classToken
   local guid = UnitGUID(unit)
-  if guid and not IsSecretValue(guid) then
+  if not IsSecretValue(guid) and guid then
     if GetPlayerInfoByGUID then
       local _, byGUID = GetPlayerInfoByGUID(guid)
-      if byGUID and not IsSecretValue(byGUID) then
+      if not IsSecretValue(byGUID) and byGUID then
         classToken = byGUID
       end
     end
   end
   if not classToken then
     local _, byUnit = UnitClass(unit)
-    if byUnit and not IsSecretValue(byUnit) then
+    if not IsSecretValue(byUnit) and byUnit then
       classToken = byUnit
     end
   end
@@ -361,7 +304,7 @@ func.updateHealth = function(bar, unit, cur, min, max)
         if classColor then color = classColor end
         if not color then
           local reaction = unit and UnitReaction(unit, "player")
-          if reaction and not IsSecretValue(reaction) then
+          if not IsSecretValue(reaction) and reaction then
             color = FACTION_BAR_COLORS[reaction]
           end
         end
@@ -392,7 +335,7 @@ func.updateHealth = function(bar, unit, cur, min, max)
 
   -- Prefer UnitHealthPercent so we can display % even when max is secret.
   local d = SafeUnitHealthPercent(unit)
-  local dIsNumber = (type(d) == "number") and (not IsSecretValue(d))
+  local dIsNumber = (not IsSecretValue(d)) and type(d) == "number"
 
   -- Fallback to manual ratio only if both inputs are not secret.
   if (d == nil) and (not minSecret) and (not maxSecret) and (maxv ~= nil) and (maxv > 0) and (value ~= nil) then
@@ -437,14 +380,8 @@ func.updateHealth = function(bar, unit, cur, min, max)
         SafeSetText(bar.valueText, func.numFormat(value))
       end
     else
-      -- value is secret and could not be coerced; try Blizzard abbreviation
-      local useShort = ns and ns.cfg and ns.cfg.shortNumbers == true
-      local abbrev = useShort and TryBlizzardAbbrev(value) or nil
-      if abbrev then
-        SafeSetText(bar.valueText, abbrev)
-      else
-        SafeSetText(bar.valueText, value)
-      end
+      -- Inaccessible values are forwarded only to the native FontString sink.
+      SafeSetText(bar.valueText, value)
     end
   end
   if bar.perText then
@@ -536,7 +473,7 @@ func.updatePower = function(bar, unit, cur, min, max)
   end
 
   local d = SafeUnitPowerPercent(unit)
-  local dIsNumber = (type(d) == "number") and (not IsSecretValue(d))
+  local dIsNumber = (not IsSecretValue(d)) and type(d) == "number"
   if (d == nil) and (not minSecret) and (not maxSecret) and (maxv ~= nil) and (maxv > 0) and (value ~= nil) then
     d = floor(value / maxv * 100)
     dIsNumber = true
@@ -573,13 +510,7 @@ func.updatePower = function(bar, unit, cur, min, max)
         SafeSetText(bar.valueText, func.numFormat(value))
       end
     else
-      local useShort = ns and ns.cfg and ns.cfg.shortNumbers == true
-      local abbrev = useShort and TryBlizzardAbbrev(value) or nil
-      if abbrev then
-        SafeSetText(bar.valueText, abbrev)
-      else
-        SafeSetText(bar.valueText, value)
-      end
+      SafeSetText(bar.valueText, value)
     end
   end
 

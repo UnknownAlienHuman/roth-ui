@@ -4,20 +4,17 @@
 
 local addon, ns = ...
 local gcfg = ns.cfg
-if not (gcfg and gcfg.bars and gcfg.bars.bar1 and gcfg.units and gcfg.units.player) then return end
+if not (gcfg and gcfg.bars and gcfg.units and gcfg.units.player) then return end
 
 local func = ns.func
 local mediapath = ns.mediapath or "Interface\\AddOns\\Roth_UI\\media\\"
 local CreateFrame = CreateFrame
 local InCombatLockdown = InCombatLockdown
-local IsAddOnLoaded = ns.IsAddOnLoadedCompat or (C_AddOns and C_AddOns.IsAddOnLoaded)
 local C_ActionBar = _G["C_ActionBar"]
 local NUM_ACTIONBAR_BUTTONS = _G["NUM_ACTIONBAR_BUTTONS"] or 12
-local barRuntimeRegistry = assert(ns and ns.BarRuntimeRegistry, "Roth_UI_rActionBarStyler.background: ns.BarRuntimeRegistry is required")
-local GetArtworkTier = assert(barRuntimeRegistry.GetArtworkTier, "Roth_UI_rActionBarStyler.background: GetArtworkTier is required")
-local RegisterBarRuntimeListener = assert(barRuntimeRegistry.RegisterListener, "Roth_UI_rActionBarStyler.background: RegisterListener is required")
-local frameRegistry = assert(ns and ns.frameRegistry, "Roth_UI_rActionBarStyler.background: ns.frameRegistry is required")
-local ResolveRegisteredFrame = assert(frameRegistry.ResolveFrame, "Roth_UI_rActionBarStyler.background: frameRegistry.ResolveFrame is required")
+local frameRegistry = assert(ns and ns.frameRegistry, "Roth_UI action_bar_background: ns.frameRegistry is required")
+local IsSecretValue = assert(func and func.IsSecretValue, "Roth_UI action_bar_background: func.IsSecretValue is required")
+local ResolveRegisteredFrame = assert(frameRegistry.ResolveFrame, "Roth_UI action_bar_background: frameRegistry.ResolveFrame is required")
 local MAIN_BAR_SYSTEM_INDEX = type(Enum) == "table"
   and type(Enum.EditModeActionBarSystemIndices) == "table"
   and Enum.EditModeActionBarSystemIndices.MainBar
@@ -26,16 +23,24 @@ local MAIN_BAR_SYSTEM_INDEX = type(Enum) == "table"
 local backgroundFrame
 local mainBarHooksInstalled = false
 
+local function ReadOrdinaryBoolean(fn)
+  if type(fn) ~= "function" then return false end
+  local value = fn()
+  return not IsSecretValue(value) and value == true
+end
+
 local function HasVehicleActionBarCompat()
-  return C_ActionBar and C_ActionBar.HasVehicleActionBar and C_ActionBar.HasVehicleActionBar() == true
+  return C_ActionBar and ReadOrdinaryBoolean(C_ActionBar.HasVehicleActionBar) or false
 end
 
 local function HasOverrideActionBarCompat()
-  return C_ActionBar and C_ActionBar.HasOverrideActionBar and C_ActionBar.HasOverrideActionBar() == true
+  return C_ActionBar and ReadOrdinaryBoolean(C_ActionBar.HasOverrideActionBar) or false
 end
 
-local function GetOverrideBarSkinCompat()
-  return C_ActionBar and C_ActionBar.GetOverrideBarSkin and C_ActionBar.GetOverrideBarSkin() or nil
+local function HasPlayerVehicleUI()
+  if type(UnitHasVehicleUI) ~= "function" then return false end
+  local value = UnitHasVehicleUI("player")
+  return not IsSecretValue(value) and value == true
 end
 
 local function ResolvePlayerFrame()
@@ -51,7 +56,30 @@ local function ResolvePlayerConfig(playerFrame)
 end
 
 local function ResolveMainBar()
-  return _G["MainActionBar"] or _G["MainMenuBar"] or _G["MainMenuBarArtFrame"]
+  return _G.MainActionBar
+end
+
+local AUXILIARY_BARS = {
+  "MultiBarBottomLeft",
+  "MultiBarBottomRight",
+  "MultiBarRight",
+  "MultiBarLeft",
+  "MultiBar5",
+  "MultiBar6",
+  "MultiBar7",
+}
+
+local function GetArtworkTier()
+  local visible = 0
+  for i = 1, #AUXILIARY_BARS do
+    local frame = _G[AUXILIARY_BARS[i]]
+    if frame and frame.IsShown and frame:IsShown() then
+      visible = visible + 1
+    end
+  end
+  if visible >= 2 then return 3 end
+  if visible == 1 then return 2 end
+  return 1
 end
 
 local function IsMainActionBarSystem(system)
@@ -103,13 +131,13 @@ local function HideActionButtonBarArt(button)
 end
 
 local function ApplyMainBarVisualState()
+  if InCombatLockdown and InCombatLockdown() then
+    return
+  end
   local mainBar = ResolveMainBar()
   if not mainBar then
     return
   end
-
-  mainBar.hideBarArt = true
-  mainBar.enableDividers = false
 
   HideRegion(mainBar.BorderArt)
 
@@ -119,16 +147,10 @@ local function ApplyMainBarVisualState()
     HideRegion(mainBar.EndCaps)
   end
 
-  HideRegion(_G["GryphonLeft"])
-  HideRegion(_G["GryphonRight"])
-
   for i = 1, NUM_ACTIONBAR_BUTTONS do
     HideActionButtonBarArt(_G["ActionButton" .. i])
   end
 
-  if type(mainBar.UpdateDividers) == "function" then
-    mainBar:UpdateDividers()
-  end
 end
 
 local function ResolveArtworkConfig()
@@ -170,7 +192,8 @@ local function ApplyArtworkLayout(frame, artCfg, playerFrame)
   frame:SetFrameLevel(0)
   frame:SetSize(788, 220)
   frame:ClearAllPoints()
-  frame:SetPoint(artCfg.pos.a1, artCfg.pos.af, artCfg.pos.a2, artCfg.pos.x, artCfg.pos.y)
+  local relativeTo = (type(artCfg.pos.af) == "string" and _G[artCfg.pos.af]) or artCfg.pos.af or UIParent
+  frame:SetPoint(artCfg.pos.a1, relativeTo, artCfg.pos.a2, artCfg.pos.x, artCfg.pos.y)
   frame:SetScale(artCfg.scale)
   frame.__rothArtworkConfig = artCfg
   ns.ActionBarBackground = frame
@@ -200,7 +223,6 @@ local function EnsureArtworkFrame()
     backgroundFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
     backgroundFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
     backgroundFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
-    backgroundFrame:RegisterEvent("UNIT_INVENTORY_CHANGED")
     backgroundFrame:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
     backgroundFrame:RegisterEvent("UPDATE_OVERRIDE_ACTIONBAR")
   end
@@ -250,12 +272,6 @@ local function RefreshArtwork()
     return
   end
 
-  if type(IsAddOnLoaded) == "function" and IsAddOnLoaded("Bartender4") then
-    texture:SetTexture(mediapath .. "actionbar_3_2")
-    ApplyArtworkVisibility(frame)
-    return
-  end
-
   local expCfg = playerCfg.expbar or {}
   local repCfg = playerCfg.repbar or {}
   local playerDefaults = (ns and ns.cfgDefaults and ns.cfgDefaults.units and ns.cfgDefaults.units.player) or {}
@@ -267,13 +283,8 @@ local function RefreshArtwork()
   local repDefaultH = ResolveExpRepHeight(repCfg, expCfg, defaultRepCfg, defaultExpCfg)
 
   local artworkTier = GetArtworkTier()
-  local vehicleSkin = UnitVehicleSkin("player")
-  local overrideSkin = GetOverrideBarSkinCompat()
-  local hasVehicleSkin = vehicleSkin ~= nil and vehicleSkin ~= 0 and vehicleSkin ~= ""
-  local hasOverrideSkin = overrideSkin ~= nil and overrideSkin ~= 0 and overrideSkin ~= ""
-
   local bar = tostring(artworkTier)
-  if ((HasVehicleActionBarCompat() and hasVehicleSkin) or (HasOverrideActionBarCompat() and hasOverrideSkin)) or UnitHasVehicleUI("player") then
+  if HasVehicleActionBarCompat() or HasOverrideActionBarCompat() or HasPlayerVehicleUI() then
     bar = "vehicle"
   end
 
@@ -290,7 +301,7 @@ local function RefreshArtwork()
 
     if shouldShow then
       targetFrame:ClearAllPoints()
-      targetFrame:SetPoint("BOTTOM", "UIParent", "BOTTOM", 0, y * artCfg.scale)
+      targetFrame:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, y * artCfg.scale)
       targetFrame:SetSize(w * artCfg.scale, h * artCfg.scale)
       targetFrame:Show()
     else
@@ -323,13 +334,6 @@ local function RefreshArtwork()
   if bar == "vehicle" then
     texture:SetTexture(mediapath .. "vehiclebar")
     HideExpRepBars()
-  elseif type(IsAddOnLoaded) == "function" and IsAddOnLoaded("ElvUI") then
-    texture:SetTexture(mediapath .. "actionbar_3_0")
-    if barCount > 0 then
-      PlaceExpRepBars(121, 367, 131, 367)
-    else
-      HideExpRepBars()
-    end
   elseif bar == "3" and barCount == 2 then
     texture:SetTexture(mediapath .. "actionbar_3_2")
     PlaceExpRepBars(121, 367, 131, 367)
@@ -410,8 +414,4 @@ if frame then
 end
 
 InstallMainBarHooks()
-RegisterBarRuntimeListener("background_refresh", RefreshArtwork)
-if type(_G["MultiActionBar_Update"]) == "function" then
-  hooksecurefunc("MultiActionBar_Update", RefreshArtwork)
-end
 RefreshArtwork()

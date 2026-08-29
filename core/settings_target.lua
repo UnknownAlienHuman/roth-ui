@@ -1,20 +1,11 @@
-local addonName, ns = ...
+local addonName = ...
+local ns = assert(_G.Roth_UI, "Roth_UI_Options: main Roth_UI namespace is required")
 
 local ui = assert(ns and ns.SettingsUI, "Roth_UI: SettingsUI is required by settings_target.lua")
 local type = type
 
 local function SemanticPath(key)
   return { "units", "target", "castbar", "color", "semantic", key }
-end
-
-local function CompatPath(key)
-  if key == "interruptibleCast" then
-    return { "units", "target", "castbar", "color", "bar" }
-  end
-  if key == "nonInterruptible" then
-    return { "units", "target", "castbar", "color", "shieldbar" }
-  end
-  return nil
 end
 
 local function GetDefaultColor(key)
@@ -41,15 +32,9 @@ local function SetSemanticColor(key, hexColor)
   local path = SemanticPath(key)
   local current = GetCurrentColor(key)
   local color = ui:HexToColor(hexColor, current)
-  local compat = CompatPath(key)
-
   if ui:SetConfigValue(path, color, { reloadRequired = false }) ~= true then
     return false
   end
-  if compat then
-    ui:SetConfigValue(compat, color, { reloadRequired = false })
-  end
-
   ApplyTargetCastbarContract()
   return true
 end
@@ -81,13 +66,6 @@ ui:RegisterBuilder("target", function()
     "Interruptible Cast Color",
     "interruptibleCast",
     "Controls the target castbar tint for normal interruptible casts."
-  )
-
-  AddTargetColor(
-    "ROTH_UI_TARGET_CASTBAR_INTERRUPTIBLE_CHANNEL",
-    "Interruptible Channel Color",
-    "interruptibleChannel",
-    "Controls the target castbar tint for interruptible channels."
   )
 
   AddTargetColor(

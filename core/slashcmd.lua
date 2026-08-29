@@ -7,10 +7,10 @@ local InCombatLockdown = InCombatLockdown
 
 local function GetDebugCommands()
   local commands = ns and ns.debugCommands
-  if type(commands) ~= "table" then
-    return nil
+  if type(commands) == "table" then
+    return commands
   end
-  return commands
+  return nil
 end
 
 local function GetSettingsActions()
@@ -143,16 +143,6 @@ AddCommand({ "^smoke$", "^smoke%s+%S+$" }, "|c00FF3300/roth smoke [full]|r, run 
   RunDebug("RunSmoke", "Roth_UI: smoke is not available.", mode)
 end, "debug")
 
-AddCommand(
-  { "^aurastats$", "^aurastats%s+reset$", "^auraperf$", "^auraperf%s+reset$" },
-  "|c00FF3300/roth aurastats [reset]|r, print/reset UNIT_AURA incremental counters",
-  function(cmd)
-    local reset = cmd:match("%s+reset$") ~= nil
-    RunDebug("RunAuraStats", "Roth_UI: aura stats are not available.", reset)
-  end,
-  "debug"
-)
-
 AddCommand({ "^svcheck$", "^svdoctor$", "^doctor$" }, "|c00FF3300/roth svdoctor|r, run persistence doctor checks", function()
   RunDebug("RunSVDoctor", "Roth_UI: SVDoctor is not available.")
 end, "debug")
@@ -163,11 +153,6 @@ end, "debug")
 
 AddCommand({ "^svrebuild$" }, "|c00FF3300/roth svrebuild|r, rebuild runtime config from SavedVariables", function()
   RunDebug("RunSVRebuild", "Roth_UI: SVRebuildRuntime is not available.")
-end, "debug")
-
-AddCommand({ "^securebars$", "^securebars%s+%S+$" }, "|c00FF3300/roth securebars [on|off]|r, toggle Roth-owned secure bars testbed (reload required)", function(cmd)
-  local mode = cmd:match("^securebars%s+(%S+)$")
-  RunDebug("ToggleSecureBars", "Roth_UI: secure action-bar toggle is not available.", mode)
 end, "debug")
 
 AddCommand({ "^svreset$", "^factoryreset$" }, "|c00FF3300/roth svreset|r, wipe Roth_UI SavedVariables and reload", function()

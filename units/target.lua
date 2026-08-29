@@ -84,18 +84,25 @@ end
 
 --make a sound when target gets selected
 local playTargetSound = function(self, event)
-  if event == "PLAYER_TARGET_CHANGED" then
-    if (UnitExists(self.unit)) then
-      if (UnitIsEnemy(self.unit, "player")) then
-        PlaySound(873)
-      elseif (UnitIsFriend("player", self.unit)) then
-        PlaySound(867)
-      else
-        PlaySound(871)
-      end
-    else
-      PlaySound(684)
-    end
+  if event ~= "PLAYER_TARGET_CHANGED" then return end
+  local unitToken = self.__unit or "target"
+  local exists = UnitExists(unitToken)
+  if IsSecretValue(exists) then return end
+  if exists ~= true then
+    PlaySound(684)
+    return
+  end
+
+  local enemy = UnitIsEnemy(unitToken, "player")
+  if not IsSecretValue(enemy) and enemy == true then
+    PlaySound(873)
+    return
+  end
+  local friendly = UnitIsFriend("player", unitToken)
+  if not IsSecretValue(friendly) and friendly == true then
+    PlaySound(867)
+  elseif not IsSecretValue(enemy) and not IsSecretValue(friendly) then
+    PlaySound(871)
   end
 end
 
@@ -126,8 +133,7 @@ local createHealthFrame = function(self)
   h.highlight:SetAllPoints(h)
 
   self.Health = h
-  self.Health.Smooth = true
-  self.Health.frequentUpdates = self.cfg.health.frequentUpdates or false
+  self.Health.smoothing = func.ResolveStatusBarSmoothing(self.cfg.health and self.cfg.health.smooth)
 end
 
 
@@ -154,8 +160,7 @@ local createPowerFrame = function(self)
   h.glow:SetVertexColor(0, 0, 0, 1)
 
   self.Power = h
-  self.Power.Smooth = true
-  self.Power.frequentUpdates = self.cfg.power.frequentUpdates or false
+  self.Power.smoothing = func.ResolveStatusBarSmoothing(self.cfg.power and self.cfg.power.smooth)
 end
 
 --create health power strings
@@ -182,7 +187,7 @@ local createHealthPowerStrings = function(self)
   local classtext = func.createFontString(self, cfg.font, self.cfg.misc.classFontSize, "THINOUTLINE")
   classtext:SetPoint("BOTTOM", self, "TOP", 0, -15)
 
-  self:Tag(name, "[diablo:name]")
+  self:Tag(name, "[roth:namecolor][name<$|r]")
 
   self.Health.valueText = hpval
   self.Health.valueTextMode = func.ResolveHealthValueMode()
@@ -196,42 +201,7 @@ end
 
 -- Target castbar runtime lives in core/target_castbar.lua.
 
---create buffs
-
-local createBuffs = function(self)
-  local f = CreateFrame("Frame", nil, self)
-  f.size = self.cfg.auras.size
-  f.num = 40
-  f.spacing = (self.cfg.auras.spacing or 2)
-  f:SetHeight((f.size + f.spacing) * 4)
-  f:SetWidth((f.size + f.spacing) * 10)
-  f:SetPoint(self.cfg.auras.buffs.pos.a1, self, self.cfg.auras.buffs.pos.a2, self.cfg.auras.buffs.pos.x,
-    self.cfg.auras.buffs.pos.y)
-  f.initialAnchor = self.cfg.auras.buffs.initialAnchor
-  f["growth-x"] = self.cfg.auras.buffs.growthx
-  f["growth-y"] = self.cfg.auras.buffs.growthy
-  f.onlyShowPlayer = self.cfg.auras.onlyShowPlayerBuffs
-  f.showStealableBuffs = self.cfg.auras.showStealableBuffs
-  self.Buffs = func.SetupNativeAuraFrame(f, true)
-end
-
---create debuff func
-local createDebuffs = function(self)
-  local f = CreateFrame("Frame", nil, self)
-  f.size = self.cfg.auras.size
-  f.num = 40
-  f.spacing = (self.cfg.auras.spacing or 2)
-  f:SetHeight((f.size + f.spacing) * 4)
-  f:SetWidth((f.size + f.spacing) * 10)
-  f:SetPoint(self.cfg.auras.debuffs.pos.a1, self, self.cfg.auras.debuffs.pos.a2, self.cfg.auras.debuffs.pos.x,
-    self.cfg.auras.debuffs.pos.y)
-  f.initialAnchor = self.cfg.auras.debuffs.initialAnchor
-  f["growth-x"] = self.cfg.auras.debuffs.growthx
-  f["growth-y"] = self.cfg.auras.debuffs.growthy
-  f.showDebuffType = self.cfg.auras.showDebuffType
-  f.onlyShowPlayer = self.cfg.auras.onlyShowPlayerDebuffs
-  self.Debuffs = func.SetupNativeAuraFrame(f, true)
-end
+-- Aura specifications are queued here and materialized on first show.
 
 ---------------------------------------------
 -- UNIT SPECIFIC TAG
@@ -316,11 +286,8 @@ local function createStyle(self)
   self.Health.PostUpdate = func.updateHealth
   self.Power.PostUpdate = func.updatePower
 
-  -- Auras (WoW 12.x): native oUF Buffs/Debuffs with Roth skinning callbacks.
-  if self.cfg.auras.show then
-    createBuffs(self)
-    createDebuffs(self)
-  end
+  -- Managed aura groups are registered lazily on first frame show.
+  func.QueueTargetAuras(self)
 
   --castbar
   if self.cfg.castbar.show then

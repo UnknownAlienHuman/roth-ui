@@ -20,8 +20,8 @@ local CreateFrame = _G.CreateFrame
 local InCombatLockdown = _G.InCombatLockdown
 local ReloadUI = _G.ReloadUI
 local ORB_OWNER_FILE = "core/orb_persistence_owner.lua"
-local CHAR_SCHEMA_VERSION = 3
-local GLOBAL_SCHEMA_VERSION = 3
+local CHAR_SCHEMA_VERSION = 4
+local GLOBAL_SCHEMA_VERSION = 4
 local ACCOUNT_VAR = configOwner.ACCOUNT_DB_VAR or "Roth_UI_DB"
 local CHAR_VAR = configOwner.CHAR_DB_VAR or "Roth_UI_DB_Char"
 local ORB_CHAR_PATH = "orbs"
@@ -140,23 +140,59 @@ local function NormalizeBoolFlag(value, fallback)
   return fallback
 end
 
-local function NormalizeOrbValueConfig(cfg, defaultCfg)
-  if type(cfg) ~= "table" then
-    return
-  end
+local LEGACY_VALUE_MODE_ALIASES = {
+  current = "current", cur = "current", curs = "current", cmax = "current", cmaxs = "current",
+  max = "max", maxs = "max",
+  percent = "percent", per = "percent", perp = "percent",
+  topdef = "__top_default__", topdefhp = "__top_default__", topdefpp = "__top_default__",
+  botdef = "__bottom_default__", botdefhp = "__bottom_default__", botdefpp = "__bottom_default__",
+  null = "__default__",
+}
 
-  orbText.NormalizeValueConfig(cfg, defaultCfg)
+local function MigrateLegacyValueMode(which, rawMode, fallbackMode)
+  if type(rawMode) ~= "string" then
+    return orbText.NormalizeMode(which, nil, fallbackMode)
+  end
+  local token = rawMode:gsub("^%s+", ""):gsub("%s+$", "")
+  local wrapped = token:match("^%[(.-)%]$")
+  if wrapped then token = wrapped end
+  if token:sub(-1) == "%" then token = token:sub(1, -2) end
+  token = token:lower():gsub("^diablo:", "")
+  token = LEGACY_VALUE_MODE_ALIASES[token] or token
+  if token == "__top_default__" then return orbText.GetDefaultMode("top") end
+  if token == "__bottom_default__" then return orbText.GetDefaultMode("bottom") end
+  if token == "__default__" then return orbText.NormalizeMode(which, nil, fallbackMode) end
+  return orbText.NormalizeMode(which, token, fallbackMode)
+end
+
+local function NormalizeOrbValueConfig(cfg, defaultCfg)
+  if type(cfg) ~= "table" then return end
+
   local value = cfg.value
+  if type(value) ~= "table" then
+    value = {}
+    cfg.value = value
+  end
+  if value.bottom == nil and value.bot ~= nil then value.bottom = value.bot end
+  value.bot = nil
+  if type(value.top) ~= "table" then value.top = { mode = value.top } end
+  if type(value.bottom) ~= "table" then value.bottom = { mode = value.bottom } end
+
   local defaultsValue = defaultCfg and defaultCfg.value or nil
   local defaultTopMode = orbText.GetValueMode(defaultsValue, "top")
   local defaultBottomMode = orbText.GetValueMode(defaultsValue, "bottom")
+  local topSource = value.top.mode ~= nil and value.top.mode or value.top.tag
+  local bottomSource = value.bottom.mode ~= nil and value.bottom.mode or value.bottom.tag
+  value.top.mode = MigrateLegacyValueMode("top", topSource, defaultTopMode)
+  value.bottom.mode = MigrateLegacyValueMode("bottom", bottomSource, defaultBottomMode)
+  value.top.tag = nil
+  value.bottom.tag = nil
+
+  orbText.NormalizeValueConfig(cfg, defaultCfg)
   local defaultHideOnEmpty = (type(defaultsValue) == "table" and type(defaultsValue.hideOnEmpty) == "boolean") and defaultsValue.hideOnEmpty or true
   local defaultHideOnFull = (type(defaultsValue) == "table" and type(defaultsValue.hideOnFull) == "boolean") and defaultsValue.hideOnFull or false
-
   value.hideOnEmpty = NormalizeBoolFlag(value.hideOnEmpty, defaultHideOnEmpty)
   value.hideOnFull = NormalizeBoolFlag(value.hideOnFull, defaultHideOnFull)
-  value.top.mode = orbText.NormalizeMode("top", value.top.mode, defaultTopMode)
-  value.bottom.mode = orbText.NormalizeMode("bottom", value.bottom.mode, defaultBottomMode)
 end
 
 local function ApplyCharSchemaPatches(char, defaults)

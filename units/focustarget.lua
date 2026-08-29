@@ -66,7 +66,7 @@
     h.highlight:SetAllPoints(self)
 
     self.Health = h
-    self.Health.Smooth = true
+    self.Health.smoothing = func.ResolveStatusBarSmoothing(self.cfg.health and self.cfg.health.smooth)
   end
 
   --create power frames
@@ -92,7 +92,7 @@
     h.glow:SetVertexColor(0,0,0,1)
 
     self.Power = h
-    self.Power.Smooth = true
+    self.Power.smoothing = func.ResolveStatusBarSmoothing(self.cfg.power and self.cfg.power.smooth)
 
   end
 
@@ -112,7 +112,7 @@
     perphp:SetPoint("CENTER", self.Health, "CENTER", 0, 0)
     perphp:SetJustifyH("CENTER")
 
-    self:Tag(name, "[diablo:name]")
+    self:Tag(name, "[roth:namecolor][name<$|r]")
 
     self.Health.valueText = hpval
     self.Health.valueTextMode = func.ResolveHealthValueMode()
@@ -154,10 +154,8 @@
       self:SetHitRectInsets(0, 0, -100, 0);
     end
 
-    -- Auras (WoW 12.x): native oUF Debuffs with Roth skinning callbacks.
-    if self.cfg.auras.show then
-      func.createDebuffs(self)
-    end
+    -- Managed aura groups are registered lazily on first frame show.
+    func.QueueStandardAuras(self)
 
     --debuffglow
     func.createDebuffGlow(self)

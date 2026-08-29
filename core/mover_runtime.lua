@@ -172,9 +172,6 @@ local function GuessMoverCategory(frame)
     if frameName == "Roth_UIActionBarBackground" then
       return "art"
     end
-    if frameName:find("^rABS_") then
-      return "bars"
-    end
   end
 
   return nil

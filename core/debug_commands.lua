@@ -1,4 +1,5 @@
-local addonName, ns = ...
+local addonName = ...
+local ns = assert(_G.Roth_UI, "Roth_UI_Options: main Roth_UI namespace is required")
 
 local persistence = assert(ns and ns.persistence, "Roth_UI: persistence service is required by debug_commands.lua")
 local storeApi = assert(ns and ns.store, "Roth_UI: store service is required by debug_commands.lua")
@@ -155,76 +156,12 @@ function debugCommands.RunSmoke(mode)
   debugCommands.RunSettingsSchemaReport()
   debugCommands.RunSchemaReport()
   debugCommands.RunSVReconcile()
-  debugCommands.RunAuraStats(false)
   if normalizedMode == "full" then
     debugCommands.RunSVDoctor()
     debugCommands.PrintBlizzStatus()
   end
   print("Roth_UI: smoke done")
   return true
-end
-
-function debugCommands.RunAuraStats(reset)
-  local statsFn = ns and ns.GetSimpleAuraStats
-  local resetFn = ns and ns.ResetSimpleAuraStats
-  if reset and type(resetFn) == "function" then
-    resetFn()
-  end
-
-  if type(statsFn) == "function" then
-    local stats = statsFn() or {}
-    print(("Roth_UI: aura stats ingress=%d queued=%d flush=%d applied=%d"):format(
-      tonumber(stats.ingressEvents) or 0,
-      tonumber(stats.queuedEvents) or 0,
-      tonumber(stats.queueFlushes) or 0,
-      tonumber(stats.appliedPasses) or 0
-    ))
-    print(("  payload full=%d incremental=%d added=%d updated=%d removed=%d"):format(
-      tonumber(stats.fullPayloads) or 0,
-      tonumber(stats.incrementalPayloads) or 0,
-      tonumber(stats.addedAuras) or 0,
-      tonumber(stats.updatedAuras) or 0,
-      tonumber(stats.removedAuras) or 0
-    ))
-    print(("  containers runs=%d skips=%d skipRate=%.2f%% iterFail=%d session=%.1fs"):format(
-      tonumber(stats.containerRuns) or 0,
-      tonumber(stats.containerSkips) or 0,
-      (tonumber(stats.skipRate) or 0) * 100,
-      tonumber(stats.iterationFailures) or 0,
-      tonumber(stats.sessionSeconds) or 0
-    ))
-    print(("  group incremental=%d full=%d reasons init=%d nil=%d fullUpdate=%d missingResolver=%d"):format(
-      tonumber(stats.groupIncrementalApplies) or 0,
-      tonumber(stats.groupFullScans) or 0,
-      tonumber(stats.groupFullScanInit) or 0,
-      tonumber(stats.groupFullScanNilPayload) or 0,
-      tonumber(stats.groupFullScanIsFullUpdate) or 0,
-      tonumber(stats.groupFullScanMissingAuraInstanceResolver) or 0
-    ))
-    print(("  watch incremental=%d full=%d skips=%d reasons init=%d nil=%d fullUpdate=%d missingResolver=%d"):format(
-      tonumber(stats.watchIncrementalApplies) or 0,
-      tonumber(stats.watchFullScans) or 0,
-      tonumber(stats.watchSkips) or 0,
-      tonumber(stats.watchFullScanInit) or 0,
-      tonumber(stats.watchFullScanNilPayload) or 0,
-      tonumber(stats.watchFullScanIsFullUpdate) or 0,
-      tonumber(stats.watchFullScanMissingAuraInstanceResolver) or 0
-    ))
-    print(("  dedupe group updated=%d removed=%d | watch updated=%d removed=%d | watchNoopPayload=%d"):format(
-      tonumber(stats.groupUpdatedAuraIDDeduped) or 0,
-      tonumber(stats.groupRemovedAuraIDDeduped) or 0,
-      tonumber(stats.watchUpdatedAuraIDDeduped) or 0,
-      tonumber(stats.watchRemovedAuraIDDeduped) or 0,
-      tonumber(stats.watchNoopPayloads) or 0
-    ))
-    if reset then
-      print("Roth_UI: aura stats reset.")
-    end
-    return true
-  end
-
-  print("Roth_UI: aura stats are not available.")
-  return false
 end
 
 function debugCommands.RunSVDoctor()
@@ -274,65 +211,23 @@ function debugCommands.RunSVRebuild()
   return true
 end
 
-function debugCommands.ToggleSecureBars(mode)
-  local current = GetConfigValue({ "bars", "secureOwnerBars" }, false) == true
-  local nextValue = current
-
-  if type(mode) == "string" then
-    local normalized = mode:lower()
-    if normalized == "on" or normalized == "enable" then
-      nextValue = true
-    elseif normalized == "off" or normalized == "disable" then
-      nextValue = false
-    else
-      nextValue = not current
-    end
-  else
-    nextValue = not current
-  end
-
-  SetConfigValue({"bars", "secureOwnerBars"}, nextValue)
-  print(("Roth_UI: secureOwnerBars %s. Reload required."):format(nextValue and "enabled" or "disabled"))
-  return true
-end
-
 function debugCommands.RequestBlizzardRestore()
   SetConfigValue({"units", "party", "show"}, false, { markPendingReload = false })
   SetConfigValue({"units", "raid", "show"}, false, { markPendingReload = false })
-
-  local groupFrameService = GetGroupFrameService()
-  if type(groupFrameService) ~= "table" then
-    print("Roth_UI: Blizzard restore is not available.")
-    return false
-  end
-
-  local applyPolicy = groupFrameService.ApplyPolicy
-  if type(applyPolicy) == "function" then
-    applyPolicy()
-  end
-
-  local forceRestore = groupFrameService.ForceRestore
-  if type(forceRestore) == "function" and forceRestore(true, true, true) then
-    print("Roth_UI: Blizzard group frames restore requested.")
-    if ns.IsAddOnLoadedCompat then
-      if (not ns.IsAddOnLoadedCompat("Blizzard_UnitFrame")) or (not ns.IsAddOnLoadedCompat("Blizzard_CompactRaidFrames")) then
-        print("Roth_UI: Blizzard party/raid addons not loaded; /reload may be required.")
-      end
-    end
+  local service = GetGroupFrameService()
+  if type(service) == "table" and type(service.ApplyPolicy) == "function" then
+    service.ApplyPolicy()
+    print("Roth_UI: Blizzard group-frame visibility restored.")
     return true
   end
-
-  print("Roth_UI: Blizzard restore is not available.")
   return false
 end
 
 function debugCommands.PrintBlizzStatus()
-  local groupFrameService = GetGroupFrameService()
-  local printStatus = type(groupFrameService) == "table" and groupFrameService.PrintStatus or nil
-  if type(printStatus) == "function" and printStatus() == true then
-    return true
+  local service = GetGroupFrameService()
+  if type(service) == "table" and type(service.PrintStatus) == "function" then
+    return service.PrintStatus()
   end
-  print("Roth_UI: Blizzard status is not available.")
   return false
 end
 

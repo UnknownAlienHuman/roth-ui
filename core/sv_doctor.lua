@@ -3,7 +3,8 @@
 -- Scans SavedVariables tables for non-serializable values that can prevent saving.
 -- Stores the last report in addon runtime memory for the current session.
 --
-local addonName, ns = ...
+local addonName = ...
+local ns = assert(_G.Roth_UI, "Roth_UI_Options: Roth_UI namespace is required")
 
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by sv_doctor.lua")
 local IsSecret = assert(safety.IsSecret, "Roth_UI: safety.IsSecret is required by sv_doctor.lua")

@@ -20,18 +20,8 @@
   local unit = ns.unit
   local type = type
   local pairs = pairs
-  local format = format
-  local floor = floor
-  local max = math.max
-  local min = math.min
   local CreateFrame = CreateFrame
   local InCombatLockdown = InCombatLockdown
-  local UnitHealth = UnitHealth
-  local UnitHealthMax = UnitHealthMax
-  local UnitPower = UnitPower
-  local UnitPowerMax = UnitPowerMax
-  local UnitIsDeadOrGhost = UnitIsDeadOrGhost
-  local UnitIsConnected = UnitIsConnected
   local TryCall = safety and safety.TryCall
   local TryMethod = safety and safety.TryMethod
   assert(type(TryCall) == "function" and type(TryMethod) == "function", "Roth_UI: safety.TryCall/TryMethod are required by units/raid.lua")
@@ -50,320 +40,12 @@
   end
 
 
-  --whitelist
-  local whitelist = {}
-  if cfg.units.raid.auras.whitelist then
-    for _,spellid in pairs(cfg.units.raid.auras.whitelist) do
-      local spell = C_Spell.GetSpellInfo(spellid)
-      if spell then whitelist[spellid] = true end
-    end
-  end
+  -- Aura filtering is expressed only through managed container specifications.
 
-  --blacklist
-  local blacklist = {}
-  if cfg.units.raid.auras.blacklist then
-    for _,spellid in pairs(cfg.units.raid.auras.blacklist) do
-      local spell = C_Spell.GetSpellInfo(spellid)
-      if spell then blacklist[spellid] = true end
-    end
-  end
-
-  --custom aura filter
-  local customFilter = function(icons, unit, icon, name, texture, count, dtype, duration, timeLeft, caster, isStealable, shouldConsolidate, spellID, canApplyAura, isBossDebuff)
-    local ret = false
-	if(spellID == 25771) then
-		ret = true
-    elseif isBossDebuff then
-		ret = true
-	elseif(dtype == 'Magic') then
-		ret = true
-	elseif(dtype == 'Poison') then
-		ret = true
-	elseif(dtype == 'Disease') then
-		ret = true
-	elseif(dtype == 'Curse') then
-		ret = true
-    elseif caster and caster:match("(boss)%d?$") == "boss" then
-		ret = true
-	elseif(spellID == 313255) then
-		ret = true
-	end
-	if (whitelist[spellID]) then
-		ret = true
-	end
-    return ret
-  end
-
-  local customFilterB = function(icons, unit, icon, name, texture, count, dtype, duration, timeLeft, caster, isStealable, shouldConsolidate, spellID)
-    return whitelist[spellID] == true
-  end
-
-  --create buffs
-  local createBuffs = function(self)
-	local f = CreateFrame("Frame", nil, self)
-	local cfg = self.cfg.auras
-	f.size = cfg.size or 26
-	f.num = cfg.num or 5
-	f.spacing = cfg.spacing or 5
-	f:SetAlpha(0.75)
-	f.initialAnchor = cfg.initialAnchor or "TOPLEFT"
-	f["growth-x"] = cfg.growthX or "RIGHT"
-	f["growth-y"] = cfg.growthY or "DOWN"
-	f.disableCooldown = cfg.disableCooldown or false
-	--f.showDebuffType = cfg.showDebuffType or false
-    f.showBuffType = cfg.showBuffType or false
-    f.showStealableBuffs = cfg.showStealableBuffs or false
-    if cfg.useCustomFilter and type(customFilterB) == "function" then
-      f.CustomFilter = customFilterB
-    end
-    f.onlyShowPlayer = cfg.onlyShowPlayer
-    f:SetHeight(f.size)
-    f:SetWidth((f.size+f.spacing)*f.num)
-    if cfg.buffPos then
-      f:SetPoint(cfg.buffPos.a1 or "CENTER", self, cfg.buffPos.a2 or "CENTER", cfg.buffPos.x or 0, cfg.buffPos.y or 0)
-    else
-      f:SetPoint("CENTER",0,-5)
-	end
-	self.Buffs = (type(func.SetupNativeAuraFrame) == "function" and func.SetupNativeAuraFrame(f, false)) or f
-  end
-
-  --create aura func
-  local createDebuffs = function(self)
-    local f = CreateFrame("Frame", nil, self)
-    local cfg = self.cfg.auras
-    f.size = cfg.size or 26
-    f.num = cfg.num or 5
-    f.spacing = cfg.spacing or 5
-    f.initialAnchor = cfg.initialAnchor or "TOPLEFT"
-    f["growth-x"] = cfg.growthX or "RIGHT"
-    f["growth-y"] = cfg.growthY or "DOWN"
-    f.disableCooldown = cfg.disableCooldown or false
-    f.showDebuffType = cfg.showDebuffType or false
-    f.showBuffType = cfg.showBuffType or false
-    if not cfg.doNotUseCustomFilter then
-      f.CustomFilter = customFilter
-    end
-    f:SetHeight(f.size)
-    f:SetWidth((f.size+f.spacing)*f.num)
-    if cfg.debuffPos then
-      f:SetPoint(cfg.debuffPos.a1 or "CENTER", self, cfg.debuffPos.a2 or "CENTER", cfg.debuffPos.x or 0, cfg.debuffPos.y or 0)
-    else
-      f:SetPoint("CENTER",0,-5)
-    end
-    f.onlyShowPlayer = cfg.onlyShowPlayer
-    self.Debuffs = (type(func.SetupNativeAuraFrame) == "function" and func.SetupNativeAuraFrame(f, false)) or f
-  end
-
-  --update health func
-  local COLOR_TAP_DENIED = { r = 0.65, g = 0.65, b = 0.65 }
-  local COLOR_DEAD_OFFLINE = { r = 0.4, g = 0.4, b = 0.4 }
-  local COLOR_THREAT = { r = 1, g = 0, b = 0 }
-  local COLOR_NEUTRAL = { r = 0.5, g = 0.5, b = 0.5 }
-  local IsSecretValue = (func and func.IsSecretValue) or (safety and safety.IsSecret) or function(v)
-    local fn = _G.issecretvalue or _G.IsSecretValue
-    return type(fn) == "function" and fn(v) or false
-  end
-  local SharedGetClassColorForUnit = func and func.GetClassColorForUnit
-  local SafeUnitHealthPercent = func and func.SafeUnitHealthPercent
-  local CoerceAccessibleNumber = func and func.CoerceAccessibleNumber
-  local TryBlizzardAbbrev = func and func.TryBlizzardAbbrev
-  local SetPercentText = func and func.SetPercentText
-  local function GetClassColorForUnit(unit)
-    if type(SharedGetClassColorForUnit) == "function" then
-      return SharedGetClassColorForUnit(unit)
-    end
-    if not unit then return nil end
-    local isPlayer = UnitIsPlayer(unit)
-    if IsSecretValue(isPlayer) or not isPlayer then return nil end
-    local guid = UnitGUID(unit)
-    if guid and not IsSecretValue(guid) and _G.GetPlayerInfoByGUID then
-      local _, class = _G.GetPlayerInfoByGUID(guid)
-      if class and not IsSecretValue(class) then
-        return RAID_CLASS_COLORS[class]
-      end
-    end
-    local _, class = UnitClass(unit)
-    if class and not IsSecretValue(class) then
-      return RAID_CLASS_COLORS[class]
-    end
-    return nil
-  end
-  local updateHealth = function(bar, unit, min, max)
-    -- WoW 12.x: values can be Secret Values. Prefer the shared safe-percent helper
-    -- and only fall back to manual math when we have plain numbers.
-    local value = min
-    local maxv = max
-    local minSecret = IsSecretValue(value)
-    local maxSecret = IsSecretValue(maxv)
-
-    if minSecret and type(CoerceAccessibleNumber) == "function" then
-      local coerced = CoerceAccessibleNumber(value)
-      if type(coerced) == "number" then
-        value = coerced
-        minSecret = false
-      end
-    end
-
-    if maxSecret and type(CoerceAccessibleNumber) == "function" then
-      local coerced = CoerceAccessibleNumber(maxv)
-      if type(coerced) == "number" then
-        maxv = coerced
-        maxSecret = false
-      end
-    end
-
-    local d = type(SafeUnitHealthPercent) == "function" and SafeUnitHealthPercent(unit) or nil
-    local dIsNumber = type(d) == "number" and not IsSecretValue(d)
-    if d == nil and (not minSecret) and (not maxSecret) and maxv and maxv > 0 and value then
-      d = floor(value / maxv * 100)
-      dIsNumber = true
-    end
-
-    local color
-    local dead
-	local offline
-
-  local tap = unit and UnitIsTapDenied(unit)
-  if not IsSecretValue(tap) and tap then
-    color = COLOR_TAP_DENIED
-  else
-    local deadFlag = unit and UnitIsDeadOrGhost(unit)
-    if not IsSecretValue(deadFlag) and deadFlag then
-      color = COLOR_DEAD_OFFLINE
-      dead = 1
-    else
-      local connected = unit and UnitIsConnected(unit)
-      if not IsSecretValue(connected) and not connected then
-        color = COLOR_DEAD_OFFLINE
-        offline = 1
-      elseif not cfg.colorswitcher.classcolored then
-        color = cfg.colorswitcher.bright
-      else
-        if cfg.colorswitcher.threatColored and unit then
-          local threat = UnitThreatSituation(unit)
-          if not IsSecretValue(threat) and threat == 3 then
-            color = COLOR_THREAT
-          end
-        end
-        if not color then
-          local isPlayer = unit and UnitIsPlayer(unit)
-          if not IsSecretValue(isPlayer) and isPlayer then
-            local classColor = GetClassColorForUnit(unit)
-            if classColor then color = classColor end
-          end
-        end
-        if not color then
-          local reaction = unit and UnitReaction(unit, "player")
-          if reaction and not IsSecretValue(reaction) then
-            color = FACTION_BAR_COLORS[reaction]
-          end
-        end
-      end
-    end
-  end
-  
-  if not color then color = COLOR_NEUTRAL end
-    --dead
-    if offline == 1 then
-		bar:SetStatusBarColor(0.4, 0.4, 0.4, 0.4)
-		bar.glow:SetVertexColor(0, 0, 0, 0)
-    else
-      --alive
-      if cfg.colorswitcher.useBrightForeground then
-        bar:SetStatusBarColor(color.r,color.g,color.b,color.a or 1)
-        bar.bg:SetVertexColor(cfg.colorswitcher.dark.r,cfg.colorswitcher.dark.g,cfg.colorswitcher.dark.b,cfg.colorswitcher.dark.a)
-      else
-        bar:SetStatusBarColor(cfg.colorswitcher.dark.r,cfg.colorswitcher.dark.g,cfg.colorswitcher.dark.b,cfg.colorswitcher.dark.a)
-        bar.bg:SetVertexColor(color.r,color.g,color.b,color.a or 1)
-      end
-    end
-    --low hp
-    if (dIsNumber and d <= 25) or dead == 1 then
-      if cfg.colorswitcher.useBrightForeground then
-        bar.glow:SetVertexColor(0.3,0,0,0.9)
-        bar:SetStatusBarColor(1,0,0,1)
-        bar.bg:SetVertexColor(0.15,0,0,0.7)
-      else
-        bar.glow:SetVertexColor(1,0,0,1)
-      end
-    else
-      --inner shadow
-      bar.glow:SetVertexColor(0,0,0,0.7)
-    end
-    if (not minSecret) and (not maxSecret) and maxv and maxv > 0 and value then
-      bar.highlight:SetAlpha((value / maxv) * cfg.highlightMultiplier)
-    else
-      bar.highlight:SetAlpha(0)
-    end
-
-    -- numeric text (optional)
-    if bar.valueText then
-      if offline == 1 then
-        bar.valueText:SetText(PLAYER_OFFLINE or "OFFLINE")
-      elseif dead == 1 then
-        bar.valueText:SetText(DEAD or "DEAD")
-      elseif (not minSecret) and value ~= nil then
-        local valueMode = bar.valueTextMode or "cur"
-        if (not maxSecret) and maxv and maxv > 0 then
-          if valueMode == "cur" then
-            bar.valueText:SetText(func.numFormat(value))
-          elseif valueMode == "percent" then
-            if dIsNumber then
-              bar.valueText:SetText(floor(d) .. "%")
-            elseif d ~= nil and type(SetPercentText) == "function" then
-              SetPercentText(bar.valueText, d)
-            else
-              bar.valueText:SetText(func.numFormat(value))
-            end
-          elseif valueMode == "curpercent" then
-            if bar.perText then
-              bar.valueText:SetText(func.numFormat(value))
-            elseif dIsNumber then
-              bar.valueText:SetText(func.numFormat(value) .. " / " .. floor(d) .. "%")
-            else
-              bar.valueText:SetText(func.numFormat(value))
-            end
-          elseif valueMode == "max" then
-            bar.valueText:SetText(func.numFormat(maxv))
-          else
-            bar.valueText:SetText(func.numFormat(value).." / "..func.numFormat(maxv))
-          end
-        else
-          bar.valueText:SetText(func.numFormat(value))
-        end
-      else
-        if value == nil then
-          bar.valueText:SetText("")
-        elseif type(TryBlizzardAbbrev) == "function" and ns and ns.cfg and ns.cfg.shortNumbers == true then
-          local abbrev = TryBlizzardAbbrev(value)
-          if abbrev then
-            bar.valueText:SetText(abbrev)
-          else
-            bar.valueText:SetText(value)
-          end
-        elseif IsSecretValue(value) then
-          bar.valueText:SetText(value)
-        elseif type(value) == "number" then
-          bar.valueText:SetText(func.numFormat(value))
-        else
-          bar.valueText:SetText(tostring(value))
-        end
-      end
-    end
-
-    if bar.perText then
-      local valueMode = bar.valueTextMode or "cur"
-      if valueMode ~= "curpercent" or offline == 1 or dead == 1 then
-        bar.perText:SetText("")
-      elseif dIsNumber then
-        bar.perText:SetText(floor(d) .. "%")
-      elseif d ~= nil and type(SetPercentText) == "function" then
-        SetPercentText(bar.perText, d)
-      else
-        bar.perText:SetText("")
-      end
-    end
-  end
+  -- Health/power presentation is shared with the other unit layouts. Keeping a
+  -- single hot-path implementation avoids duplicate API calls and divergent
+  -- secret-value handling across forty raid frames.
+  local updateHealth = assert(func and func.updateHealth, "Roth_UI: shared health runtime is required by units/raid.lua")
 
 --check threat
   local checkThreat = function(self,event,unit)
@@ -423,7 +105,7 @@
     h.highlight:SetAllPoints(self)
 
     self.Health = h
-    self.Health.Smooth = true
+    self.Health.smoothing = func.ResolveStatusBarSmoothing(self.cfg.health and self.cfg.health.smooth)
   end
 
   --create power frames
@@ -449,7 +131,7 @@
     h.glow:SetVertexColor(0,0,0,1)
 
     self.Power = h
-    self.Power.Smooth = true
+    self.Power.smoothing = func.ResolveStatusBarSmoothing(self.cfg.power and self.cfg.power.smooth)
 
   end
 
@@ -470,7 +152,7 @@
     perphp:SetPoint("CENTER", self.Health, "CENTER", 0, 0)
     perphp:SetJustifyH("CENTER")
 
-    self:Tag(name, "[diablo:name]")
+    self:Tag(name, "[roth:namecolor][name<$|r]")
     -- WoW 12.x: drive HP value from PostUpdate (secret-safe); avoid tag engine caching/comparisons.
     self.Health.valueText = hpval
     self.Health.valueTextMode = func.ResolveHealthValueMode()
@@ -511,9 +193,7 @@
     end)
     self:HookScript("OnShow", function(s)
       s:RegisterEvent("UNIT_THREAT_SITUATION_UPDATE", checkThreat)
-      func.QueueGroupAuraColorUpdate(s, "ROTH_FORCE_AURA_SYNC", s.unit)
     end)
-    self:RegisterEvent("UNIT_AURA", func.QueueGroupAuraColorUpdate)
     self.Power.PostUpdate = func.updatePower
 
     --debuffglow
@@ -521,18 +201,9 @@
 
 	func.ConfigureGroupRange(self)
 
-    -- Raid auras now use the native oUF/C_UnitAuras path.
-    -- Safe AuraWatch lives in core/group_aura_watch.lua and stays separate.
-    if self.cfg.auras.show then
-      createDebuffs(self)
-      if self.cfg.auras.showBuffs then
-        createBuffs(self)
-      end
-    end
-
-    if self.cfg.aurawatch and self.cfg.aurawatch.show and type(func.CreateSafeAuraWatch) == "function" then
-      func.CreateSafeAuraWatch(self)
-    end
+    -- Managed aura groups are registered lazily on first frame show.
+    func.QueueRaidAuras(self)
+    func.QueueHealerAuraWatch(self)
 
     --icons
     self.RaidTargetIndicator = func.createIcon(self,"OVERLAY",14,self.Health,"CENTER","CENTER",0,0,7)

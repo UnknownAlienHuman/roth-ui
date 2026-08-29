@@ -1,4 +1,5 @@
-local addonName, ns = ...
+local addonName = ...
+local ns = assert(_G.Roth_UI, "Roth_UI_Options: main Roth_UI namespace is required")
 
 local ui = assert(ns and ns.SettingsUI, "Roth_UI: SettingsUI is required by settings_groups.lua")
 
@@ -48,26 +49,6 @@ end
 
 local function FormatAlpha(value)
   return string.format("%.2f", tonumber(value) or 0)
-end
-
-local function BuildRangeDriverOptions()
-  return {
-    {
-      label = "Blizzard Event Driver",
-      value = "blizzard",
-      tooltip = "Uses Blizzard-style UNIT_IN_RANGE_UPDATE handling with visible-only registration.",
-    },
-    {
-      label = "oUF Range Element",
-      value = "ouf",
-      tooltip = "Delegates range fading to the upstream oUF Range element.",
-    },
-    {
-      label = "Disabled",
-      value = "off",
-      tooltip = "Keeps group frames fully opaque.",
-    },
-  }
 end
 
 ui:RegisterBuilder("groups", function()
@@ -149,22 +130,12 @@ ui:RegisterBuilder("groups", function()
     apply = ApplyPartyStructure,
   })
 
-  ui:AddDropdown({
-    category = "party",
-    variable = "ROTH_UI_PARTY_RANGE_DRIVER",
-    label = "Party Range Driver",
-    tooltip = "Switches party range fading between Blizzard-style events and the oUF Range element. Reload is required because the driver is attached when party frames are spawned.",
-    path = { "units", "party", "range", "driver" },
-    defaultValue = ui:GetConfigDefault({ "units", "party", "range", "driver" }, "blizzard"),
-    options = BuildRangeDriverOptions,
-    reloadRequired = true,
-  })
 
   ui:AddSlider({
     category = "party",
     variable = "ROTH_UI_PARTY_RANGE_ALPHA",
     label = "Party Out-of-Range Alpha",
-    tooltip = "Controls the faded alpha used by the active party range driver.",
+    tooltip = "Controls the faded alpha used by the upstream oUF Range element.",
     path = { "units", "party", "alpha", "notinrange" },
     defaultValue = ui:GetConfigDefault({ "units", "party", "alpha", "notinrange" }, 0.5),
     minValue = 0.1,
@@ -222,22 +193,12 @@ ui:RegisterBuilder("groups", function()
     labelFormatter = FormatScale,
   })
 
-  ui:AddDropdown({
-    category = "raid",
-    variable = "ROTH_UI_RAID_RANGE_DRIVER",
-    label = "Raid Range Driver",
-    tooltip = "Switches raid range fading between Blizzard-style events and the oUF Range element. Reload is required because the driver is attached when raid frames are spawned.",
-    path = { "units", "raid", "range", "driver" },
-    defaultValue = ui:GetConfigDefault({ "units", "raid", "range", "driver" }, "blizzard"),
-    options = BuildRangeDriverOptions,
-    reloadRequired = true,
-  })
 
   ui:AddSlider({
     category = "raid",
     variable = "ROTH_UI_RAID_RANGE_ALPHA",
     label = "Raid Out-of-Range Alpha",
-    tooltip = "Controls the faded alpha used by the active raid range driver.",
+    tooltip = "Controls the faded alpha used by the upstream oUF Range element.",
     path = { "units", "raid", "alpha", "notinrange" },
     defaultValue = ui:GetConfigDefault({ "units", "raid", "alpha", "notinrange" }, 0.4),
     minValue = 0.1,

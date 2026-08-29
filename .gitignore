@@ -4,3 +4,7 @@
 /.idea/.idea.Roth_UI.dir/.idea/indexLayout.xml
 /Roth_UI.zip
 /.idea/.idea.Roth_UI.dir/.idea/vcs.xml
+
+# Python tool cache
+__pycache__/
+*.pyc

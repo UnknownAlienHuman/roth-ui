@@ -1,9 +1,0 @@
-## Interface: 120001, 120005
-## Author: Galaxy
-## Title: Roth UI: rButtonTemplate (Roth)
-## Notes: Optional module for Roth UI
-## Version: 3.3.1
-## RequiredDeps: Roth_UI, Roth_UI_rButtonTemplate
-
-bootstrap.lua
-rButton_Roth.xml

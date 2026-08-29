@@ -1,4 +1,5 @@
-local addonName, ns = ...
+local addonName = ...
+local ns = assert(_G.Roth_UI, "Roth_UI_Options: main Roth_UI namespace is required")
 
 ns.SettingsUI = ns.SettingsUI or {}
 local ui = ns.SettingsUI
