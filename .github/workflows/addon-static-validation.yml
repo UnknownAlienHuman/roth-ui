@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - "codex/**"
+      - "fix/**"
   workflow_dispatch:
 
 permissions:
@@ -44,6 +45,7 @@ jobs:
           set -euo pipefail
           lua5.1 tests/test_target_castbar.lua
           lua5.1 tests/test_aura_lazy.lua
+          lua5.1 tests/test_combat_fader.lua
 
       - name: Reject whitespace and conflict-marker errors
         shell: bash
@@ -64,17 +66,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist-a dist-b dist
-          python3 tools/package_release.py "dist-a/Roth_UI-3.3.8-v57.8-B4.3.zip"
-          python3 tools/package_release.py "dist-b/Roth_UI-3.3.8-v57.8-B4.3.zip"
-          cmp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.zip" "dist-b/Roth_UI-3.3.8-v57.8-B4.3.zip"
-          cp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.zip" dist/
-          sha256sum dist/Roth_UI-3.3.8-v57.8-B4.3.zip | tee dist/SHA256SUMS.txt
-          unzip -Z1 dist/Roth_UI-3.3.8-v57.8-B4.3.zip > dist/ZIP-CONTENTS.txt
+          python3 tools/package_release.py "dist-a/Roth_UI-3.3.8-v57.8-B4.3.1.zip"
+          python3 tools/package_release.py "dist-b/Roth_UI-3.3.8-v57.8-B4.3.1.zip"
+          cmp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.1.zip" "dist-b/Roth_UI-3.3.8-v57.8-B4.3.1.zip"
+          cp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.1.zip" dist/
+          (cd dist && sha256sum Roth_UI-3.3.8-v57.8-B4.3.1.zip > SHA256SUMS.txt)
+          unzip -Z1 dist/Roth_UI-3.3.8-v57.8-B4.3.1.zip > dist/ZIP-CONTENTS.txt
 
       - name: Upload verified package
         uses: actions/upload-artifact@v4
         with:
-          name: Roth_UI-3.3.8-v57.8-B4.3
+          name: Roth_UI-3.3.8-v57.8-B4.3.1
           path: dist/*
           if-no-files-found: error
           retention-days: 30
@@ -91,14 +93,14 @@ jobs:
       - name: Download verified package
         uses: actions/download-artifact@v4
         with:
-          name: Roth_UI-3.3.8-v57.8-B4.3
+          name: Roth_UI-3.3.8-v57.8-B4.3.1
           path: dist
 
-      - name: Publish B4.3 release once
+      - name: Publish B4.3.1 hotfix release once
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v3.3.8-v57.8-B4.3
+          TAG: v3.3.8-v57.8-B4.3.1
         run: |
           set -euo pipefail
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -107,7 +109,7 @@ jobs:
           fi
 
           cat > RELEASE_NOTES.md <<'NOTES'
-          ## Roth UI 3.3.8-v57.8-B4.3
+          ## Roth UI 3.3.8-v57.8-B4.3.1
 
           Retail/Midnight 12.1 performance and architecture cleanup.
 
@@ -116,9 +118,9 @@ jobs:
           - exact oUF 14 castbar callbacks with secret-safe interruptibility sinks;
           - native status-bar interpolation instead of the legacy Lua smoothing loop;
           - Blizzard-owned action buttons with additive Roth styling only;
-          - Settings, import/export and diagnostics moved to `Roth_UI_Options` (`LoadOnDemand: 1`);
+          - Settings, import/export and diagnostics are included in the main `Roth_UI` addon folder;
           - single SavedVariables root writer and explicit runtime ownership boundaries;
-          - deterministic runtime-only package with two sibling addon directories.
+          - deterministic runtime-only package with one `Roth_UI` addon directory.
 
           Requires oUF 14.0.2 or newer. Source/static validation passed on the tagged commit. Retail-client combat, taint and visual validation remain a separate acceptance gate.
           NOTES
@@ -126,8 +128,8 @@ jobs:
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Roth UI 3.3.8-v57.8-B4.3" \
+            --title "Roth UI 3.3.8-v57.8-B4.3.1" \
             --notes-file RELEASE_NOTES.md \
-            dist/Roth_UI-3.3.8-v57.8-B4.3.zip \
+            dist/Roth_UI-3.3.8-v57.8-B4.3.1.zip \
             dist/SHA256SUMS.txt \
             dist/ZIP-CONTENTS.txt

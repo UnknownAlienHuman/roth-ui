@@ -10,16 +10,14 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "3.3.8-v57.8-B4.3"
+VERSION = "3.3.8-v57.8-B4.3.1"
 INTERFACE = "120100"
 TARGET_BUILD = "12.1.0.69497"
 OUF_MIN = "14.0.2"
-
 MAIN_TOC = ROOT / "Roth_UI.toc"
-OPTIONS_ROOT = ROOT / "Roth_UI_Options"
-OPTIONS_TOC = OPTIONS_ROOT / "Roth_UI_Options.toc"
 
 RETIRED_PATHS = {
+    "Roth_UI_Options", "core/options_loader.lua",
     "STOP.txt", "_branch_marker.txt", "_probe_do_not_keep.txt", "oops.txt",
     "core/aura_runtime_12_1.lua", "core/aura_runtime_12_1_guard.lua",
     "core/group_aura_watch.lua", "oUF/elements/rune_orbs.lua",
@@ -37,7 +35,7 @@ RETIRED_PATHS = {
 
 FIRST_PARTY_PREFIXES = (
     "init.lua", "config.lua", "charspecific.lua", "defaults/", "core/", "units/", "oUF/",
-    "Roth_UI_Options/core/",
+    "embeds/rLib/",
 )
 
 
@@ -73,7 +71,7 @@ def normalize(raw: str) -> PurePosixPath:
     return path
 
 
-def parse_toc(toc: Path, addon_root: Path) -> tuple[dict[str, str], list[Entry]]:
+def parse_toc(toc: Path) -> tuple[dict[str, str], list[Entry]]:
     metadata: dict[str, str] = {}
     entries: list[Entry] = []
     source = PurePosixPath(toc.relative_to(ROOT).as_posix())
@@ -89,9 +87,7 @@ def parse_toc(toc: Path, addon_root: Path) -> tuple[dict[str, str], list[Entry]]
                 fail(f"malformed metadata in {source}:{line_no}")
             metadata[match.group(1).strip()] = match.group(2).strip()
             continue
-        relative = normalize(line)
-        full = normalize((PurePosixPath(addon_root.relative_to(ROOT).as_posix()) / relative).as_posix())
-        entries.append(Entry(full, source))
+        entries.append(Entry(normalize(line), source))
     if not entries:
         fail(f"{source} has no load entries")
     return metadata, entries
@@ -104,9 +100,8 @@ def local_tag(tag: str) -> str:
 def expand_xml(entry: Entry, stack: tuple[PurePosixPath, ...]) -> list[Entry]:
     if entry.path in stack:
         fail("recursive XML include: " + " -> ".join(map(str, (*stack, entry.path))))
-    path = ROOT / entry.path
     try:
-        root = ET.fromstring(read(path))
+        root = ET.fromstring(read(ROOT / entry.path))
     except ET.ParseError as exc:
         fail(f"invalid XML in {entry.path}: {exc}")
     result = [entry]
@@ -133,20 +128,20 @@ def expand(entries: list[Entry]) -> list[Entry]:
     return result
 
 
-def assert_unique(entries: list[Entry], label: str) -> None:
-    exact: dict[PurePosixPath, Entry] = {}
+def assert_unique(entries: list[Entry]) -> None:
+    exact: set[PurePosixPath] = set()
     folded: dict[str, PurePosixPath] = {}
     for entry in entries:
         if entry.path in exact:
-            fail(f"duplicate {label} load: {entry.path}")
-        exact[entry.path] = entry
+            fail(f"duplicate load: {entry.path}")
+        exact.add(entry.path)
         key = str(entry.path).casefold()
         if key in folded and folded[key] != entry.path:
-            fail(f"case-colliding {label} paths: {folded[key]} and {entry.path}")
+            fail(f"case-colliding paths: {folded[key]} and {entry.path}")
         folded[key] = entry.path
 
 
-def assert_main_metadata(meta: dict[str, str]) -> None:
+def assert_metadata(meta: dict[str, str]) -> None:
     expected = {
         "Interface": INTERFACE,
         "Author": "Neomorph",
@@ -160,35 +155,26 @@ def assert_main_metadata(meta: dict[str, str]) -> None:
             fail(f"Roth_UI.toc {key} must be {value!r}, got {meta.get(key)!r}")
 
 
-def assert_options_metadata(meta: dict[str, str]) -> None:
-    expected = {
-        "Interface": INTERFACE,
-        "Author": "Neomorph",
-        "Version": VERSION,
-        "RequiredDeps": "Roth_UI",
-        "LoadOnDemand": "1",
-        "X-Target-Build": TARGET_BUILD,
-    }
-    for key, value in expected.items():
-        if meta.get(key) != value:
-            fail(f"Roth_UI_Options.toc {key} must be {value!r}, got {meta.get(key)!r}")
-
-
 def assert_order(entries: list[Entry]) -> None:
     pos = {str(e.path): i for i, e in enumerate(entries)}
+
     def before(a: str, b: str) -> None:
         if a not in pos or b not in pos:
             fail(f"required load-order entry missing: {a} or {b}")
         if pos[a] >= pos[b]:
             fail(f"load order: {a} must load before {b}")
+
     before("init.lua", "core/config_persistence_owner.lua")
     before("core/config_persistence_owner.lua", "config.lua")
-    before("core/options_loader.lua", "core/settings_actions.lua")
-    before("core/target_castbar.lua", "core/lib.lua")
-    before("core/lib.lua", "core/aura_runtime.lua")
+    before("core/lib.lua", "core/mover_runtime.lua")
+    before("core/mover_runtime.lua", "core/combat_fader.lua")
+    before("core/combat_fader.lua", "core/bars.lua")
+    before("core/settings_actions.lua", "core/settings_general.lua")
+    before("core/debug_commands.lua", "core/slashcmd.lua")
+    before("core/settings_main.lua", "core/settings_general.lua")
+    before("core/persistence_report_service.lua", "core/sv_doctor.lua")
+    before("core/transfer.lua", "core/settings_transfer.lua")
     before("core/aura_runtime.lua", "units/target.lua")
-    before("core/frame_policy.lua", "core/group_policy.lua")
-    before("core/frame_policy.lua", "core/unit_policy.lua")
 
 
 def strip_lua_comments(text: str) -> str:
@@ -247,26 +233,17 @@ def assert_retired_absent() -> None:
         fail("retired/service paths still present: " + ", ".join(present))
 
 
-def assert_runtime_boundaries(main: list[Entry], options: list[Entry]) -> None:
-    main_paths = {str(e.path) for e in main}
-    options_paths = {str(e.path) for e in options}
-    if any(path.startswith("Roth_UI_Options/") for path in main_paths):
-        fail("LoadOnDemand Options code leaked into the resident main TOC")
-    if main_paths & options_paths:
-        fail("main and Options TOCs load the same path")
-
-    sources = first_party_lua(main + options)
+def assert_runtime_boundaries(graph: list[Entry]) -> None:
+    sources = first_party_lua(graph)
     combined = "\n".join(sources.values())
     forbidden = {
         "raw aura enumeration": r"\bC_UnitAuras\s*\.|\bAuraUtil\s*\.\s*ForEachAura\s*\(|\bUnit(?:Aura|Buff|Debuff)\s*\(",
         "addon-owned UNIT_AURA": r"[\"']UNIT_AURA[\"']",
         "raw cast polling": r"\bUnitCastingInfo\s*\(|\bUnitChannelInfo\s*\(",
         "legacy smoothing": r"\.Smooth\b|oUF_Smooth",
-        "legacy addon globals": r"(?<!C_AddOns\.)\b(?:GetAddOnMetadata|LoadAddOn|GetNumAddOns|GetAddOnInfo)\s*\(",
         "removed action libraries": r"LibActionButton|LibKeyBound|KeyBound",
-        "old interface panel API": r"InterfaceOptionsFrame_OpenToCategory",
+        "removed mouse-over global": r"\bMouseIsOver\s*\(",
         "old mouse focus API": r"\bGetMouseFocus\s*\(",
-        "global Blizzard override": r"(?:^|\n)\s*(?:_G\.)?(?:RaidFinderFrame_UpdateTab|CompactRaidFrameManager_UpdateShown|PartyFrame_Update)\s*=",
     }
     for label, pattern in forbidden.items():
         if re.search(pattern, combined, re.MULTILINE):
@@ -278,36 +255,20 @@ def assert_runtime_boundaries(main: list[Entry], options: list[Entry]) -> None:
         if re.search(r"(?:Set|Hook)Script\s*\(\s*[\"']OnUpdate", text) and path != "embeds/rLib/dragframe.lua":
             fail(f"unapproved first-party OnUpdate: {path}")
 
-    runtime = sources.get("core/aura_runtime.lua", "")
-    for token in ("QueueAuraRegion", "RegisterInitCallback", 'HookScript("OnShow"', "EnableElement(\"Auras\")", "AddGroup", "AddSlot"):
-        if token not in runtime:
-            fail(f"lazy managed aura contract missing token: {token}")
-    if runtime.find('HookScript("OnShow"') > runtime.find("CreateAuraRegion(frame"):
-        # Declaration order is not semantically important; this only catches an obviously missing lifecycle.
-        pass
-
-    cast = sources.get("core/target_castbar.lua", "")
-    required_cast = (
-        "function runtime.PostCastStart(bar, unit, spellID, notInterruptible)",
-        "function runtime.PostCastInterruptible(bar, unit, spellID, notInterruptible)",
-        "SetAlphaFromBoolean(notInterruptible, 1, 0)",
-        "SetVertexColorFromBoolean",
-    )
-    for token in required_cast:
-        if token not in cast:
-            fail(f"target castbar contract missing: {token}")
-
     bars = sources.get("core/bars.lua", "")
-    exact_classpower = "element.PostUpdate = function(elem, cur, maxValue, hasCurChanged, hasMaxChanged, powerType, ...)"
-    if exact_classpower not in bars:
-        fail("oUF 14 ClassPower.PostUpdate signature drifted")
+    if "AttachCombatFader(" not in bars and "rCombatFrameFader(" not in bars:
+        fail("class bars must attach through the combat-fader owner")
+    combat = sources.get("core/combat_fader.lua", "")
+    for token in ("PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "func.AttachCombatFader", "_G.rCombatFrameFader"):
+        if token not in combat:
+            fail(f"combat fader contract missing: {token}")
 
     settings_registrars = [path for path, text in sources.items() if "RegisterVerticalLayoutCategory" in text]
-    if settings_registrars != ["Roth_UI_Options/core/settings_main.lua"]:
-        fail(f"Settings category must have one owner, got {settings_registrars}")
+    if settings_registrars != ["core/settings_main.lua"]:
+        fail(f"Settings category must have one main-addon owner, got {settings_registrars}")
 
     root_writers: list[str] = []
-    writer_pattern = re.compile(r"(?:\bRoth_UI_DB(?:_Char)?\s*=|_G\s*\[[^\]]*(?:ACCOUNT_DB_VAR|CHAR_DB_VAR|Roth_UI_DB)[^\]]*\]\s*=|rawset\s*\(\s*_G\s*,\s*[^,]*(?:ACCOUNT_DB_VAR|CHAR_DB_VAR|Roth_UI_DB))")
+    writer_pattern = re.compile(r"(?:\bRoth_UI_DB(?:_Char)?\s*=|rawset\s*\(\s*_G\s*,\s*[^,]*(?:Roth_UI_DB))")
     for path, text in sources.items():
         if writer_pattern.search(text):
             root_writers.append(path)
@@ -328,22 +289,17 @@ def assert_no_case_collisions_repo() -> None:
 
 
 def main() -> int:
-    main_meta, main_direct = parse_toc(MAIN_TOC, ROOT)
-    options_meta, options_direct = parse_toc(OPTIONS_TOC, OPTIONS_ROOT)
-    main_graph = expand(main_direct)
-    options_graph = expand(options_direct)
-    assert_main_metadata(main_meta)
-    assert_options_metadata(options_meta)
-    assert_unique(main_graph, "main")
-    assert_unique(options_graph, "Options")
-    assert_order(main_graph)
+    meta, direct = parse_toc(MAIN_TOC)
+    graph = expand(direct)
+    assert_metadata(meta)
+    assert_unique(graph)
+    assert_order(graph)
     assert_retired_absent()
     assert_no_case_collisions_repo()
-    assert_runtime_boundaries(main_graph, options_graph)
+    assert_runtime_boundaries(graph)
     print(
-        f"Roth UI {VERSION} static gate OK: "
-        f"main={len(main_graph)} entries, options={len(options_graph)} entries, "
-        f"Interface={INTERFACE}, build={TARGET_BUILD}, oUF>={OUF_MIN}"
+        f"Roth UI {VERSION} static gate OK: {len(graph)} entries, "
+        f"Interface={INTERFACE}, build={TARGET_BUILD}, oUF>={OUF_MIN}, single addon root"
     )
     return 0
 

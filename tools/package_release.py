@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and verify a deterministic, runtime-only Roth UI release archive."""
+"""Build and verify a deterministic single-root Roth UI release archive."""
 
 from __future__ import annotations
 
@@ -22,15 +22,13 @@ SERVICE_NAMES = {
 }
 
 
-def graph_paths(toc: Path, addon_root: Path) -> set[PurePosixPath]:
-    _, direct = validate_addon.parse_toc(toc, addon_root)
+def graph_paths() -> set[PurePosixPath]:
+    _, direct = validate_addon.parse_toc(validate_addon.MAIN_TOC)
     return {entry.path for entry in validate_addon.expand(direct)}
 
 
 def collect() -> dict[PurePosixPath, Path]:
     files: dict[PurePosixPath, Path] = {}
-    main_graph = graph_paths(validate_addon.MAIN_TOC, ROOT)
-    options_graph = graph_paths(validate_addon.OPTIONS_TOC, validate_addon.OPTIONS_ROOT)
 
     def add(source: Path, archive: PurePosixPath) -> None:
         if not source.is_file():
@@ -38,22 +36,16 @@ def collect() -> dict[PurePosixPath, Path]:
         files[archive] = source
 
     add(validate_addon.MAIN_TOC, PurePosixPath("Roth_UI/Roth_UI.toc"))
-    for rel in main_graph:
+    for rel in graph_paths():
         add(ROOT / rel, PurePosixPath("Roth_UI") / rel)
 
     for name in ("LICENSE.txt", "Credits.txt"):
         add(ROOT / name, PurePosixPath("Roth_UI") / name)
 
-    for base in (ROOT / "media",):
-        for source in sorted(base.rglob("*")):
-            if source.is_file():
-                rel = PurePosixPath(source.relative_to(ROOT).as_posix())
-                add(source, PurePosixPath("Roth_UI") / rel)
-
-    add(validate_addon.OPTIONS_TOC, PurePosixPath("Roth_UI_Options/Roth_UI_Options.toc"))
-    for rel in options_graph:
-        local = PurePosixPath(*rel.parts[1:])
-        add(ROOT / rel, PurePosixPath("Roth_UI_Options") / local)
+    for source in sorted((ROOT / "media").rglob("*")):
+        if source.is_file():
+            rel = PurePosixPath(source.relative_to(ROOT).as_posix())
+            add(source, PurePosixPath("Roth_UI") / rel)
 
     return files
 
@@ -78,7 +70,7 @@ def build(output: Path) -> tuple[str, int]:
 def verify(path: Path) -> None:
     if not path.is_file():
         raise RuntimeError(f"archive does not exist: {path}")
-    expected = {str(path) for path in collect()}
+    expected = {str(item) for item in collect()}
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
         if len(names) != len(set(names)):
@@ -87,17 +79,19 @@ def verify(path: Path) -> None:
             raise RuntimeError("ZIP paths are not deterministic/sorted")
         actual = set(names)
         if actual != expected:
-            missing = sorted(expected - actual)
-            extra = sorted(actual - expected)
-            raise RuntimeError(f"package mismatch: missing={missing[:10]} extra={extra[:10]}")
+            raise RuntimeError(
+                f"package mismatch: missing={sorted(expected-actual)[:10]} extra={sorted(actual-expected)[:10]}"
+            )
         for name in names:
             parts = PurePosixPath(name).parts
             if any(part in SERVICE_NAMES or part.startswith("todo") for part in parts):
                 raise RuntimeError(f"service file leaked into package: {name}")
-            if not (name.startswith("Roth_UI/") or name.startswith("Roth_UI_Options/")):
+            if not name.startswith("Roth_UI/"):
                 raise RuntimeError(f"unexpected archive root: {name}")
-        if "Roth_UI/Roth_UI.toc" not in actual or "Roth_UI_Options/Roth_UI_Options.toc" not in actual:
-            raise RuntimeError("required addon roots are missing")
+        if "Roth_UI/Roth_UI.toc" not in actual:
+            raise RuntimeError("Roth_UI/Roth_UI.toc is missing")
+        if any(name.startswith("Roth_UI_Options/") for name in actual):
+            raise RuntimeError("separate options addon leaked into package")
         bad = archive.testzip()
         if bad:
             raise RuntimeError(f"corrupt ZIP member: {bad}")
