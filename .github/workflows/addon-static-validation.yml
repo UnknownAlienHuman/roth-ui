@@ -1,4 +1,4 @@
-name: Addon static validation
+name: Addon validation and package
 
 on:
   pull_request:
@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - "codex/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,27 +14,36 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Validate TOC, XML closure, load order, and 12.1 aura boundary
-        run: python3 tools/validate_addon.py
-
-      - name: Install Lua 5.1 compiler
+      - name: Install Lua 5.1
         run: |
           sudo apt-get update
           sudo apt-get install --yes lua5.1
 
-      - name: Parse all Lua sources
+      - name: Validate load graphs, ownership and Retail 12.1 boundaries
+        run: python3 tools/validate_addon.py
+
+      - name: Parse all Lua 5.1 sources
         shell: bash
         run: |
           set -euo pipefail
           while IFS= read -r -d '' file; do
             luac5.1 -p "$file"
-          done < <(find . -type f -name '*.lua' -print0)
+          done < <(find . -type f -name '*.lua' -not -path './.git/*' -print0)
+
+      - name: Run castbar and lazy-aura regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          lua5.1 tests/test_target_castbar.lua
+          lua5.1 tests/test_aura_lazy.lua
 
       - name: Reject whitespace and conflict-marker errors
         shell: bash
@@ -43,10 +53,81 @@ jobs:
             git diff --check "${{ github.event.pull_request.base.sha }}"..HEAD
           elif git rev-parse HEAD^ >/dev/null 2>&1; then
             git diff --check HEAD^..HEAD
-          else
-            git diff --check --cached
           fi
           if git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!*.md'; then
             echo 'Merge-conflict markers found.' >&2
             exit 1
           fi
+
+      - name: Build deterministic runtime package twice
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist-a dist-b dist
+          python3 tools/package_release.py "dist-a/Roth_UI-3.3.8-v57.8-B4.3.zip"
+          python3 tools/package_release.py "dist-b/Roth_UI-3.3.8-v57.8-B4.3.zip"
+          cmp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.zip" "dist-b/Roth_UI-3.3.8-v57.8-B4.3.zip"
+          cp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.zip" dist/
+          sha256sum dist/Roth_UI-3.3.8-v57.8-B4.3.zip | tee dist/SHA256SUMS.txt
+          unzip -Z1 dist/Roth_UI-3.3.8-v57.8-B4.3.zip > dist/ZIP-CONTENTS.txt
+
+      - name: Upload verified package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Roth_UI-3.3.8-v57.8-B4.3
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download verified package
+        uses: actions/download-artifact@v4
+        with:
+          name: Roth_UI-3.3.8-v57.8-B4.3
+          path: dist
+
+      - name: Publish B4.3 release once
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v3.3.8-v57.8-B4.3
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; leaving it unchanged."
+            exit 0
+          fi
+
+          cat > RELEASE_NOTES.md <<'NOTES'
+          ## Roth UI 3.3.8-v57.8-B4.3
+
+          Retail/Midnight 12.1 performance and architecture cleanup.
+
+          - lazy oUF 14 managed aura containers, allocated on first actual frame show;
+          - one managed aura owner and no Roth raw aura scanner;
+          - exact oUF 14 castbar callbacks with secret-safe interruptibility sinks;
+          - native status-bar interpolation instead of the legacy Lua smoothing loop;
+          - Blizzard-owned action buttons with additive Roth styling only;
+          - Settings, import/export and diagnostics moved to `Roth_UI_Options` (`LoadOnDemand: 1`);
+          - single SavedVariables root writer and explicit runtime ownership boundaries;
+          - deterministic runtime-only package with two sibling addon directories.
+
+          Requires oUF 14.0.2 or newer. Source/static validation passed on the tagged commit. Retail-client combat, taint and visual validation remain a separate acceptance gate.
+          NOTES
+
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Roth UI 3.3.8-v57.8-B4.3" \
+            --notes-file RELEASE_NOTES.md \
+            dist/Roth_UI-3.3.8-v57.8-B4.3.zip \
+            dist/SHA256SUMS.txt \
+            dist/ZIP-CONTENTS.txt

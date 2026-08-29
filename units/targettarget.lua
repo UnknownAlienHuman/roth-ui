@@ -70,7 +70,7 @@
     h.highlight:SetAllPoints(h.glow)
 
     self.Health = h
-    self.Health.Smooth = true
+    self.Health.smoothing = func.ResolveStatusBarSmoothing(self.cfg.health and self.cfg.health.smooth)
   end
 
   --create power frames
@@ -96,7 +96,7 @@
     h.glow:SetVertexColor(0,0,0,1)
 
     self.Power = h
-    self.Power.Smooth = true
+    self.Power.smoothing = func.ResolveStatusBarSmoothing(self.cfg.power and self.cfg.power.smooth)
 
   end
 
@@ -117,7 +117,7 @@
     perphp:SetPoint("CENTER", self.Health, "CENTER", 0, 0)
     perphp:SetJustifyH("CENTER")
 
-    self:Tag(name, "[diablo:name]")
+    self:Tag(name, "[roth:namecolor][name<$|r]")
 
     self.Health.valueText = hpval
     self.Health.valueTextMode = func.ResolveHealthValueMode()
@@ -154,20 +154,11 @@
     self.Health.PostUpdate = func.updateHealth
     self.Power.PostUpdate = func.updatePower
 
-    -- castbar: oUF skips *target units for castbar events, so targettarget needs
-    -- the addon's standalone polling path instead of local dead callback glue.
-    if self.cfg.castbar and self.cfg.castbar.show then
-      func.createCastbar(self)
-      local bar = self.Castbar
-      if bar and type(func.EnableStandaloneCastbar) == "function" then
-        func.EnableStandaloneCastbar(bar, "targettarget")
-      end
-    end
+    -- oUF treats *target units as eventless. Roth UI deliberately does not
+    -- install a permanent UnitCastingInfo polling loop for targettarget.
 
-    -- Auras (WoW 12.x): native oUF Debuffs with Roth skinning callbacks.
-    if self.cfg.auras and self.cfg.auras.show then
-      func.createDebuffs(self)
-    end
+    -- Managed debuffs are registered lazily on first frame show.
+    func.QueueStandardAuras(self)
 
     --debuffglow
     func.createDebuffGlow(self)

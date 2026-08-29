@@ -8,6 +8,15 @@ end
 local type = type
 local math_min = math.min
 local UnitHasVehicleUI = UnitHasVehicleUI
+local IsSecretValue = (ns and ns.safety and ns.safety.IsSecret) or function(value)
+  return type(_G.issecretvalue) == "function" and _G.issecretvalue(value) or false
+end
+
+local function PlayerHasVehicleUI()
+  if type(UnitHasVehicleUI) ~= "function" then return false end
+  local value = UnitHasVehicleUI("player")
+  return not IsSecretValue(value) and value == true
+end
 local C_Reputation = C_Reputation
 local C_MajorFactions = C_MajorFactions
 local C_GossipInfo = C_GossipInfo
@@ -182,7 +191,7 @@ end
 ns.GetWatchedFactionProgressInfo = GetWatchedFactionProgressInfo
 
 local function Update(self, event, unit)
-  if unit and unit ~= self.unit then
+  if unit and unit ~= self.__unit then
     return
   end
 
@@ -192,13 +201,13 @@ local function Update(self, event, unit)
   end
 
   if type(reputation.PreUpdate) == "function" then
-    reputation:PreUpdate(self.unit)
+    reputation:PreUpdate(self.__unit)
   end
 
   local watchedFaction = GetWatchedFactionProgressInfo()
   local shouldShow = IsEnabledInConfig(self)
     and watchedFaction ~= nil
-    and not (type(UnitHasVehicleUI) == "function" and UnitHasVehicleUI("player"))
+    and not PlayerHasVehicleUI()
 
   local visibilityChanged = SetVisibility(self, reputation, shouldShow)
   if not shouldShow then
@@ -219,7 +228,7 @@ local function Update(self, event, unit)
 
   if type(reputation.PostUpdate) == "function" then
     reputation:PostUpdate(
-      self.unit,
+      self.__unit,
       watchedFaction.name,
       watchedFaction.standing,
       watchedFaction.currentReactionThreshold,
@@ -239,7 +248,7 @@ local function Path(self, ...)
 end
 
 local function ForceUpdate(element)
-  return Path(element.__owner, "ForceUpdate", element.__owner.unit)
+  return Path(element.__owner, "ForceUpdate", element.__owner.__unit)
 end
 
 local function Enable(self, unit)

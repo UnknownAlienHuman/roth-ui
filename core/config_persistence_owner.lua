@@ -11,7 +11,7 @@ local ACCOUNT_DB_VAR = configOwner.ACCOUNT_DB_VAR
 local CHAR_DB_VAR = configOwner.CHAR_DB_VAR
 local OWNER_FILE = configOwner.OWNER_FILE
 local CONFIG_STORAGE_PATH = "account.settings"
-local CONFIG_SCHEMA_PATCH_TARGET = 17
+local CONFIG_SCHEMA_PATCH_TARGET = 20
 local VALID_HEALTH_VALUE_MODES = {
   cur = true,
   percent = true,
@@ -73,6 +73,29 @@ local function EnsureCanonicalRootTables()
   charRoot.schema.version = tonumber(charRoot.schema.version) or 1
 
   return accountRoot, charRoot
+end
+
+local function ReplaceCanonicalRoots(payload)
+  payload = type(payload) == "table" and payload or {}
+  local replaced = false
+  if payload.accountRoot ~= nil then
+    _G[ACCOUNT_DB_VAR] = payload.accountRoot
+    replaced = true
+  end
+  if payload.charRoot ~= nil then
+    _G[CHAR_DB_VAR] = payload.charRoot
+    replaced = true
+  end
+  if replaced then
+    EnsureCanonicalRootTables()
+  end
+  return replaced
+end
+
+local function ResetCanonicalRoots()
+  _G[ACCOUNT_DB_VAR] = nil
+  _G[CHAR_DB_VAR] = nil
+  return true
 end
 
 local function GetCanonicalStores()
@@ -179,7 +202,6 @@ local function NormalizeLegacyUnitConfig(store)
   NormalizeCastbar("player")
   NormalizeCastbar("target")
   NormalizeCastbar("focus")
-  NormalizeCastbar("targettarget")
   NormalizeCastbar("boss")
 end
 
@@ -230,22 +252,6 @@ local function ApplyConfigSchemaPatches(store)
         units.target.power.y = 0
       end
 
-      if units.targettarget then
-        local castbar = units.targettarget.castbar
-        if castbar == nil then
-          units.targettarget.castbar = CopySerializable(cfg.units.targettarget.castbar) or { show = true }
-        elseif type(castbar) == "boolean" then
-          local defaults = CopySerializable(cfg.units.targettarget.castbar) or {}
-          defaults.show = castbar
-          units.targettarget.castbar = defaults
-        elseif type(castbar) == "table" then
-          if castbar.show == nil then
-            castbar.show = true
-          end
-        else
-          units.targettarget.castbar = CopySerializable(cfg.units.targettarget.castbar) or { show = true }
-        end
-      end
     end
     store.__schemaPatch = 9
   end
@@ -260,24 +266,6 @@ local function ApplyConfigSchemaPatches(store)
         end
       end
 
-      if units.targettarget and type(units.targettarget.castbar) == "table" then
-        local castbar = units.targettarget.castbar
-        if castbar.mini == nil then
-          castbar.mini = true
-        end
-        if castbar.width == nil then
-          castbar.width = cfg.units.targettarget.castbar.width
-        end
-        if castbar.height == nil then
-          castbar.height = cfg.units.targettarget.castbar.height
-        end
-        if type(castbar.pos) == "table" then
-          local pos = castbar.pos
-          if pos.af == "UIParent" and pos.a1 == "TOP" and pos.a2 == "TOP" and pos.x == -248 and pos.y == -125 then
-            castbar.pos = CopySerializable(cfg.units.targettarget.castbar.pos)
-          end
-        end
-      end
     end
     store.__schemaPatch = 10
   end
@@ -349,31 +337,13 @@ local function ApplyConfigSchemaPatches(store)
   end
 
   if store.__schemaPatch < 13 then
-    local bars = store.bars
-    if type(bars) == "table" and type(bars.bags) == "table" then
-      local pos = bars.bags.pos
-      if type(pos) ~= "table" then
-        bars.bags.pos = CopySerializable(cfg.bars.bags.pos) or bars.bags.pos
-      elseif pos.af == "UIParent" and pos.a1 == "BOTTOM" and pos.a2 == "BOTTOM" and pos.x == 205 and pos.y == 159 then
-        bars.bags.pos = CopySerializable(cfg.bars.bags.pos) or bars.bags.pos
-      end
-    end
     store.__schemaPatch = 13
   end
 
   if store.__schemaPatch < 14 then
-    local bars = store.bars
-    if type(bars) == "table" and type(bars.bags) == "table" and type(bars.bags.pos) == "table" then
-      local pos = bars.bags.pos
-      if pos.af == "UIParent" and pos.a1 == "BOTTOMRIGHT" and pos.a2 == "BOTTOM" and pos.x == 240 and pos.y == 159 then
-        bars.bags.pos = CopySerializable(cfg.bars.bags.pos) or bars.bags.pos
-      end
-    end
-
     if store.applyGlobalFonts ~= true then
       store.applyGlobalFonts = true
     end
-
     store.__schemaPatch = 14
   end
 
@@ -392,30 +362,73 @@ local function ApplyConfigSchemaPatches(store)
   end
 
   if store.__schemaPatch < 17 then
-    local bars = store.bars
-    if type(bars) == "table" then
-      if type(bars.micromenu) == "table" and type(bars.micromenu.pos) == "table" then
-        local pos = bars.micromenu.pos
-        if pos.af == "UIParent" and pos.a1 == "BOTTOM" and pos.a2 == "BOTTOM" and pos.x == -155 and pos.y == 159 then
-          bars.micromenu.pos = CopySerializable(cfg.bars.micromenu.pos) or bars.micromenu.pos
-        end
-      end
+    store.__schemaPatch = 17
+  end
 
-      if type(bars.stancebar) == "table" and type(bars.stancebar.pos) == "table" then
-        local pos = bars.stancebar.pos
-        if pos.af == "UIParent" and pos.a1 == "BOTTOM" and pos.a2 == "BOTTOM" and pos.x == 130 and pos.y == 159 then
-          bars.stancebar.pos = CopySerializable(cfg.bars.stancebar.pos) or bars.stancebar.pos
-        end
-      end
+  if store.__schemaPatch < 18 then
+    local oldBars = type(store.bars) == "table" and store.bars or {}
+    store.bars = {
+      showMacroName = oldBars.showMacroName ~= false,
+      showCooldown = oldBars.showCooldown ~= false,
+      showHotkey = oldBars.showHotkey == true,
+      showStackCount = oldBars.showStackCount ~= false,
+    }
 
-      if type(bars.bags) == "table" and type(bars.bags.pos) == "table" then
-        local pos = bars.bags.pos
-        if pos.af == "UIParent" and pos.a1 == "BOTTOM" and pos.a2 == "BOTTOM" and ((pos.x == 205 and pos.y == 159) or (pos.x == 240 and pos.y == 159)) then
-          bars.bags.pos = CopySerializable(cfg.bars.bags.pos) or bars.bags.pos
+    local units = store.units
+    if type(units) == "table" then
+      if type(units.targettarget) == "table" then
+        units.targettarget.castbar = nil
+      end
+      local target = units.target
+      local color = type(target) == "table" and type(target.castbar) == "table" and target.castbar.color or nil
+      if type(color) == "table" then
+        color.shieldbar = nil
+        color.shieldbg = nil
+        if type(color.semantic) == "table" then
+          color.semantic.interruptibleChannel = nil
         end
       end
     end
-    store.__schemaPatch = 17
+
+    store.__schemaPatch = 18
+  end
+
+  if store.__schemaPatch < 19 then
+    local units = store.units
+    if type(units) == "table" then
+      for _, unitConfig in pairs(units) do
+        if type(unitConfig) == "table" then
+          for _, key in ipairs({ "health", "power", "healper", "powper" }) do
+            local node = unitConfig[key]
+            if type(node) == "table" then
+              node.tag = nil
+              node.frequentUpdates = nil
+            end
+          end
+          local auras = unitConfig.auras
+          if type(auras) == "table" then
+            auras.blacklist = nil
+            auras.useCustomFilter = nil
+            auras.desaturateDebuffs = nil
+          end
+        end
+      end
+    end
+    store.__schemaPatch = 19
+  end
+
+
+  if store.__schemaPatch < 20 then
+    local units = store.units
+    if type(units) == "table" then
+      for _, key in ipairs({ "party", "raid" }) do
+        local unitConfig = units[key]
+        if type(unitConfig) == "table" then
+          unitConfig.range = nil
+        end
+      end
+    end
+    store.__schemaPatch = 20
   end
 
   if store.__schemaPatch < CONFIG_SCHEMA_PATCH_TARGET then
@@ -601,6 +614,8 @@ end
 
 configOwner.EnsureCanonicalRootTables = EnsureCanonicalRootTables
 configOwner.EnsureCanonicalStores = GetCanonicalStores
+configOwner.ReplaceCanonicalRoots = ReplaceCanonicalRoots
+configOwner.ResetCanonicalRoots = ResetCanonicalRoots
 configOwner.GetConfigRoot = function()
   return GetCanonicalStores().settings
 end

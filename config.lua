@@ -3,7 +3,7 @@
   --  Roth UI
   ---------------------------------------------
 
-  --  A Diablo themed unitframe layout for oUF 1.6.x
+  --  A Diablo-themed unit-frame layout for oUF 14 / Retail 12.1
   --  Joker119 - 2016-2023
   ---------------------------------------------
 
@@ -18,7 +18,7 @@
   --object container
   local cfg = {}
   ns.cfg = cfg
-  cfg.__version = 60
+  cfg.__version = 63
   local locale = GetLocale()
   ---------------------------------------------
   -- // CONFIG // --
@@ -43,11 +43,11 @@
   --frames have a new highlight that fades on hp loss, if that is still not enough you can adjust a multiplier here
   cfg.highlightMultiplier = 0 --range 0-1
 
-  -- Глобальный режим отображения HP текста для всех юнит-фреймов.
-  -- "cur" = текущее значение, "percent" = процент, "curpercent" = значение + процент
+  -- Global health text mode for all Roth unit frames.
+  -- "cur" = current value, "percent" = percentage, "curpercent" = both.
   cfg.healthValueMode = "cur"
 
-  -- Сокращение больших чисел (1k, 1m, 1b). true = сокращать, false = полные числа.
+  -- Abbreviate large values (1k, 1m, 1b).
   -- Schema patching keeps malformed legacy values aligned with this default without overwriting explicit user choice.
   cfg.shortNumbers = true
 
@@ -55,14 +55,8 @@
   cfg.simpleAuras = {
     durationText = false,
     cooldownSwipe = true,
-    durationUpdateRate = 0.3, --seconds, lower = smoother but more CPU
   }
 
-  -- Embedded module gates used by legacy rABS/rButtonTemplate code paths.
-  cfg.embeds = {
-    rActionBarStyler = true,
-    rButtonTemplate = true,
-  }
 
   ----------------------------------------
   --units
@@ -76,11 +70,9 @@
       scale = 1,
       pos = { a1 = "BOTTOM", a2 = "BOTTOM", af = "UIParent", x = -264, y = 2 },
       health = {
-        frequentUpdates = false,
         smooth = true,
       },
       power = {
-        frequentUpdates = false,
         smooth = true,
       },
       absorb = {
@@ -213,12 +205,6 @@
           texture = (mediapath.."statusbar2"),
           scale = 1,
       },
-	  ArtifactPower = {
-		show = true,
-			pos = { a1 = "BOTTOM", a2 = "BOTTOM", af = "UIParent", x = 0, y = 15 },
-			texture = (mediapath.."statusbar2"),
-			scale = 1,
-	  },
       art = {
         actionbarbackground = {
           show = true,
@@ -258,9 +244,7 @@
       height = 64,
       pos = { a1 = "TOP", a2 = "TOP", af = "UIParent", x = 0, y = -70 },
       health = {
-	frequentUpdates = false,
         texture = (mediapath.."statusbar3"),
-        tag = "[diablo:hpval]",
 		fontSize = 7,
 		point = "RIGHT",
 		-- Target: percent is centered; numeric value is on the right side of the Health bar.
@@ -268,25 +252,19 @@
 		y = 0,
       },
 	  healper = {
-	frequentUpdates = false,
-		tag = "[perphp]",
 		fontSize = 10,
 		point = "CENTER",
 		x = 0,
 		y = 0,
 	  },
 	  powper = {
-	frequentUpdates = false,
-		tag = "[perpp]%",
 		fontSize = 7,
 		point = "CENTER",
 		x = 0,
 		y = 0,
 	  },
       power = {
-	frequentUpdates = false,
         texture = (mediapath.."statusbar3"),
-        tag = "[diablo:ppval]",
 		fontSize = 7,
 		-- Target: percent is centered; numeric value is on the right side of the Power bar.
 		point = "RIGHT",
@@ -304,7 +282,6 @@
         showStealableBuffs = true,
         onlyShowPlayerDebuffs = true,
         showDebuffType = true,
-        desaturateDebuffs = false,
         buffs = {
           pos = { a1 = "BOTTOMLEFT", a2 = "TOPRIGHT", x = 0, y = -15 },
           initialAnchor = "BOTTOMLEFT",
@@ -326,11 +303,8 @@
         color = {
           bar = { r = 1.0, g = 0.7, b = 0.0, a = 1.0, },
           bg = { r = 0.1, g = 0.1, b = 0.1, a = 1, },
-          shieldbar = { r = 0.9, g = 0.9, b = 0.9, a = 1, }, --the castbar color while target casting a shielded spell
-          shieldbg = { r = 0.1, g = 0.1, b = 0.1, a = 0.7, },  --the castbar background color while target casting a shielded spell
           semantic = {
             interruptibleCast = { r = 1.0, g = 0.7, b = 0.0, a = 1.0, },
-            interruptibleChannel = { r = 0.0, g = 1.0, b = 0.0, a = 1.0, },
             nonInterruptible = { r = 0.9, g = 0.9, b = 0.9, a = 1.0, },
             failedOrInterrupted = { r = 1.0, g = 0.15, b = 0.15, a = 1.0, },
           },
@@ -376,28 +350,10 @@
       },
       health = {
         texture = (mediapath.."statusbar3"),
-        tag = "[diablo:misshp]",
       },
       power = {
         texture = (mediapath.."statusbar3"),
       },
-	  castbar = {
-		show = true,
-		TextSize = 9,
-		texture = (mediapath.."statusbar3"),
-		-- Prevent castbar size inflation from the unitframe scale.
-		scale = 1/1.3,
-		-- Mini castbar for small targettarget frame.
-		mini = true,
-		width = 150,
-		height = 10,
-		color = {
-		  bar = { r = 1, g = 0.7, b = 0, a = 1, },
-		  bg  = { r = 0.1, g = 0.1, b = 0.1, a = 0.7, },
-		},
-		-- Default placement below the unitframe.
-		pos = { a1 = "TOP", a2 = "BOTTOM", af = "Roth_UITargetTargetFrame", x = 0, y = -6 },
-	  },
       healprediction = {
         show = true,
         texture = (mediapath.."statusbar3"),
@@ -424,7 +380,6 @@
       },
       health = {
         texture = (mediapath.."statusbar3"),
-        tag = "[diablo:misshp]",
       },
       power = {
         texture = (mediapath.."statusbar3"),
@@ -482,7 +437,6 @@
       },
       health = {
         texture = (mediapath.."statusbar3"),
-        tag = "[diablo:misshp]",
       },
       power = {
         texture = (mediapath.."statusbar3"),
@@ -535,7 +489,6 @@
       },
       health = {
         texture = (mediapath.."statusbar3"),
-        tag = "[diablo:misshp]",
       },
       power = {
         texture = (mediapath.."statusbar3"),
@@ -561,7 +514,6 @@
       },
       health = {
         texture = (mediapath.."statusbar128_3"),
-        tag = "[diablo:misshp]",
       },
       power = {
         texture = (mediapath.."statusbar128_3"),
@@ -587,11 +539,9 @@
       pos = { a1 = "TOP", a2 = "BOTTOM", af = "Minimap", x = 0, y = -80 },
       health = {
         texture = (mediapath.."statusbar3"),
-        tag = "[diablo:bosshp]%",
       },
       power = {
         texture = (mediapath.."statusbar3"),
-        tag = "[diablo:bosspp]",
       },
       castbar = {
         show = true,
@@ -611,263 +561,16 @@
   }
 
   ----------------------------------------
-  -- Action Bars
+  -- Action button appearance
+  --
+  -- Blizzard owns action-bar layout, paging, visibility and protected frames.
+  -- Roth UI keeps only static presentation preferences.
   ----------------------------------------
-    cfg.bars = {
-    --General Button Settings
-	showMacroName = true,
-	showCooldown = true,
-	showHotkey = false,
-	showStackCount = true,
-	secureOwnerBars = false,
-    --BAR 1
-    bar1 = {
-      enable          = true, --enable module
-      uselayout2x6    = false,
-      scale           = 1,
-      padding         = 2, --frame padding
-      buttons         = {
-        size            = 26,
-        margin          = 5,
-      },
-      pos             = { a1 = "BOTTOM", a2 = "BOTTOM", af = "UIParent", x = -1, y = 16 },
-      userplaced      = {
-        enable          = true,
-      },
-      mouseover       = {
-        enable          =          false,
-        fadeIn          = {time = 0.4, alpha = 1},
-        fadeOut         = {time = 0.3, alpha = 0},
-      },
-    },
-    --OVERRIDE BAR (vehicle ui)
-    overridebar = { --the new vehicle and override bar
-      enable          = true, --enable module
-      scale           = 1,
-      padding         = 2, --frame padding
-      buttons         = {
-        size            = 57,
-        margin          = 5,
-      },
-      pos             = { a1 = "BOTTOM", a2 = "BOTTOM", af = "UIParent", x = -1, y = 16 },
-      userplaced      = {
-        enable          = true,
-      },
-      mouseover       = {
-        enable          =          false,
-        fadeIn          = {time = 0.4, alpha = 1},
-        fadeOut         = {time = 0.3, alpha = 0},
-      },
-    },
-    --BAR 2
-    bar2 = {
-      enable          = true, --enable module
-      uselayout2x6    = false,
-      scale           = 1,
-      padding         = 2, --frame padding
-      buttons         = {
-        size            = 26,
-        margin          = 5,
-      },
-      pos             = { a1 = "BOTTOM", a2 = "BOTTOM", af = "UIParent", x = -1, y = 42 },
-      userplaced      = {
-        enable          = true,
-      },
-      mouseover       = {
-        enable          =          false,
-        fadeIn          = {time = 0.4, alpha = 1},
-        fadeOut         = {time = 0.3, alpha = 0},
-      },
-    },
-    --BAR 3
-    bar3 = {
-      enable          = true, --enable module
-      scale           = 1,
-      padding         = 2, --frame padding
-      buttons         = {
-        size            = 26,
-        margin          = 5,
-      },
-      pos             = { a1 = "BOTTOM", a2 = "BOTTOM", af = "UIParent", x = -1, y = 70 },
-      userplaced      = {
-        enable          = true,
-      },
-      mouseover       = {
-        enable          =          false,
-        fadeIn          = {time = 0.4, alpha = 1},
-        fadeOut         = {time = 0.3, alpha = 0},
-      },
-    },
-    --BAR 4
-    bar4 = {
-      enable          = true, --enable module
-	  vert = false, --choosing this will make the bar stack vertically instead of horizontally
-      combineBar4AndBar5  = true, --by choosing true both bar 4 and 5 will react to the same hover effect, thus true/false at the same time, settings for bar5 will be ignored
-      scale           = 1.2,
-      padding         = 10, --frame padding
-      buttons         = {
-        size            = 26,
-        margin          = 5,
-      },
-      pos             = { a1 = "RIGHT", a2 = "RIGHT", af = "UIParent", x = -0, y = 0 },
-      userplaced      = {
-        enable          = true,
-      },
-      mouseover       = {
-        enable          = true,
-        fadeIn          = {time = 0.4, alpha = 1},
-        fadeOut         = {time = 0.3, alpha = 0},
-      },
-    },
-    --BAR 5
-    bar5 = {
-      enable          = true, --enable module
-	  vert = true, --choosing this will make the bar stack vertically instead of horizontally
-      scale           = 1.2,
-      padding         = 10, --frame padding
-      buttons         = {
-        size            = 26,
-        margin          = 5,
-      },
-      pos             = { a1 = "RIGHT", a2 = "RIGHT", af = "UIParent", x = -36, y = 0 },
-      userplaced      = {
-        enable          = true,
-      },
-      mouseover       = {
-        enable          = true,
-        fadeIn          = {time = 0.4, alpha = 1},
-        fadeOut         = {time = 0.3, alpha = 1},
-      },
-    },
-    bar6 = {
-      enable          = true, --enable module
-	    vert            = false, --choosing this will make the bar stack vertically instead of horizontally
-      scale           = 1.2,
-      padding         = 10, --frame padding
-      buttons         = {
-        size            = 26,
-        margin          = 5,
-      },
-      pos             = { a1 = "RIGHT", a2 = "RIGHT", af = "UIParent", x = -36, y = 0 },
-      userplaced      = {
-        enable          = true,
-      },
-      mouseover       = {
-        enable          = false,
-        fadeIn          = {time = 0.4, alpha = 1},
-        fadeOut         = {time = 0.3, alpha = 0},
-      },
-    },
-    --PETBAR
-    petbar = {
-      enable          = true, --enable module
-      show            = true, --true/false
-      scale           = 1.2,
-      padding         = 2, --frame padding
-      buttons         = {
-        size            = 26,
-        margin          = 5,
-      },
-      pos             = { a1 = "BOTTOM", a2 = "BOTTOM", af = "UIParent", x = -1, y = 180 },
-      userplaced      = {
-        enable          = true,
-      },
-      mouseover       = {
-        enable          = true,
-        fadeIn          = {time = 0.4, alpha = 1},
-        fadeOut         = {time = 0.3, alpha = 0},
-      },
-    },
-    --STANCE- + POSSESSBAR
-    stancebar = {
-      enable          = true, --enable module
-      show            = true, --true/false
-      scale           = 0.6,
-      padding         = 2, --frame padding
-      buttons         = {
-        size            = 26,
-        margin          = 5,
-      },
-	  pos             = { a1 = "BOTTOM", a2 = "BOTTOM", af = "UIParent", x = 0, y = 97  },
-	  userplaced      = {
-		  enable          = true,
-	  },
-      mouseover       = {
-        enable          = false,
-        fadeIn          = {time = 0.4, alpha = 1},
-        fadeOut         = {time = 0.3, alpha = 0},
-      },
-    },
-    --EXTRABAR
-    extrabar = {
-      enable          = true, --enable module
-      scale           = 0.82,
-      padding         = 10, --frame padding
-      buttons         = {
-        size            = 36,
-        margin          = 5,
-      },
-      pos             = { a1 = "BOTTOM", a2 = "BOTTOM", af = "UIParent", x = -210, y = 220 },
-      userplaced      = {
-        enable          = true,
-      },
-      mouseover       = {
-        enable          = false,
-        fadeIn          = {time = 0.4, alpha = 1},
-        fadeOut         = {time = 0.3, alpha = 0.2},
-      },
-    },
-    --VEHICLE EXIT (no vehicleui)
-    leave_vehicle = {
-      enable          = true, --enable module
-      scale           = 1.2,
-      padding         = 10, --frame padding
-      buttons         = {
-        size            = 26,
-        margin          = 5,
-      },
-      pos             = { a1 = "BOTTOM", a2 = "BOTTOM", af = "UIParent", x = 210, y = 135 },
-      userplaced      = {
-        enable          = true,
-      },
-      mouseover       = {
-        enable          = false,
-        fadeIn          = {time = 0.4, alpha = 1},
-        fadeOut         = {time = 0.3, alpha = 0.2},
-      },
-    },
-    --MICROMENU
-    micromenu = {
-      enable          = true, --enable module
-      show            = true, --true/false
-      scale           = 0.6,
-      padding         = 0, --frame padding
-      pos             = { a1 = "BOTTOM", a2 = "BOTTOM", af = "UIParent", x = -180, y = 97 },
-      userplaced      = {
-        enable          = true,
-      },
-      mouseover       = {
-        enable          = false,
-        fadeIn          = {time = 0.4, alpha = 1},
-        fadeOut         = {time = 0.3, alpha = 0},
-      },
-    },
-    --BAGS
-    bags = {
-      enable          = true, --enable module
-      show            = true, --true/false
-      scale           = 0.6,
-      padding         = 15, --frame padding
-      pos             = { a1 = "BOTTOM", a2 = "BOTTOM", af = "UIParent", x = 180, y = 97 },
-      userplaced      = {
-        enable          = true,
-      },
-      mouseover       = {
-        enable          = false,
-        fadeIn          = {time = 0.4, alpha = 1},
-        fadeOut         = {time = 0.3, alpha = 0},
-      },
-    },
+  cfg.bars = {
+    showMacroName = true,
+    showCooldown = true,
+    showHotkey = false,
+    showStackCount = true,
   }
 
   ----------------------------------------
@@ -892,20 +595,6 @@
   end
   cfg.powercolors = (CopyTable and CopyTable(PowerBarColor)) or Roth_CopyTable(PowerBarColor)
   cfg.powercolors["MANA"] = { r = 0, g = 0.4, b = 1 }
-  -- Prepatch (oUF 13.0.0): oUF expects ColorMixin-like colors with :GetRGB().
-  -- Only patch oUF's MANA color if it is missing or not compatible.
-  if oUF and oUF.colors and oUF.colors.power then
-    local mana = oUF.colors.power["MANA"]
-    if not (type(mana) == "table" and mana.GetRGB) then
-      if CreateColor then
-        local c = CreateColor(0, 0.4, 1)
-        c[1], c[2], c[3] = 0, 0.4, 1
-        oUF.colors.power["MANA"] = c
-      else
-        oUF.colors.power["MANA"] = {0, 0.4, 1, r = 0, g = 0.4, b = 1, GetRGB = function() return 0, 0.4, 1 end}
-      end
-    end
-  end
   --font
   -- Default UI font (unitframes, castbars, etc.)
   cfg.font = STANDARD_TEXT_FONT

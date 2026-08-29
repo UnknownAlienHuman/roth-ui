@@ -1,8 +1,8 @@
 ## Interface: 120100
 ## Author: Neomorph
 ## Title: Roth UI
-## Version: 3.3.8-v57.8-B4.1
-## Notes: Galaxy's oUF layout with Diablo flavor! Retail 12.1 managed-aura edition. (Ace3 removed)
+## Version: 3.3.8-v57.8-B4.3
+## Notes: Lightweight Diablo-inspired oUF layout for Retail 12.1.
 ## RequiredDeps: oUF
 ## OptionalDeps: RothFont, RothLib
 ## SavedVariables: Roth_UI_DB
@@ -14,18 +14,7 @@ embeds/rLib/rLib.xml
 
 Libs/LibStub/LibStub.lua
 Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua
-Libs/LibActionButton-1.0-GE/LibActionButton-1.0-GE.lua
 Libs/LibSharedMedia-3.0/lib.xml
-Libs/LibKeyBound-1.0/Locale-enUS.lua
-Libs/LibKeyBound-1.0/Locale-deDE.lua
-Libs/LibKeyBound-1.0/Locale-esES.lua
-Libs/LibKeyBound-1.0/Locale-esMX.lua
-Libs/LibKeyBound-1.0/Locale-frFR.lua
-Libs/LibKeyBound-1.0/Locale-koKR.lua
-Libs/LibKeyBound-1.0/Locale-ruRU.lua
-Libs/LibKeyBound-1.0/Locale-zhCN.lua
-Libs/LibKeyBound-1.0/Locale-zhTW.lua
-Libs/LibKeyBound-1.0/LibKeyBound-1.0.lua
 
 init.lua
 
@@ -48,48 +37,28 @@ core/persistence_schema_registry.lua
 core/persistence_drift_service.lua
 core/persistence_reconcile_service.lua
 core/persistence_control_plane.lua
-core/persistence_report_service.lua
-core/sv_doctor.lua
-core/logger.lua
 core/movegrid.lua
-core/hide_endcaps.lua
 core/bootstrap.lua
 core/orb_text_controller.lua
 
 core/db.lua
 core/orb_persistence_owner.lua
 core/frame_registry.lua
-core/bar_runtime_registry.lua
-core/leave_vehicle_bar.lua
-core/extrabar_holder.lua
-core/pet_action_bar.lua
-core/stance_bar.lua
-core/micromenu_bar.lua
-core/bags_bar.lua
 core/orb_runtime.lua
-core/settings_main.lua
+core/options_loader.lua
 core/settings_actions.lua
-core/settings_general.lua
 core/target_castbar.lua
-core/settings_target.lua
-core/settings_groups.lua
-core/settings_orbs.lua
-core/transfer.lua
-core/settings_transfer.lua
-core/debug_commands.lua
 core/slashcmd.lua
 core/lib.lua
 core/mover_runtime.lua
 core/unit_value_runtime.lua
 core/unit_misc_runtime.lua
-core/aura_runtime_12_1.lua
-core/aura_runtime_12_1_guard.lua
+core/aura_runtime.lua
 core/frame_policy.lua
 core/font_policy.lua
 core/group_policy.lua
 core/unit_policy.lua
 core/frame_policy_bootstrap.lua
-core/blizzard_restore_debug.lua
 core/tags.lua
 core/bars.lua
 core/units.lua
@@ -105,19 +74,6 @@ units/party.lua
 units/raid.lua
 units/boss.lua
 units/player.lua
-core/action_bar_multibar_visibility.lua
-core/action_bar_secure_runtime.lua
-core/action_bar_bar1.lua
-core/action_bar_overridebar.lua
-core/action_bar_bar2.lua
-core/action_bar_bar3.lua
-core/action_bar_bar4.lua
-core/action_bar_bar5.lua
-core/action_bar_dock.lua
-core/action_bar_background.lua
 
-# Embedded Roth modules (repacked into main addon)
-modules/Roth_UI_oUFModules/modules/oUF_Smooth.lua
-modules/Roth_UI_rActionBarStyler/rActionBar.xml
-modules/Roth_UI_rButtonTemplate/rButton.xml
-modules/Roth_UI_rButtonTemplate_Roth/rButton_Roth.xml
+core/action_button_skin.lua
+core/action_bar_background.lua

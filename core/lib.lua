@@ -23,10 +23,8 @@ local mod = mod
 local wipe = wipe
 local tinsert = table.insert or tinsert
 local tremove = table.remove or tremove
-local pcall = pcall
 local InCombatLockdown = InCombatLockdown
 local CreateFrame = CreateFrame
-local GetTime = GetTime
 local UnitHealth = UnitHealth
 local UnitHealthMax = UnitHealthMax
 local UnitPower = UnitPower
@@ -36,29 +34,18 @@ local UnitIsDeadOrGhost = UnitIsDeadOrGhost
 local UnitIsConnected = UnitIsConnected
 local UnitInRange = UnitInRange
 local UnitClass = UnitClass
-local UnitName = UnitName
-local UnitGUID = UnitGUID
 local UnitIsPlayer = UnitIsPlayer
 local UnitReaction = UnitReaction
-local GetPlayerInfoByGUID = GetPlayerInfoByGUID
 
 --object container
 local func = CreateFrame("Frame")
 ns.func = func
-RothUI = {}
 
 ---------------------------------------------
 -- MAINLINE HELPERS
 ---------------------------------------------
 
 local safety = ns and ns.safety
-ns.IsAddOnLoadedCompat = C_AddOns.IsAddOnLoaded
-local DebuffTypeColor = _G["DebuffTypeColor"]
-local CreateSecondsFormatter = _G["CreateSecondsFormatter"]
-
-if _G and not _G.IsAddOnLoadedCompat then
-  _G.IsAddOnLoadedCompat = ns.IsAddOnLoadedCompat
-end
 
 -- Centralized Secret Value handling (WoW 12.x/Midnight).
 -- Hot paths should call the native predicate directly; safety.IsSecret keeps
@@ -69,6 +56,17 @@ func.IsSecretValue = function(v)
   return _issecretvalue and _issecretvalue(v) or false
 end
 local IsSecretValue = func.IsSecretValue
+
+func.ResolveStatusBarSmoothing = function(enabled)
+  local interpolation = Enum and Enum.StatusBarInterpolation
+  if not interpolation then
+    return nil
+  end
+  if enabled == false then
+    return interpolation.Immediate
+  end
+  return interpolation.ExponentialEaseOut or interpolation.Immediate
+end
 
 func.SafeUnitHealth = function(unit)
   local v = UnitHealth(unit)
@@ -197,7 +195,7 @@ local function RefreshUnitHealthBar(frame)
     return
   end
 
-  local unitId = frame.unit
+  local unitId = frame.__unit
   local postUpdate = frame.Health.PostUpdate
   if type(unitId) ~= "string" or unitId == "" or type(postUpdate) ~= "function" then
     return
@@ -265,322 +263,9 @@ function ns.RefreshAllHealthValueText()
   ns.RefreshUnitHealthValueText("raid")
 end
 
---format time func
-func.GetFormattedTime = function(time)
-  local hr, m, s, text
-  if time <= 0 then
-    text = ""
-  elseif (time < 3600 and time > 60) then
-    hr = floor(time / 3600)
-    m = floor(mod(time, 3600) / 60 + 1)
-    text = format("%dm", m)
-  elseif time < 60 then
-    m = floor(time / 60)
-    s = mod(time, 60)
-    text = (m == 0 and format("%ds", s))
-  else
-    hr = floor(time / 3600 + 1)
-    text = format("%dh", hr)
-  end
-  return text
-end
-
-local auraDurationFormatter = CreateSecondsFormatter and CreateSecondsFormatter() or nil
-
-local function TryFormatAuraDuration(value)
-  if auraDurationFormatter and auraDurationFormatter.Format then
-    local text = auraDurationFormatter:Format(value)
-    if text and text ~= "" and text ~= "0" and text ~= "0s" and text ~= "0.0" and text ~= "0.0s" then
-      return text
-    end
-  end
-  return nil
-end
-
-local function FormatAuraDurationValue(value)
-  if value == nil then
-    return ""
-  end
-
-  local formatted = TryFormatAuraDuration(value)
-  if formatted then
-    return formatted
-  end
-
-  if type(value) == "table" or type(value) == "userdata" then
-    if type(value.GetRemainingDuration) == "function" then
-      return FormatAuraDurationValue(value:GetRemainingDuration())
-    end
-    if type(value.GetValue) == "function" then
-      return FormatAuraDurationValue(value:GetValue())
-    end
-    return ""
-  end
-
-  if IsSecretValue(value) or type(value) ~= "number" or value <= 0 then
-    return ""
-  end
-
-  if value >= 60 then
-    return func.GetFormattedTime(value)
-  end
-
-  if value >= 10 then
-    return format("%.0f", value)
-  end
-
-  return format("%.1f", value)
-end
-
-local function EnsureAuraButtonLayout(element, button)
-  if not (element and button and button.Icon and button.Count and button.Cooldown) then
-    return
-  end
-
-  local size = element.size or button:GetWidth() or 20
-  if button.__rothAuraStyledSize == size then
-    return
-  end
-  button.__rothAuraStyledSize = size
-
-  button.Icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
-
-  button.Cooldown:ClearAllPoints()
-  button.Cooldown:SetPoint("TOPLEFT", button, "TOPLEFT", 1, -1)
-  button.Cooldown:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
-  if button.Cooldown.SetReverse then
-    button.Cooldown:SetReverse(true)
-  end
-  if button.Cooldown.SetDrawEdge then
-    button.Cooldown:SetDrawEdge(false)
-  end
-  if button.Cooldown.SetHideCountdownNumbers then
-    button.Cooldown:SetHideCountdownNumbers(true)
-  end
-
-  if not button.countFrame then
-    button.countFrame = CreateFrame("Frame", nil, button)
-    button.countFrame:SetAllPoints()
-    button.countFrame:SetFrameStrata("MEDIUM")
-    button.countFrame:SetFrameLevel(button.Cooldown:GetFrameLevel() + 2)
-    button.Count:SetParent(button.countFrame)
-  end
-
-  button.Count:ClearAllPoints()
-  button.Count:SetPoint("TOPRIGHT", button.countFrame, "TOPRIGHT", 4, 4)
-  button.Count:SetTextColor(0.9, 0.9, 0.9)
-  if func.RegisterFontString then
-    func.RegisterFontString(button.Count, size / 1.8, "THINOUTLINE")
-  else
-    button.Count:SetFont(cfg.font, size / 1.8, "THINOUTLINE")
-  end
-
-  if not button.Border then
-    local border = button:CreateTexture(nil, "OVERLAY", nil, 4)
-    border:SetAllPoints()
-    border:SetTexture(mediapath .. "icon_border")
-    button.Border = border
-    button.border = border
-  end
-  button.Border:SetVertexColor(0, 0, 0, 0.85)
-
-  if not button.Gloss then
-    local gloss = button:CreateTexture(nil, "ARTWORK", nil, -1)
-    gloss:SetPoint("TOPLEFT", button.Icon, "TOPLEFT", -1, 1)
-    gloss:SetPoint("BOTTOMRIGHT", button.Icon, "BOTTOMRIGHT", 1, -1)
-    gloss:SetTexture(mediapath .. "gloss2")
-    gloss:SetVertexColor(0.4, 0.35, 0.35, 1)
-    button.Gloss = gloss
-  end
-
-  if not button.BackdropGlow then
-    local back = button:CreateTexture(nil, "BACKGROUND", nil, 0)
-    back:SetTexture(mediapath .. "simplesquare_glow")
-    back:SetVertexColor(0, 0, 0, 1)
-    button.BackdropGlow = back
-  end
-  button.BackdropGlow:ClearAllPoints()
-  button.BackdropGlow:SetPoint("TOPLEFT", button.Icon, "TOPLEFT", -0.18 * size, 0.18 * size)
-  button.BackdropGlow:SetPoint("BOTTOMRIGHT", button.Icon, "BOTTOMRIGHT", 0.18 * size, -0.18 * size)
-
-  local duration = button.DurationText
-  if not duration then
-    local durationSize = math.max(7, math.floor(size * 0.28) - 2)
-    duration = func.createFontString(button, cfg.font, durationSize, "THINOUTLINE")
-    duration:SetPoint("BOTTOMLEFT", button, "BOTTOMLEFT", -1, 1)
-    duration:SetJustifyH("LEFT")
-    duration:SetJustifyV("BOTTOM")
-    button.DurationText = duration
-    button.duration = duration
-  else
-    local durationSize = math.max(7, math.floor(size * 0.28) - 2)
-    if func.RegisterFontString then
-      func.RegisterFontString(duration, durationSize, "THINOUTLINE")
-    else
-      duration:SetFont(cfg.font, durationSize, "THINOUTLINE")
-    end
-  end
-end
-
-local function ResolveAuraRemaining(button)
-  if not button then
-    return nil
-  end
-
-  local durationObject = button.__rothDurationObject
-  if durationObject ~= nil then
-    if type(durationObject.GetRemainingDuration) == "function" then
-      return durationObject:GetRemainingDuration()
-    end
-    if type(durationObject.GetValue) == "function" then
-      return durationObject:GetValue()
-    end
-    return durationObject
-  end
-
-  local expirationTime = button.__rothExpirationTime
-  if type(expirationTime) == "number" then
-    local remaining = expirationTime - GetTime()
-    if remaining < 0 then
-      remaining = 0
-    end
-    return remaining
-  end
-
-  return nil
-end
-
-local function UpdateAuraDurationText(button)
-  local duration = button and button.DurationText
-  if not duration then
-    return
-  end
-
-  local text = FormatAuraDurationValue(ResolveAuraRemaining(button))
-  if button.__rothDurationText ~= text then
-    button.__rothDurationText = text
-    duration:SetText(text)
-  end
-end
-
-local function AuraDurationOnUpdate(button, elapsed)
-  button.__rothDurationElapsed = (button.__rothDurationElapsed or 0) + (elapsed or 0)
-  if button.__rothDurationElapsed < 0.1 then
-    return
-  end
-
-  button.__rothDurationElapsed = 0
-  UpdateAuraDurationText(button)
-
-  if (button.__rothDurationText == nil or button.__rothDurationText == "")
-      and button.__rothDurationObject == nil
-      and button.__rothExpirationTime == nil then
-    button:SetScript("OnUpdate", nil)
-  end
-end
-
-local function ClearAuraDurationState(button)
-  if not button then
-    return
-  end
-
-  button.__rothDurationObject = nil
-  button.__rothExpirationTime = nil
-  button.__rothDurationElapsed = nil
-  button.__rothDurationText = nil
-  button:SetScript("OnUpdate", nil)
-  if button.DurationText then
-    button.DurationText:SetText("")
-  end
-end
-
-local function SetAuraDurationState(element, button, unit, data)
-  if not button then
-    return
-  end
-
-  if not (element and element.__rothShowTimers == true and type(unit) == "string" and type(data) == "table") then
-    ClearAuraDurationState(button)
-    return
-  end
-
-  local auraInstanceID = data.auraInstanceID
-  local durationObject
-  if C_UnitAuras and C_UnitAuras.GetAuraDuration and auraInstanceID ~= nil and not IsSecretValue(auraInstanceID) then
-    durationObject = C_UnitAuras.GetAuraDuration(unit, auraInstanceID)
-  end
-
-  local expirationTime = data.expirationTime
-  if type(expirationTime) ~= "number" or IsSecretValue(expirationTime) or expirationTime <= 0 then
-    expirationTime = nil
-  end
-
-  button.__rothDurationObject = durationObject
-  button.__rothExpirationTime = expirationTime
-  button.__rothDurationElapsed = 0
-  UpdateAuraDurationText(button)
-
-  if button.__rothDurationText and button.__rothDurationText ~= "" then
-    button:SetScript("OnUpdate", AuraDurationOnUpdate)
-  else
-    button:SetScript("OnUpdate", nil)
-  end
-end
-
-local function ApplyAuraBorder(button, element, data)
-  if not (button and button.Border) then
-    return
-  end
-
-  local r, g, b, a = 0, 0, 0, 0.85
-  local isHarmfulAura = data and data.isHarmfulAura
-  local harmfulAuraKnown = isHarmfulAura ~= nil and not IsSecretValue(isHarmfulAura)
-  local isHarmful = harmfulAuraKnown and isHarmfulAura == true
-  local isHelpful = harmfulAuraKnown and isHarmfulAura == false
-
-  if data and isHarmful and element and element.showDebuffType then
-    local dispelName = data.dispelName
-    if type(dispelName) == "string" then
-      local dispelColor = DebuffTypeColor and DebuffTypeColor[dispelName]
-      if dispelColor then
-        r, g, b = dispelColor.r or 1, dispelColor.g or 1, dispelColor.b or 1
-      end
-    end
-  elseif data and isHelpful and element and element.showStealableBuffs then
-    local isStealable = data.isStealable
-    if isStealable ~= nil and not IsSecretValue(isStealable) and isStealable == true then
-      r, g, b = 0.2, 0.75, 1
-    end
-  end
-
-  button.Border:SetVertexColor(r, g, b, a)
-end
-
-local function PostCreateNativeAuraButton(element, button)
-  EnsureAuraButtonLayout(element, button)
-end
-
-local function PostUpdateNativeAuraButton(element, button, unit, data)
-  EnsureAuraButtonLayout(element, button)
-  ApplyAuraBorder(button, element, data)
-  SetAuraDurationState(element, button, unit, data)
-end
-
-local function SetupNativeAuraFrame(frame, showTimers)
-  if not frame then
-    return frame
-  end
-
-  frame.growthX = frame["growth-x"] or frame.growthX or "RIGHT"
-  frame.growthY = frame["growth-y"] or frame.growthY or "DOWN"
-  frame.PostCreateButton = PostCreateNativeAuraButton
-  frame.PostUpdateButton = PostUpdateNativeAuraButton
-  frame.__rothNativeAuras = true
-  frame.__rothShowTimers = showTimers == true
-  return frame
-end
-
-func.SetupNativeAuraFrame = SetupNativeAuraFrame
+-- Aura rendering is owned by core/aura_runtime.lua and oUF managed
+-- AuraContainer objects. No AuraData, duration polling, or legacy Buffs/Debuffs
+-- element callbacks are kept in this general utility module.
 
 --backdrop func
 func.createBackdrop = function(f)
@@ -592,157 +277,6 @@ func.createBackdrop = function(f)
   f:SetBackdrop(cfg.backdrop)
   f:SetBackdropColor(0, 0, 0, 0.7)
   f:SetBackdropBorderColor(0, 0, 0, 1)
-end
-
---create debuff func
-func.createDebuffs = function(self)
-  local style = ResolveUnitStyle(self)
-  if self.cfg.vertical then
-    local f = CreateFrame("Frame", nil, self)
-    f.size = self.cfg.auras.size
-    if style == "targettarget" then
-      f.num = 8
-    else
-      f.num = cfg.units.party.auras.number
-    end
-    f:SetHeight((f.size + 5) * (f.num / 4))
-    f:SetWidth((f.size + 5) * 4)
-    if style == "targettarget" then
-      f:SetPoint("BOTTOM", self, "RIGHT", 0, 0)
-    elseif style == "party" then
-      f:SetPoint("BOTTOM", self.Health, "RIGHT", 22, -19)
-    else
-      f:SetPoint("TOP", self, "RIGHT", 50, -5)
-    end
-    f.initialAnchor = "TOPLEFT"
-    f["growth-x"] = "RIGHT"
-    f["growth-y"] = "DOWN"
-    f.spacing = 5
-    f.showDebuffType = self.cfg.auras.showDebuffType
-    f.onlyShowPlayer = self.cfg.auras.onlyShowPlayerDebuffs
-    self.Debuffs = SetupNativeAuraFrame(f, style == "focus" or style == "targettarget")
-  else
-    local f = CreateFrame("Frame", nil, self)
-    f.size = self.cfg.auras.size
-    if style == "targettarget" then
-      f.num = 8
-    else
-      f.num = cfg.units.party.auras.number
-    end
-    f:SetHeight((f.size + 5) * (f.num / 9))
-    f:SetWidth((f.size + 5) * 4)
-    if style == "targettarget" then
-      f:SetPoint("BOTTOM", self, "RIGHT", -90, -40)
-    else
-      f:SetPoint("TOP", self, "RIGHT", -60, -67)
-    end
-    f.initialAnchor = "TOPLEFT"
-    f["growth-x"] = "RIGHT"
-    f["growth-y"] = "DOWN"
-    f.spacing = 5
-    f.showDebuffType = self.cfg.auras.showDebuffType
-    f.onlyShowPlayer = self.cfg.auras.onlyShowPlayerDebuffs
-    self.Debuffs = SetupNativeAuraFrame(f, style == "focus" or style == "targettarget")
-  end
-end
-
---create buff func
-func.createBuffs = function(self)
-  local style = ResolveUnitStyle(self)
-  if self.cfg.auras.hideBuffs == true then return end
-  if self.cfg.vertical == false then
-    local f = CreateFrame("Frame", nil, self)
-    f.size = self.cfg.auras.size
-    if style == "targettarget" then
-      f.num = 8
-    else
-      f.num = cfg.units.party.auras.number
-    end
-    f:SetHeight((f.size + 5) * (f.num / 9))
-    f:SetWidth((f.size + 5) * 4)
-    f:SetPoint("TOP", self, "RIGHT", -60, -27)
-    f.initialAnchor = "TOPLEFT"
-    f["growth-x"] = "RIGHT"
-    f["growth-y"] = "DOWN"
-    f.spacing = 5
-    f.showBuffType = self.cfg.auras.showBuffType
-    f.showStealableBuffs = self.cfg.auras.showStealableBuffs
-    f.onlyShowPlayer = self.cfg.auras.onlyShowPlayerBuffs
-    self.Buffs = SetupNativeAuraFrame(f, style == "focus" or style == "targettarget")
-  else
-    local f = CreateFrame("Frame", nil, self)
-    f.size = self.cfg.auras.size
-    if style == "targettarget" then
-      f.num = 8
-    else
-      f.num = cfg.units.party.auras.number
-    end
-    f:SetHeight((f.size + 5) * (f.num / 9))
-    f:SetWidth((f.size + 5) * 9)
-    f:SetPoint("TOP", self, "RIGHT", 117.5, 30)
-    f.initialAnchor = "TOPLEFT"
-    f["growth-x"] = "RIGHT"
-    f["growth-y"] = "UP"
-    f.spacing = 5
-    f.showBuffType = self.cfg.auras.showBuffType
-    f.showStealableBuffs = self.cfg.auras.showStealableBuffs
-    f.onlyShowPlayer = self.cfg.auras.onlyShowPlayerBuffs
-    self.Buffs = SetupNativeAuraFrame(f, style == "focus" or style == "targettarget")
-  end
-end
-
--- Dispel/aura color runtime moved to core/unit_misc_runtime.lua.
-
---Desaturated and Button CD
-func.postUpdateDebuff = function(element, unit, button, index, duration, expirationTime)
-  if (UnitIsFriend("player", unit) or button.isPlayer) then
-    button.icon:SetDesaturated(false)
-    --button.cd:Show()
-  else
-    button.icon:SetDesaturated(true)
-    --button.cd:Hide()
-  end
-  button.icon.duration = duration
-  button.icon.timeLeft = expirationTime
-  button.icon.first = true
-end
-
---aura icon func
-func.createAuraIcon = function(icons, button)
-  --button:SetSize(icons.size,icons.size)
-  --button.cd:SetReverse()
-  local size = icons.size or button:GetWidth()
-  button.Cooldown:SetFrameStrata("MEDIUM")
-  button.Cooldown:SetPoint("TOPLEFT", 1, -1)
-  button.Cooldown:SetPoint("BOTTOMRIGHT", -1, 1)
-  button.Icon:SetTexCoord(0.1, 0.9, 0.1, 0.9)
-  --count helper frame, this push the count fontstring over the cooldown spiral
-  button.countFrame = CreateFrame("Frame", nil, button)
-  button.countFrame:SetAllPoints()
-  button.countFrame:SetFrameStrata("MEDIUM")
-  button.countFrame:SetFrameLevel(button.Cooldown:GetFrameLevel() + 2)
-  --button count
-  button.Count:SetParent(button.countFrame)
-  button.Count:ClearAllPoints()
-  button.Count:SetPoint("TOPRIGHT", 4, 4)
-  button.Count:SetTextColor(0.9, 0.9, 0.9)
-  --fix fontsize to be based on button size
-  button.Count:SetFont(cfg.font, size / 1.8, "THINOUTLINE")
-  if func.RegisterFontString then
-    func.RegisterFontString(button.Count, size / 1.8, "THINOUTLINE")
-  end
-  button.Overlay:SetTexture(mediapath .. "gloss2")
-  button.Overlay:SetTexCoord(0, 1, 0, 1)
-  button.Overlay:SetPoint("TOPLEFT", -1, 1)
-  button.Overlay:SetPoint("BOTTOMRIGHT", 1, -1)
-  button.Overlay:SetVertexColor(0.4, 0.35, 0.35, 1)
-  button.Overlay:Show()
-  button.Overlay.Hide = function() end
-  local back = button:CreateTexture(nil, "BACKGROUND", nil, 0)
-  back:SetPoint("TOPLEFT", button.Icon, "TOPLEFT", -0.18 * size, 0.18 * size)
-  back:SetPoint("BOTTOMRIGHT", button.Icon, "BOTTOMRIGHT", 0.18 * size, -0.18 * size)
-  back:SetTexture(mediapath .. "simplesquare_glow")
-  back:SetVertexColor(0, 0, 0, 1)
 end
 
 --create AlternativePower
@@ -793,7 +327,20 @@ func.createAlternativePowerBar = function(self, name)
   f = func.createFontString(g, cfg.font, 24, "THINOUTLINE")
   f:SetPoint("CENTER", 0, 0)
   f:SetTextColor(0.8, 0.8, 0.8)
-  self:Tag(f, "[diablo:altpower]")
+  bar.ValueText = f
+  bar.PostUpdate = function(element, unit, current, minimum, maximum)
+    local IsSecretValue = func.IsSecretValue
+    if IsSecretValue(current) or IsSecretValue(maximum) then
+      element.ValueText:SetFormattedText("%.0f / %.0f", current, maximum)
+      return
+    end
+    if type(current) == "number" and type(maximum) == "number" and maximum > 0 then
+      element.ValueText:SetFormattedText("%.0f / %.0f", current, maximum)
+    else
+      element.ValueText:SetText("")
+    end
+  end
+  bar.smoothing = func.ResolveStatusBarSmoothing(self.cfg.altpower and self.cfg.altpower.smooth)
 
   bar:SetScale(self.cfg.altpower.scale)
   bar:Hide()
@@ -843,7 +390,7 @@ end
 --check threat
 func.checkThreat = function(self, event, unit)
   if unit then
-    if self.unit ~= unit then return end
+    if self.__unit ~= unit then return end
     local threat = UnitThreatSituation(unit)
     if IsSecretValue(threat) then
       threat = nil
@@ -863,6 +410,72 @@ func.checkThreat = function(self, event, unit)
   end
 end
 
+-- Lazy 3D portrait lifecycle.
+--
+-- PlayerModel creation and oUF Portrait event registration are deferred until
+-- the owning unit frame is actually visible. Static 2D portraits remain eager
+-- because they are cheap and oUF can bind them during normal style setup.
+local function EnsureLazyPortrait(frame)
+  local factory = frame and frame.__rothPortraitFactory
+  if type(factory) ~= "function" or frame.Portrait then return end
+
+  if InCombatLockdown and InCombatLockdown() then
+    if not frame.__rothPortraitDeferred then
+      frame.__rothPortraitDeferred = true
+      local policy = ns.framePolicy
+      if policy and type(policy.DeferUntilOutOfCombat) == "function" then
+        policy.DeferUntilOutOfCombat("portrait:" .. tostring(frame), function()
+          frame.__rothPortraitDeferred = nil
+          EnsureLazyPortrait(frame)
+        end)
+      else
+        frame.__rothPortraitDeferred = nil
+      end
+    end
+    return
+  end
+
+  local portrait = factory(frame)
+  if not portrait then return end
+  frame.__rothPortraitFactory = nil
+  frame.Portrait = portrait
+  if frame.__rothPortraitLifecycleReady
+      and type(frame.EnableElement) == "function"
+      and not frame:IsElementEnabled("Portrait") then
+    frame:EnableElement("Portrait")
+  end
+end
+
+local function AttachLazyPortraitLifecycle(frame)
+  if type(frame.__rothPortraitFactory) ~= "function" then
+    return
+  end
+  frame.__rothPortraitLifecycleReady = true
+  frame:HookScript("OnShow", EnsureLazyPortrait)
+  if frame:IsVisible() then
+    EnsureLazyPortrait(frame)
+  end
+end
+
+oUF:RegisterInitCallback(AttachLazyPortraitLifecycle)
+
+local function CreatePortraitChrome(owner, back)
+  local borderholder = CreateFrame("Frame", nil, back)
+  borderholder:SetAllPoints(back)
+  owner.BorderHolder = borderholder
+
+  local border = borderholder:CreateTexture(nil, "BACKGROUND", nil, -6)
+  border:SetAllPoints(borderholder)
+  border:SetTexture(mediapath .. "portrait_border")
+  border:SetVertexColor(0.6, 0.5, 0.5)
+  owner.Border = border
+
+  local gloss = borderholder:CreateTexture(nil, "BACKGROUND", nil, -5)
+  gloss:SetAllPoints(borderholder)
+  gloss:SetTexture(mediapath .. "portrait_gloss")
+  gloss:SetVertexColor(0.9, 0.95, 1, 0.6)
+end
+
 --create portrait func
 func.createPortrait = function(self)
   local back = CreateFrame("Frame", nil, self)
@@ -870,99 +483,45 @@ func.createPortrait = function(self)
   back:SetSize(portraitWidth, portraitWidth)
 
   local style = ResolveUnitStyle(self)
-  if style == "party" then
-    if cfg.units.party.vertical == false then
-      back:SetPoint("BOTTOM", self, "TOP", 0, -35)
-    else
-      back:SetPoint("BOTTOM", self, "LEFT", 10, -38)
-    end
+  local isParty = style == "party"
+  if isParty and cfg.units.party.vertical == true then
+    back:SetPoint("BOTTOM", self, "LEFT", 10, -38)
   else
     back:SetPoint("BOTTOM", self, "TOP", 0, -35)
   end
   self.PortraitHolder = back
 
-  local t = back:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetAllPoints(back)
-  t:SetTexture(mediapath .. "portrait_back")
-  t:SetVertexColor(0.1, 0.1, 0.1, 0.9)
-  self.PortraitBack = t
+  local background = back:CreateTexture(nil, "BACKGROUND", nil, -8)
+  background:SetAllPoints(back)
+  background:SetTexture(mediapath .. "portrait_back")
+  background:SetVertexColor(0.1, 0.1, 0.1, 0.9)
+  self.PortraitBack = background
 
-  if style == "party" then
-    if self.cfg.portrait.use3D then
-      self.Portrait = CreateFrame("PlayerModel", nil, back)
-      self.Portrait:SetPoint("TOPLEFT", back, "TOPLEFT", 22, -20)
-      self.Portrait:SetPoint("BOTTOMRIGHT", back, "BOTTOMRIGHT", -19, 21)
-
-      local borderholder = CreateFrame("Frame", nil, self.Portrait)
-      borderholder:SetAllPoints(back)
-      self.BorderHolder = borderholder
-
-      local border = borderholder:CreateTexture(nil, "BACKGROUND", nil, -6)
-      border:SetAllPoints(borderholder)
-      border:SetTexture(mediapath .. "portrait_border")
-      border:SetVertexColor(0.6, 0.5, 0.5)
-      --border:SetVertexColor(1,0,0,1) --threat test
-      self.Border = border
-
-      local gloss = borderholder:CreateTexture(nil, "BACKGROUND", nil, -5)
-      gloss:SetAllPoints(borderholder)
-      gloss:SetTexture(mediapath .. "portrait_gloss")
-      gloss:SetVertexColor(0.9, 0.95, 1, 0.6)
-    else
-      self.Portrait = back:CreateTexture(nil, "BACKGROUND", nil, -7)
-      self.Portrait:SetPoint("TOPLEFT", back, "TOPLEFT", 21, -21)
-      self.Portrait:SetPoint("BOTTOMRIGHT", back, "BOTTOMRIGHT", -21, 21)
-      self.Portrait:SetTexCoord(0.15, 0.85, 0.15, 0.85)
-
-      local border = back:CreateTexture(nil, "BACKGROUND", nil, -6)
-      border:SetAllPoints(back)
-      border:SetTexture(mediapath .. "portrait_border")
-      border:SetVertexColor(0.6, 0.5, 0.5)
-      self.Border = border
-
-      local gloss = back:CreateTexture(nil, "BACKGROUND", nil, -5)
-      gloss:SetAllPoints(back)
-      gloss:SetTexture(mediapath .. "portrait_gloss")
-      gloss:SetVertexColor(0.9, 0.95, 1, 0.6)
+  if self.cfg.portrait.use3D == true then
+    CreatePortraitChrome(self, back)
+    self.__rothPortraitFactory = function()
+      local portrait = CreateFrame("PlayerModel", nil, back)
+      if isParty then
+        portrait:SetPoint("TOPLEFT", back, "TOPLEFT", 22, -20)
+        portrait:SetPoint("BOTTOMRIGHT", back, "BOTTOMRIGHT", -19, 21)
+      else
+        portrait:SetPoint("TOPLEFT", back, "TOPLEFT", 27, -27)
+        portrait:SetPoint("BOTTOMRIGHT", back, "BOTTOMRIGHT", -27, 27)
+      end
+      return portrait
     end
   else
-    if self.cfg.portrait.use3D then
-      self.Portrait = CreateFrame("PlayerModel", nil, back)
-      self.Portrait:SetPoint("TOPLEFT", back, "TOPLEFT", 27, -27)
-      self.Portrait:SetPoint("BOTTOMRIGHT", back, "BOTTOMRIGHT", -27, 27)
-
-      local borderholder = CreateFrame("Frame", nil, self.Portrait)
-      borderholder:SetAllPoints(back)
-      self.BorderHolder = borderholder
-
-      local border = borderholder:CreateTexture(nil, "BACKGROUND", nil, -6)
-      border:SetAllPoints(borderholder)
-      border:SetTexture(mediapath .. "portrait_border")
-      border:SetVertexColor(0.6, 0.5, 0.5)
-      --border:SetVertexColor(1,0,0,1) --threat test
-      self.Border = border
-
-      local gloss = borderholder:CreateTexture(nil, "BACKGROUND", nil, -5)
-      gloss:SetAllPoints(borderholder)
-      gloss:SetTexture(mediapath .. "portrait_gloss")
-      gloss:SetVertexColor(0.9, 0.95, 1, 0.6)
+    local portrait = back:CreateTexture(nil, "BACKGROUND", nil, -7)
+    if isParty then
+      portrait:SetPoint("TOPLEFT", back, "TOPLEFT", 21, -21)
+      portrait:SetPoint("BOTTOMRIGHT", back, "BOTTOMRIGHT", -21, 21)
     else
-      self.Portrait = back:CreateTexture(nil, "BACKGROUND", nil, -7)
-      self.Portrait:SetPoint("TOPLEFT", back, "TOPLEFT", 27, -27)
-      self.Portrait:SetPoint("BOTTOMRIGHT", back, "BOTTOMRIGHT", -27, 27)
-      self.Portrait:SetTexCoord(0.15, 0.85, 0.15, 0.85)
-
-      local border = back:CreateTexture(nil, "BACKGROUND", nil, -6)
-      border:SetAllPoints(back)
-      border:SetTexture(mediapath .. "portrait_border")
-      border:SetVertexColor(0.6, 0.5, 0.5)
-      self.Border = border
-
-      local gloss = back:CreateTexture(nil, "BACKGROUND", nil, -5)
-      gloss:SetAllPoints(back)
-      gloss:SetTexture(mediapath .. "portrait_gloss")
-      gloss:SetVertexColor(0.9, 0.95, 1, 0.6)
+      portrait:SetPoint("TOPLEFT", back, "TOPLEFT", 27, -27)
+      portrait:SetPoint("BOTTOMRIGHT", back, "BOTTOMRIGHT", -27, 27)
     end
+    portrait:SetTexCoord(0.15, 0.85, 0.15, 0.85)
+    self.Portrait = portrait
+    CreatePortraitChrome(self, back)
   end
 
   if self.cfg.vertical == true then
@@ -974,59 +533,41 @@ end
 
 --create standalone portrait func
 func.createStandAlonePortrait = function(self)
-  local fname
   local style = ResolveUnitStyle(self)
-  if style == "player" then
-    fname = "Roth_UIPlayerPortrait"
-  elseif style == "target" then
-    fname = "Roth_UITargetPortrait"
-  end
-
+  local fname = style == "player" and "Roth_UIPlayerPortrait"
+    or style == "target" and "Roth_UITargetPortrait"
+    or nil
   local pcfg = self.cfg.portrait
 
   local back = CreateFrame("Frame", fname, self)
   back:SetSize(pcfg.size, pcfg.size)
-  back:SetPoint(pcfg.pos.a1, pcfg.pos.af, pcfg.pos.a2, pcfg.pos.x, pcfg.pos.y)
-
+  local anchorFrame = type(pcfg.pos.af) == "string" and _G[pcfg.pos.af] or pcfg.pos.af
+  back:SetPoint(pcfg.pos.a1, anchorFrame or UIParent, pcfg.pos.a2, pcfg.pos.x, pcfg.pos.y)
+  self.PortraitHolder = back
   func.applyDragFunctionality(back)
 
-  local t = back:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetAllPoints(back)
-  t:SetTexture(mediapath .. "portrait_back")
-  t:SetVertexColor(0.1, 0.1, 0.1, 0.9)
+  local background = back:CreateTexture(nil, "BACKGROUND", nil, -8)
+  background:SetAllPoints(back)
+  background:SetTexture(mediapath .. "portrait_back")
+  background:SetVertexColor(0.1, 0.1, 0.1, 0.9)
+  self.PortraitBack = background
 
-  if pcfg.use3D then
-    self.Portrait = CreateFrame("PlayerModel", nil, back)
-    self.Portrait:SetPoint("TOPLEFT", back, "TOPLEFT", pcfg.size * 27 / 128, -pcfg.size * 27 / 128)
-    self.Portrait:SetPoint("BOTTOMRIGHT", back, "BOTTOMRIGHT", -pcfg.size * 27 / 128, pcfg.size * 27 / 128)
-
-    local borderholder = CreateFrame("Frame", nil, self.Portrait)
-    borderholder:SetAllPoints(back)
-
-    local border = borderholder:CreateTexture(nil, "BACKGROUND", nil, -6)
-    border:SetAllPoints(borderholder)
-    border:SetTexture(mediapath .. "portrait_border")
-    border:SetVertexColor(0.6, 0.5, 0.5)
-
-    local gloss = borderholder:CreateTexture(nil, "BACKGROUND", nil, -5)
-    gloss:SetAllPoints(borderholder)
-    gloss:SetTexture(mediapath .. "portrait_gloss")
-    gloss:SetVertexColor(0.9, 0.95, 1, 0.6)
+  local inset = pcfg.size * 27 / 128
+  if pcfg.use3D == true then
+    CreatePortraitChrome(self, back)
+    self.__rothPortraitFactory = function()
+      local portrait = CreateFrame("PlayerModel", nil, back)
+      portrait:SetPoint("TOPLEFT", back, "TOPLEFT", inset, -inset)
+      portrait:SetPoint("BOTTOMRIGHT", back, "BOTTOMRIGHT", -inset, inset)
+      return portrait
+    end
   else
-    self.Portrait = back:CreateTexture(nil, "BACKGROUND", nil, -7)
-    self.Portrait:SetPoint("TOPLEFT", back, "TOPLEFT", pcfg.size * 27 / 128, -pcfg.size * 27 / 128)
-    self.Portrait:SetPoint("BOTTOMRIGHT", back, "BOTTOMRIGHT", -pcfg.size * 27 / 128, pcfg.size * 27 / 128)
-    self.Portrait:SetTexCoord(0.15, 0.85, 0.15, 0.85)
-
-    local border = back:CreateTexture(nil, "BACKGROUND", nil, -6)
-    border:SetAllPoints(back)
-    border:SetTexture(mediapath .. "portrait_border")
-    border:SetVertexColor(0.6, 0.5, 0.5)
-
-    local gloss = back:CreateTexture(nil, "BACKGROUND", nil, -5)
-    gloss:SetAllPoints(back)
-    gloss:SetTexture(mediapath .. "portrait_gloss")
-    gloss:SetVertexColor(0.9, 0.95, 1, 0.6)
+    local portrait = back:CreateTexture(nil, "BACKGROUND", nil, -7)
+    portrait:SetPoint("TOPLEFT", back, "TOPLEFT", inset, -inset)
+    portrait:SetPoint("BOTTOMRIGHT", back, "BOTTOMRIGHT", -inset, inset)
+    portrait:SetTexCoord(0.15, 0.85, 0.15, 0.85)
+    self.Portrait = portrait
+    CreatePortraitChrome(self, back)
   end
 end
 --create castbar func
@@ -1150,8 +691,8 @@ func.createCastbar = function(f)
     c.Shield:Hide()
   end
 
-  if style == "target" and ns.TargetCastbarRuntime and type(ns.TargetCastbarRuntime.ApplyInitialVisual) == "function" then
-    ns.TargetCastbarRuntime.ApplyInitialVisual(c)
+  if style ~= "player" and ns.TargetCastbarRuntime and type(ns.TargetCastbarRuntime.Bind) == "function" then
+    ns.TargetCastbarRuntime.Bind(c, f.unit or style)
   end
 
   --safezone
@@ -1174,194 +715,9 @@ func.createCastbar = function(f)
   c:Hide()
 end
 
--- Standalone castbar polling (for units where UNIT_SPELLCAST events are unreliable).
--- Uses only non-secret numeric fields (start/end times) and never compares Secret Values.
-func.EnableStandaloneCastbar = function(bar, unit)
-  if not (bar and unit) then return end
-  if bar.__standaloneEnabled then return end
-  bar.__standaloneEnabled = true
-
-  local pollFrame = bar._dragFrame or bar
-  local accum = 0
-  local active = false
-  local castbarRuntime = ns and ns.TargetCastbarRuntime or nil
-
-  local function SafeIsSecret(v)
-    return IsSecretValue(v)
-  end
-
-  local function SafeNum(v)
-    if type(v) == "number" and not SafeIsSecret(v) then
-      return v
-    end
-    return nil
-  end
-
-  local function SafeTracked(v)
-    local valueType = type(v)
-    if (valueType == "number" or valueType == "string") and not SafeIsSecret(v) then
-      return v
-    end
-    return nil
-  end
-
-  local function SafeBool(v)
-    if type(v) == "boolean" and not SafeIsSecret(v) then
-      return v
-    end
-    return nil
-  end
-
-  local function SafeSetText(fs, v)
-    if not fs then return end
-    if type(v) == "nil" or SafeIsSecret(v) then
-      fs:SetText("")
-      return
-    end
-    fs:SetText(tostring(v))
-  end
-  local function Query(unit)
-    local name, text, texture, startTimeMS, endTimeMS, _, _, notInterruptible, spellID, castBarID = UnitCastingInfo(unit)
-    if type(name) ~= "nil" then
-      return name, text, texture, startTimeMS, endTimeMS, "cast", notInterruptible, spellID, castBarID
-    end
-
-    local isEmpowered
-    name, text, texture, startTimeMS, endTimeMS, _, notInterruptible, spellID, isEmpowered, _, castBarID = UnitChannelInfo(unit)
-    if type(name) == "nil" then
-      return nil
-    end
-
-    local castKind = (SafeBool(isEmpowered) == true) and "empower" or "channel"
-    return name, text, texture, startTimeMS, endTimeMS, castKind, notInterruptible, spellID, castBarID
-  end
-
-  local function Update()
-    local name, displayText, texture, sMS, eMS, castKind, notInterruptible, spellID, castBarID = Query(unit)
-    if type(name) == "nil" then
-      if active then
-        active = false
-        bar.casting = nil
-        bar.channeling = nil
-        bar.empowering = nil
-        bar.castID = nil
-        bar.spellID = nil
-        bar.notInterruptible = nil
-        bar._lastCastRemaining = nil
-        if castbarRuntime and type(castbarRuntime.ApplyInitialVisual) == "function" then
-          castbarRuntime.ApplyInitialVisual(bar)
-        end
-        bar:Hide()
-      end
-      return
-    end
-
-    local isChannel = (castKind == "channel")
-    local isEmpower = (castKind == "empower")
-    active = true
-    bar._rothUnit = unit
-    bar.casting = (castKind == "cast" or isEmpower)
-    bar.channeling = isChannel
-    bar.empowering = isEmpower
-    bar.castID = SafeTracked(castBarID)
-    bar.spellID = SafeNum(spellID)
-    bar.notInterruptible = SafeBool(notInterruptible)
-
-    if type(texture) ~= "nil" and not SafeIsSecret(texture) and bar.Icon and bar.Icon.SetTexture then
-      bar.Icon:SetTexture(texture)
-    end
-
-    SafeSetText(bar.Text, displayText or name)
-
-    local s = SafeNum(sMS)
-    local e = SafeNum(eMS)
-    if not s or not e or e <= s then
-      bar:SetMinMaxValues(0, 1)
-      bar:SetValue(0)
-      SafeSetText(bar.Time, "")
-      if castbarRuntime and type(castbarRuntime.RefreshBar) == "function" then
-        castbarRuntime.RefreshBar(bar)
-      end
-      bar:Show()
-      return
-    end
-
-    local now = GetTime() * 1000
-    local dur = (e - s) / 1000
-    if dur <= 0 then dur = 0.01 end
-
-    bar:SetMinMaxValues(0, dur)
-
-    local val
-    local remaining
-    if isChannel then
-      if bar.SetReverseFill then bar:SetReverseFill(true) end
-      remaining = (e - now) / 1000
-      if remaining < 0 then remaining = 0 end
-      val = remaining
-    else
-      if bar.SetReverseFill then bar:SetReverseFill(false) end
-      val = (now - s) / 1000
-      if val < 0 then val = 0 end
-      if val > dur then val = dur end
-      remaining = dur - val
-    end
-
-    bar:SetValue(val)
-    if bar.Time then
-      local rounded = floor((remaining * 10) + 0.5) / 10
-      if bar._lastCastRemaining ~= rounded then
-        bar._lastCastRemaining = rounded
-        SafeSetText(bar.Time, string.format("%.1f", rounded))
-      end
-    end
-
-    if bar.Spark then
-      local w = bar:GetWidth() or 0
-      local pct = 0
-      if dur > 0 then
-        pct = (isChannel and ((dur - val) / dur) or (val / dur))
-      end
-      if pct < 0 then pct = 0 end
-      if pct > 1 then pct = 1 end
-      local sparkH = (bar:GetHeight() or 10) * 1.8
-      if bar._lastSparkHeight ~= sparkH then
-        bar._lastSparkHeight = sparkH
-        bar.Spark:SetSize(10, sparkH)
-      end
-      local sparkX = w * pct
-      if bar._lastSparkX ~= sparkX then
-        bar._lastSparkX = sparkX
-        bar.Spark:ClearAllPoints()
-        bar.Spark:SetPoint("CENTER", bar, "LEFT", sparkX, 0)
-      end
-      if not bar.Spark:IsShown() then
-        bar.Spark:Show()
-      end
-    end
-
-    if castbarRuntime and type(castbarRuntime.RefreshBar) == "function" then
-      castbarRuntime.RefreshBar(bar)
-    end
-    bar:Show()
-  end
-
-  local old = pollFrame:GetScript("OnUpdate")
-  pollFrame:SetScript("OnUpdate", function(self, elapsed)
-    if old then old(self, elapsed) end
-    accum = accum + (elapsed or 0)
-    local rate = active and 0.05 or 0.15
-    if accum < rate then return end
-    accum = 0
-    Update()
-  end)
-
-  -- Initial state
-  if castbarRuntime and type(castbarRuntime.ApplyInitialVisual) == "function" then
-    castbarRuntime.ApplyInitialVisual(bar)
-  end
-  bar:Hide()
-end
+-- Eventless *target unit tokens do not receive an addon polling fallback.
+-- Polling UnitCastingInfo/UnitChannelInfo would create a permanent hot path and
+-- duplicate oUF cast state; targettarget castbars are therefore unsupported.
 
 func.PostUpdateStage =
     function(self, stage)
@@ -1425,195 +781,38 @@ func.createIcon = function(f, layer, size, anchorframe, anchorpoint1, anchorpoin
   return icon
 end
 
-local function GetGroupRangeDriver(frame)
-  local rangeCfg = frame and frame.cfg and frame.cfg.range
-  local driver = type(rangeCfg) == "table" and rangeCfg.driver or nil
-  if type(driver) ~= "string" then
-    return "blizzard"
-  end
-
-  driver = driver:lower()
-  if driver == "off" or driver == "disabled" or driver == "none" then
-    return "off"
-  end
-  if driver == "ouf" then
-    return "ouf"
-  end
-  return "blizzard"
-end
-
 local function GetGroupRangeOutsideAlpha(frame)
   local alphaCfg = frame and frame.cfg and frame.cfg.alpha
   local outsideAlpha = type(alphaCfg) == "table" and tonumber(alphaCfg.notinrange) or nil
   return outsideAlpha or 0.55
 end
 
-local function ApplyGroupRangeAlpha(frame, isOutside)
-  if not (frame and frame.SetAlpha) then
-    return
-  end
-
-  local alpha = isOutside and GetGroupRangeOutsideAlpha(frame) or 1
-  frame:SetAlpha(alpha)
-end
-
-local function SyncBlizzardRangeDriver(driver)
-  local frame = driver and driver.owner
-  local unit = frame and (frame.unit or frame.displayedUnit)
-  if not unit then
-    return
-  end
-
-  if not UnitIsConnected(unit) then
-    frame.__rothOutOfRange = false
-    ApplyGroupRangeAlpha(frame, false)
-    return
-  end
-
-  local inRange, checkedRange = UnitInRange(unit)
-  local isOutside = checkedRange and (inRange == false)
-  frame.__rothOutOfRange = isOutside and true or false
-  ApplyGroupRangeAlpha(frame, isOutside)
-end
-
-local function UnregisterBlizzardRangeDriver(driver)
-  if not driver then
-    return
-  end
-
-  driver:UnregisterEvent("UNIT_IN_RANGE_UPDATE")
-  driver:UnregisterEvent("UNIT_DISTANCE_CHECK_UPDATE")
-  driver:UnregisterEvent("UNIT_CONNECTION")
-  driver:UnregisterEvent("PARTY_MEMBER_ENABLE")
-  driver:UnregisterEvent("PARTY_MEMBER_DISABLE")
-  driver:UnregisterEvent("GROUP_ROSTER_UPDATE")
-  driver:UnregisterEvent("PLAYER_ENTERING_WORLD")
-  driver.registeredUnit = nil
-end
-
-local function RegisterBlizzardRangeDriver(driver)
-  local frame = driver and driver.owner
-  local unit = frame and (frame.unit or frame.displayedUnit)
-  if not (frame and unit and frame.IsVisible and frame:IsVisible()) then
-    return
-  end
-
-  if driver.registeredUnit == unit then
-    SyncBlizzardRangeDriver(driver)
-    return
-  end
-
-  UnregisterBlizzardRangeDriver(driver)
-  driver:RegisterUnitEvent("UNIT_IN_RANGE_UPDATE", unit)
-  driver:RegisterUnitEvent("UNIT_DISTANCE_CHECK_UPDATE", unit)
-  driver:RegisterUnitEvent("UNIT_CONNECTION", unit)
-  driver:RegisterEvent("PARTY_MEMBER_ENABLE")
-  driver:RegisterEvent("PARTY_MEMBER_DISABLE")
-  driver:RegisterEvent("GROUP_ROSTER_UPDATE")
-  driver:RegisterEvent("PLAYER_ENTERING_WORLD")
-  driver.registeredUnit = unit
-  SyncBlizzardRangeDriver(driver)
-end
-
-local function OnBlizzardRangeDriverEvent(self, event, ...)
-  local frame = self.owner
-  local unit = frame and (frame.unit or frame.displayedUnit)
-  if not unit then
-    return
-  end
-
-  if event == "UNIT_IN_RANGE_UPDATE" then
-    local eventUnit, inRange = ...
-    if eventUnit ~= unit then
-      return
-    end
-
-    local isOutside = UnitIsConnected(unit) and (inRange == false)
-    frame.__rothOutOfRange = isOutside and true or false
-    ApplyGroupRangeAlpha(frame, isOutside)
-    return
-  end
-
-  if event == "UNIT_DISTANCE_CHECK_UPDATE" then
-    local eventUnit, inDistance = ...
-    if eventUnit == unit then
-      frame.__rothInDistance = inDistance == true
-    end
-    return
-  end
-
-  RegisterBlizzardRangeDriver(self)
-end
-
-local function EnsureBlizzardRangeDriver(frame)
-  local driver = frame and frame.__rothBlizzardRangeDriver
-  if driver then
-    return driver
-  end
-
-  driver = CreateFrame("Frame", nil, frame)
-  driver.owner = frame
-  driver:SetScript("OnEvent", OnBlizzardRangeDriverEvent)
-
-  -- Blizzard compact frames only listen for range events while visible because the
-  -- engine does extra work for `UNIT_IN_RANGE_UPDATE`/`UNIT_DISTANCE_CHECK_UPDATE`.
-  -- We keep that behavior here. `driver=blizzard` follows the Blizzard event path;
-  -- `driver=ouf` delegates the same job to the oUF Range element for comparison.
-  frame:HookScript("OnShow", function()
-    RegisterBlizzardRangeDriver(driver)
-  end)
-  frame:HookScript("OnHide", function()
-    UnregisterBlizzardRangeDriver(driver)
-  end)
-
-  frame.__rothBlizzardRangeDriver = driver
-  return driver
-end
-
+-- oUF 14 owns range events and forwards potentially secret booleans directly to
+-- Frame:SetAlphaFromBoolean. Roth UI only supplies the two ordinary alpha values.
 func.ConfigureGroupRange = function(self)
   local style = ResolveUnitStyle(self)
   if style ~= "party" and style ~= "raid" then
     return
   end
 
-  local driver = GetGroupRangeDriver(self)
-  if driver == "off" then
-    ApplyGroupRangeAlpha(self, false)
-    return
-  end
-
-  if driver == "ouf" then
-    self.Range = self.Range or {}
-    self.Range.insideAlpha = 1
-    self.Range.outsideAlpha = GetGroupRangeOutsideAlpha(self)
-    return
-  end
-
-  RegisterBlizzardRangeDriver(EnsureBlizzardRangeDriver(self))
+  self.Range = {
+    insideAlpha = 1,
+    outsideAlpha = GetGroupRangeOutsideAlpha(self),
+  }
 end
 
 func.RefreshGroupRangeFrame = function(frame)
-  if type(frame) ~= "table" then
-    return
-  end
-
-  if type(frame.Range) == "table" then
-    frame.Range.insideAlpha = 1
-    frame.Range.outsideAlpha = GetGroupRangeOutsideAlpha(frame)
-    if type(frame.ForceUpdate) == "function" then
-      frame:ForceUpdate()
-    end
-  end
-
-  local driver = frame.__rothBlizzardRangeDriver
-  if driver then
-    RegisterBlizzardRangeDriver(driver)
+  local range = frame and frame.Range
+  if type(range) ~= "table" then return end
+  range.insideAlpha = 1
+  range.outsideAlpha = GetGroupRangeOutsideAlpha(frame)
+  if type(frame.UpdateAllElements) == "function" then
+    frame:UpdateAllElements("RothUIRangeSettings")
   end
 end
 
 function ns.RefreshGroupRangeRuntime()
   local seen = {}
-
   local function RefreshFrame(frame)
     if frame and not seen[frame] then
       seen[frame] = true
@@ -1623,18 +822,14 @@ function ns.RefreshGroupRangeRuntime()
 
   local partyHeader = ns and ns.partyHeader
   if partyHeader and partyHeader.GetChildren then
-    for _, frame in ipairs({ partyHeader:GetChildren() }) do
-      RefreshFrame(frame)
-    end
+    for _, frame in ipairs({ partyHeader:GetChildren() }) do RefreshFrame(frame) end
   end
 
   local raidGroups = ns and ns.raidGroups
   if type(raidGroups) == "table" then
     for _, header in pairs(raidGroups) do
       if header and header.GetChildren then
-        for _, frame in ipairs({ header:GetChildren() }) do
-          RefreshFrame(frame)
-        end
+        for _, frame in ipairs({ header:GetChildren() }) do RefreshFrame(frame) end
       end
     end
   end

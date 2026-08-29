@@ -55,17 +55,11 @@ function safety.ReportGuardFailure(kind, detail)
   end
 end
 
-local function GetSecretFn()
-  return _G.issecretvalue or _G.IsSecretValue
-end
+local IsSecretValue = _G.issecretvalue or _G.IsSecretValue
+assert(type(IsSecretValue) == "function", "Roth_UI: issecretvalue is required on Retail 12.1")
 
 function safety.IsSecret(v)
-  local fn = GetSecretFn()
-  if type(fn) ~= "function" then
-    return false
-  end
-  local ok, res = pcall(fn, v)
-  return ok and res or false
+  return IsSecretValue(v)
 end
 
 function safety.IsForbiddenTable(t)

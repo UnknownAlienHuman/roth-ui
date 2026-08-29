@@ -108,39 +108,6 @@ local function GetOrbDefaultsRoot()
   return type(defaults) == "table" and defaults or nil
 end
 
-local function GetOrbCompatPath(path)
-  if type(path) ~= "table" or #path < 2 then
-    return nil
-  end
-  if path[1] ~= "value" or path[2] ~= "bottom" then
-    return nil
-  end
-
-  local compatPath = { "value", "bot" }
-  for i = 3, #path do
-    compatPath[#compatPath + 1] = path[i]
-  end
-  return compatPath
-end
-
-local function GetOrbConfigPathValue(config, path)
-  if type(config) ~= "table" or type(path) ~= "table" or #path == 0 then
-    return nil
-  end
-
-  local value = GetPath(config, path)
-  if value ~= nil then
-    return value
-  end
-
-  local compatPath = GetOrbCompatPath(path)
-  if compatPath then
-    return GetPath(config, compatPath)
-  end
-
-  return nil
-end
-
 storeApi.GetOrbConfig = function(orbType)
   if type(orbType) ~= "string" or orbType == "" then
     return nil
@@ -195,28 +162,6 @@ local function SetDomainValue(domain, path, value)
   return SetDomainRoot(domain, root)
 end
 
-local function ClearOrbCompatValue(orbType, path)
-  local compatPath = GetOrbCompatPath(path)
-  if not compatPath then
-    return true
-  end
-
-  local root = GetDomainRoot("orbChar", false)
-  local config = type(root) == "table" and root[orbType] or nil
-  if type(config) ~= "table" then
-    return true
-  end
-
-  local canonicalBottom = GetPath(config, { "value", "bottom" })
-  local compatBottom = GetPath(config, { "value", "bot" })
-  if type(canonicalBottom) ~= "table" or compatBottom == nil then
-    return true
-  end
-
-  SetPath(config, { "value", "bot" }, nil)
-  return SetDomainRoot("orbChar", root)
-end
-
 storeApi.GetOrbCharValue = function(orbType, path, default)
   local root = GetDomainRoot("orbChar", false)
   local fullPath = BuildOrbPath(orbType, path)
@@ -236,13 +181,15 @@ storeApi.GetOrbConfigValue = function(orbType, path, default)
   end
 
   local root = GetDomainRoot("orbChar", false)
-  local value = GetOrbConfigPathValue(type(root) == "table" and root[orbType] or nil, path)
+  local config = type(root) == "table" and root[orbType] or nil
+  local value = type(config) == "table" and GetPath(config, path) or nil
   if value ~= nil then
     return value
   end
 
   local defaults = GetOrbDefaultsRoot()
-  value = GetOrbConfigPathValue(type(defaults) == "table" and defaults[orbType] or nil, path)
+  config = type(defaults) == "table" and defaults[orbType] or nil
+  value = type(config) == "table" and GetPath(config, path) or nil
   if value ~= nil then
     return value
   end
@@ -263,10 +210,7 @@ storeApi.SetOrbConfigValue = function(orbType, path, value)
   if not fullPath then
     return false
   end
-  if not SetDomainValue("orbChar", fullPath, value) then
-    return false
-  end
-  return ClearOrbCompatValue(orbType, path)
+  return SetDomainValue("orbChar", fullPath, value)
 end
 
 storeApi.GetOrbGlobalValue = function(path, default)

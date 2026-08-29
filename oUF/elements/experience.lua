@@ -11,6 +11,15 @@ local UnitXP = UnitXP
 local UnitXPMax = UnitXPMax
 local GetXPExhaustion = GetXPExhaustion
 local UnitHasVehicleUI = UnitHasVehicleUI
+local IsSecretValue = (ns and ns.safety and ns.safety.IsSecret) or function(value)
+  return type(_G.issecretvalue) == "function" and _G.issecretvalue(value) or false
+end
+
+local function PlayerHasVehicleUI()
+  if type(UnitHasVehicleUI) ~= "function" then return false end
+  local value = UnitHasVehicleUI("player")
+  return not IsSecretValue(value) and value == true
+end
 local UnitLevel = UnitLevel
 local IsXPUserDisabled = IsXPUserDisabled
 local GetMaxLevelForPlayerExpansion = GetMaxLevelForPlayerExpansion
@@ -85,7 +94,7 @@ local function SetVisibility(self, element, shouldShow)
 end
 
 local function Update(self, event, unit)
-  if unit and unit ~= self.unit then
+  if unit and unit ~= self.__unit then
     return
   end
 
@@ -95,12 +104,12 @@ local function Update(self, event, unit)
   end
 
   if type(experience.PreUpdate) == "function" then
-    experience:PreUpdate(self.unit)
+    experience:PreUpdate(self.__unit)
   end
 
   local shouldShow = IsEnabledInConfig(self)
     and not IsPlayerAtMaxLevel()
-    and not (type(UnitHasVehicleUI) == "function" and UnitHasVehicleUI("player"))
+    and not PlayerHasVehicleUI()
 
   local visibilityChanged = SetVisibility(self, experience, shouldShow)
   if not shouldShow then
@@ -108,8 +117,8 @@ local function Update(self, event, unit)
     return
   end
 
-  local current = type(UnitXP) == "function" and UnitXP(self.unit) or 0
-  local maximum = type(UnitXPMax) == "function" and UnitXPMax(self.unit) or 0
+  local current = type(UnitXP) == "function" and UnitXP(self.__unit) or 0
+  local maximum = type(UnitXPMax) == "function" and UnitXPMax(self.__unit) or 0
   if type(current) ~= "number" then
     current = 0
   end
@@ -132,7 +141,7 @@ local function Update(self, event, unit)
   end
 
   if type(experience.PostUpdate) == "function" then
-    experience:PostUpdate(self.unit, current, maximum, restedExhaustion)
+    experience:PostUpdate(self.__unit, current, maximum, restedExhaustion)
   end
 
   if visibilityChanged or event ~= "ForceUpdate" then
@@ -145,7 +154,7 @@ local function Path(self, ...)
 end
 
 local function ForceUpdate(element)
-  return Path(element.__owner, "ForceUpdate", element.__owner.unit)
+  return Path(element.__owner, "ForceUpdate", element.__owner.__unit)
 end
 
 local function Enable(self, unit)

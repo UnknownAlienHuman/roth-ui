@@ -11,7 +11,7 @@ local IsSecretValue = (ns and ns.safety and ns.safety.IsSecret) or function(v)
 end
 
 local function Update(self, event, unit)
-  if unit ~= self.unit then return end
+  if unit ~= self.__unit then return end
   local qicon = self.RareIcon
   if not qicon then return end
 
@@ -43,7 +43,7 @@ local function Path(self, ...)
 end
 
 local function ForceUpdate(element)
-  return Path(element.__owner, "ForceUpdate", element.__owner.unit)
+  return Path(element.__owner, "ForceUpdate", element.__owner.__unit)
 end
 
 local function Enable(self)
@@ -51,6 +51,7 @@ local function Enable(self)
   if qicon then
     qicon.__owner = self
     qicon.ForceUpdate = ForceUpdate
+    qicon:Show()
     self:RegisterEvent("UNIT_CLASSIFICATION_CHANGED", Path)
     return true
   end

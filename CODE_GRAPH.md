@@ -1,18 +1,22 @@
-# Roth UI code graph
+# Roth UI code graph — B4.3
 
-```mermaid
-flowchart TD
-  T["Roth_UI.toc"] --> I["init.lua"]
-  I --> C["core bootstrap and safety"]
-  C --> P["persistence services"]
-  C --> S["settings and slash control plane"]
-  C --> B["bar and mover registries"]
-  C --> O["orb and unit runtime"]
-  B --> AB["action bars and dock"]
-  O --> U["oUF units and elements"]
-  AB --> M["embedded action-bar/button XML"]
-  M -. "separate optional wrappers" .-> MT["module TOCs"]
-  P --> DB[("Roth_UI_DB")]
+```text
+Roth_UI.toc
+  init.lua
+  config persistence owner -> config.lua -> persistence services
+  runtime helpers
+    unit values / tags / movers / native bars
+    target castbar visual adapter
+    lazy managed aura lifecycle
+    reversible Blizzard frame policy
+  unit layouts -> oUF 14
+  Blizzard action-button skin + decorative artwork
+
+Roth_UI_Options.toc (LoadOnDemand)
+  logger / reports / SV doctor
+  Settings owner and page builders
+  transfer/import/export
+  debug commands
 ```
 
-The graph is a repository-level ownership map, not a claim that every runtime call is synchronous. Deferred and post-combat paths are intentionally coordinated by core services.
+High-frequency state remains in oUF or native Blizzard widgets. Roth UI callbacks primarily configure regions and react to framework events.

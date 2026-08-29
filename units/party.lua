@@ -104,8 +104,7 @@
     h.highlight:SetAllPoints(h.glow)
 
     self.Health = h
-    self.Health.Smooth = true
-    self.Health.frequentUpdates = self.cfg.health.frequentUpdates or false
+    self.Health.smoothing = func.ResolveStatusBarSmoothing(self.cfg.health and self.cfg.health.smooth)
   end
 
   --create power frames
@@ -134,8 +133,7 @@
     h.bg:SetAllPoints(h)
 
     self.Power = h
-    self.Power.Smooth = true
-    self.Power.frequentUpdates = self.cfg.power.frequentUpdates or false
+    self.Power.smoothing = func.ResolveStatusBarSmoothing(self.cfg.power and self.cfg.power.smooth)
 
   end
 
@@ -165,7 +163,7 @@
     perphp:SetPoint("CENTER", self.Health, "CENTER", 0, 0)
     perphp:SetJustifyH("CENTER")
 
-    self:Tag(name, "[diablo:name]")
+    self:Tag(name, "[roth:namecolor][name<$|r]")
 
     self.Health.valueText = hpval
     self.Health.valueTextMode = func.ResolveHealthValueMode()
@@ -222,17 +220,9 @@
       end      
     end
 
-    -- Auras (WoW 12.x): simple icons + Duration objects (no manual duration math)
-    if self.cfg.auras.show then
-      func.createDebuffs(self)
-      if self.cfg.auras.showBuffs then
-        func.createBuffs(self)
-      end
-    end
-
-    if self.cfg.aurawatch and self.cfg.aurawatch.show and type(func.CreateSafeAuraWatch) == "function" then
-      func.CreateSafeAuraWatch(self)
-    end
+    -- Managed aura groups are registered lazily on first frame show.
+    func.QueueStandardAuras(self, { buffs = self.cfg.auras.showBuffs == true })
+    func.QueueHealerAuraWatch(self)
 
     --debuffglow
     func.createDebuffGlow(self)
@@ -270,10 +260,7 @@
     end)
     self:HookScript("OnShow", function(s)
       s:RegisterEvent("UNIT_THREAT_SITUATION_UPDATE", func.checkThreat)
-      func.QueueGroupAuraColorUpdate(s, "ROTH_FORCE_AURA_SYNC", s.unit)
     end)
-
-    self:RegisterEvent("UNIT_AURA", func.QueueGroupAuraColorUpdate)
 
   end
   

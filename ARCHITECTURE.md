@@ -1,21 +1,42 @@
-# Roth UI architecture
+# Roth UI architecture — B4.3
 
-## Runtime layers
+## Ownership map
 
-1. `init.lua` creates the addon namespace, compatibility helpers and callback surface. `config.lua` seeds defaults, while `core/bootstrap.lua` is the final config gate and calls `Roth_UI:InitConfig()`.
-2. `core/` owns safety, deferred scheduling, persistence, frame/bar registries, settings, movers, orbs and Blizzard-frame policy.
-3. The root TOC loads `oUF/elements/target_border.lua`, `experience.lua`, and `reputation.lua` plus the `units/` layouts. The on-disk `oUF/elements/rune_orbs.lua` is not in the root TOC/manifest and is inactive in the current package; the active rune presentation is assembled by `core/bars.lua`.
-4. Embedded libraries provide action-button, media, key-binding and legacy helper services.
-5. The main TOC embeds the action-bar/button-template XML files. The similarly named module TOCs are optional addon wrappers with `RequiredDeps`, not a prerequisite for the main package.
+| State or subsystem | Authoritative owner |
+|---|---|
+| SavedVariables root replacement/reset | `core/config_persistence_owner.lua` |
+| Runtime config reads/writes | persistence services and `core/sv_store.lua` |
+| Runtime settings actions | `core/settings_actions.lua` |
+| Blizzard Settings category/pages | `Roth_UI_Options/core/settings_main.lua` and page builders |
+| oUF unit-frame lifecycle | oUF 14 |
+| Managed aura specification/lifecycle | `core/aura_runtime.lua` |
+| Cast discovery/timing/interruptibility | oUF 14 Castbar element |
+| Roth castbar visual mapping | `core/target_castbar.lua` |
+| Blizzard action buttons and secure state | Blizzard UI |
+| Roth action-button skin | `core/action_button_skin.lua` |
+| Blizzard-frame visual suppression | `core/frame_policy.lua` plus unit/group policies |
 
-The intended ownership boundary is one owner per protected Blizzard surface: core services coordinate state, while visual modules apply reversible changes. `history.md` and `audit.md` document the completed static refactor and its remaining runtime-proof boundary.
+## Resident versus LoadOnDemand
 
-## Persistence
+`Roth_UI` contains only combat/runtime services, unit layouts, persistence and a small options loader.
 
-`Roth_UI_DB` and `Roth_UI_DB_Char` are declared in the main TOC. `core/config_persistence_owner.lua`, `core/persistence_*`, `core/sv_store.lua`, `core/persistence_control_plane.lua`, and `core/transfer.lua` coordinate canonical stores, schema, import/export, reset, reconciliation, and logout sanitization. Settings should write through `ns.store`/`ns.persistence`, preserving one owner per domain.
+`Roth_UI_Options` is a sibling addon with `LoadOnDemand: 1`. It owns settings pages, import/export and diagnostics. Normal combat rendering does not depend on it.
 
-## External boundaries
+## Aura lifecycle
 
-- Required: `oUF`.
-- Optional TOC dependencies: `RothFont`, `RothLib`.
-- Embedded: LibStub, CallbackHandler-1.0, LibActionButton-1.0-GE, LibSharedMedia-3.0, LibKeyBound-1.0 and rLib.
+Unit styles register plain specifications only. After oUF finishes initializing an object, Roth UI attaches a first-show hook. The first visible transition creates the managed container and its groups/slots. A first show during combat is coalesced and deferred until `PLAYER_REGEN_ENABLED`.
+
+Blizzard candidate filters, sort methods, duration bindings, cooldowns and dispel/stealable regions remain native. Candidate filters are updated only when a normalized fingerprint changes.
+
+## Performance constraints
+
+- No first-party permanent `OnUpdate`; the only approved first-party `OnUpdate` is the drag worker while a mover is actively dragged.
+- No raw aura scan or addon-side aura cache.
+- No custom action-button owner or replacement paging system.
+- No Lua status-bar smoothing loop.
+- No eager 3D portrait construction for optional unit frames.
+- No resident Settings page construction.
+
+## Safety boundary
+
+The addon does not override Blizzard globals, reparent protected Blizzard frames, unregister their events, manage Blizzard addon enable state, or write Blizzard CVars. Frame policy is reversible alpha/input suppression applied outside combat.

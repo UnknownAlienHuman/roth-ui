@@ -75,13 +75,8 @@
     self.Health.PostUpdate = func.updateHealth
     self.Power.PostUpdate = func.updatePower
 
-    -- Auras (WoW 12.x): native oUF Buffs/Debuffs with Roth skinning callbacks.
-    if self.cfg.auras.show then
-      func.createDebuffs(self)
-      if self.cfg.auras.showBuffs then
-        func.createBuffs(self)
-      end
-    end
+    -- Managed aura groups are registered lazily on first frame show.
+    func.QueueStandardAuras(self, { buffs = self.cfg.auras.showBuffs == true })
 
     --debuffglow
     func.createDebuffGlow(self)
