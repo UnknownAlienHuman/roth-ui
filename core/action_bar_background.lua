@@ -13,20 +13,36 @@ local InCombatLockdown = InCombatLockdown
 local C_ActionBar = _G["C_ActionBar"]
 local NUM_ACTIONBAR_BUTTONS = _G["NUM_ACTIONBAR_BUTTONS"] or 12
 local frameRegistry = assert(ns and ns.frameRegistry, "Roth_UI action_bar_background: ns.frameRegistry is required")
-local IsSecretValue = assert(func and func.IsSecretValue, "Roth_UI action_bar_background: func.IsSecretValue is required")
+local CanAccessValue = (ns.safety and ns.safety.CanAccess) or func.CanAccessValue or function(value)
+  return not func.IsSecretValue(value)
+end
 local ResolveRegisteredFrame = assert(frameRegistry.ResolveFrame, "Roth_UI action_bar_background: frameRegistry.ResolveFrame is required")
+local safety = assert(ns and ns.safety, "Roth_UI action_bar_background: safety is required")
+local CanUseRegion = assert(safety.CanUseRegion, "Roth_UI action_bar_background: CanUseRegion is required")
+local TryGet = assert(safety.TryGet, "Roth_UI action_bar_background: TryGet is required")
+local TryMethod = assert(safety.TryMethod, "Roth_UI action_bar_background: TryMethod is required")
 local MAIN_BAR_SYSTEM_INDEX = type(Enum) == "table"
   and type(Enum.EditModeActionBarSystemIndices) == "table"
   and Enum.EditModeActionBarSystemIndices.MainBar
   or nil
 
 local backgroundFrame
+local backgroundConfig
+local backgroundPlayerFrame
+local backgroundLayoutReady = false
 local mainBarHooksInstalled = false
+local auxiliaryHooks = setmetatable({}, { __mode = "k" })
+local refreshQueued = false
+local controller = CreateFrame("Frame")
+
+local function IsAccessible(value)
+  return CanAccessValue(value)
+end
 
 local function ReadOrdinaryBoolean(fn)
   if type(fn) ~= "function" then return false end
   local value = fn()
-  return not IsSecretValue(value) and value == true
+  return IsAccessible(value) and value == true
 end
 
 local function HasVehicleActionBarCompat()
@@ -40,7 +56,7 @@ end
 local function HasPlayerVehicleUI()
   if type(UnitHasVehicleUI) ~= "function" then return false end
   local value = UnitHasVehicleUI("player")
-  return not IsSecretValue(value) and value == true
+  return IsAccessible(value) and value == true
 end
 
 local function ResolvePlayerFrame()
@@ -73,13 +89,54 @@ local function GetArtworkTier()
   local visible = 0
   for i = 1, #AUXILIARY_BARS do
     local frame = _G[AUXILIARY_BARS[i]]
-    if frame and frame.IsShown and frame:IsShown() then
-      visible = visible + 1
+    if CanUseRegion(frame) then
+      local ok, shown = TryMethod(frame, "IsShown")
+      if ok == true and IsAccessible(shown) and shown == true then
+        visible = visible + 1
+      end
     end
   end
   if visible >= 2 then return 3 end
   if visible == 1 then return 2 end
   return 1
+end
+
+local RefreshArtwork
+
+local function RunQueuedRefresh()
+  refreshQueued = false
+  if RefreshArtwork then RefreshArtwork() end
+end
+
+local function QueueArtworkRefresh()
+  if refreshQueued then return end
+  refreshQueued = true
+
+  local scheduler = ns and ns.defer
+  if type(scheduler) == "table" and type(scheduler.RunNextFrame) == "function" then
+    scheduler.RunNextFrame("action-bar-background", RunQueuedRefresh, false)
+  elseif C_Timer and type(C_Timer.After) == "function" then
+    C_Timer.After(0, RunQueuedRefresh)
+  else
+    RunQueuedRefresh()
+  end
+end
+
+local function InstallAuxiliaryBarHooks()
+  if type(hooksecurefunc) ~= "function" then return end
+  for index = 1, #AUXILIARY_BARS do
+    local frame = _G[AUXILIARY_BARS[index]]
+    if CanUseRegion(frame) and not auxiliaryHooks[frame] then
+      local gotShow, showMethod = TryGet(frame, "Show")
+      local gotHide, hideMethod = TryGet(frame, "Hide")
+      if gotShow == true and type(showMethod) == "function"
+          and gotHide == true and type(hideMethod) == "function" then
+        hooksecurefunc(frame, "Show", QueueArtworkRefresh)
+        hooksecurefunc(frame, "Hide", QueueArtworkRefresh)
+        auxiliaryHooks[frame] = true
+      end
+    end
+  end
 end
 
 local function IsMainActionBarSystem(system)
@@ -92,12 +149,14 @@ local function IsMainActionBarSystem(system)
     return true
   end
 
-  local frameName = system.GetName and system:GetName() or nil
-  if frameName == "MainActionBar" then
+  local gotName, frameName = TryMethod(system, "GetName")
+  if gotName == true and IsAccessible(frameName) and frameName == "MainActionBar" then
     return true
   end
 
-  if MAIN_BAR_SYSTEM_INDEX and system.systemIndex == MAIN_BAR_SYSTEM_INDEX then
+  local gotIndex, systemIndex = TryGet(system, "systemIndex")
+  if gotIndex == true and MAIN_BAR_SYSTEM_INDEX and IsAccessible(systemIndex)
+      and systemIndex == MAIN_BAR_SYSTEM_INDEX then
     return true
   end
 
@@ -105,18 +164,10 @@ local function IsMainActionBarSystem(system)
 end
 
 local function HideRegion(region)
-  if not region then
-    return
-  end
-  if region.Hide then
-    region:Hide()
-  end
-  if region.SetAlpha then
-    region:SetAlpha(0)
-  end
-  if region.SetShown then
-    region:SetShown(false)
-  end
+  -- Keep Blizzard ownership and visibility state intact. Alpha-only suppression
+  -- is sufficient for decorative regions and avoids fighting protected layout
+  -- or grid visibility setters.
+  if CanUseRegion(region) then TryMethod(region, "SetAlpha", 0) end
 end
 
 local function HideActionButtonBarArt(button)
@@ -124,10 +175,13 @@ local function HideActionButtonBarArt(button)
     return
   end
 
-  local buttonName = button.GetName and button:GetName() or nil
-  HideRegion(button.SlotArt or (buttonName and _G[buttonName .. "SlotArt"]) or nil)
-  HideRegion(button.SlotBackground or (buttonName and _G[buttonName .. "SlotBackground"]) or nil)
-  HideRegion(buttonName and _G[buttonName .. "FloatingBG"] or nil)
+  if not CanUseRegion(button) then return end
+  local _, buttonName = TryMethod(button, "GetName")
+  local _, slotArt = TryGet(button, "SlotArt")
+  local _, slotBackground = TryGet(button, "SlotBackground")
+  HideRegion(slotArt or (IsAccessible(buttonName) and buttonName and _G[buttonName .. "SlotArt"]) or nil)
+  HideRegion(slotBackground or (IsAccessible(buttonName) and buttonName and _G[buttonName .. "SlotBackground"]) or nil)
+  HideRegion(IsAccessible(buttonName) and buttonName and _G[buttonName .. "FloatingBG"] or nil)
 end
 
 local function ApplyMainBarVisualState()
@@ -135,16 +189,17 @@ local function ApplyMainBarVisualState()
     return
   end
   local mainBar = ResolveMainBar()
-  if not mainBar then
-    return
-  end
+  if not CanUseRegion(mainBar) then return end
 
-  HideRegion(mainBar.BorderArt)
+  local _, borderArt = TryGet(mainBar, "BorderArt")
+  HideRegion(borderArt)
 
-  if mainBar.EndCaps then
-    HideRegion(mainBar.EndCaps.LeftEndCap)
-    HideRegion(mainBar.EndCaps.RightEndCap)
-    HideRegion(mainBar.EndCaps)
+  local _, endCaps = TryGet(mainBar, "EndCaps")
+  if CanUseRegion(endCaps) then
+    local _, leftEndCap = TryGet(endCaps, "LeftEndCap")
+    local _, rightEndCap = TryGet(endCaps, "RightEndCap")
+    HideRegion(leftEndCap)
+    HideRegion(rightEndCap)
   end
 
   for i = 1, NUM_ACTIONBAR_BUTTONS do
@@ -164,8 +219,9 @@ local function ResolveArtworkConfig()
 end
 
 local function ApplyArtworkVisibility(frame)
-  local artCfg = frame and frame.__rothArtworkConfig
-  if not frame or type(artCfg) ~= "table" then
+  local artCfg = backgroundConfig
+  if not frame or type(artCfg) ~= "table" or not backgroundLayoutReady then
+    if frame then frame:Hide() end
     return
   end
 
@@ -174,7 +230,7 @@ local function ApplyArtworkVisibility(frame)
     return
   end
 
-  if artCfg.combatfade and InCombatLockdown() then
+  if artCfg.combatfade and InCombatLockdown and InCombatLockdown() then
     frame:Hide()
     return
   end
@@ -183,48 +239,62 @@ local function ApplyArtworkVisibility(frame)
 end
 
 local function ApplyArtworkLayout(frame, artCfg, playerFrame)
-  if not (frame and artCfg) then
-    return
-  end
+  if not (frame and artCfg) then return false end
+  if InCombatLockdown and InCombatLockdown() then return false end
 
-  frame:SetParent(playerFrame or UIParent)
+  -- The artwork remains a UIParent child. It may anchor to another frame, but
+  -- never reparents into a protected unit/action frame.
+  local pos = type(artCfg.pos) == "table" and artCfg.pos or {}
+  local point = type(pos.a1) == "string" and pos.a1 or "BOTTOM"
+  local relativePoint = type(pos.a2) == "string" and pos.a2 or point
+  local relativeTo = (type(pos.af) == "string" and _G[pos.af]) or pos.af or UIParent
+  if not CanUseRegion(relativeTo) then relativeTo = UIParent end
+  local x = IsAccessible(pos.x) and tonumber(pos.x) or 0
+  local y = IsAccessible(pos.y) and tonumber(pos.y) or 0
+  local scale = IsAccessible(artCfg.scale) and tonumber(artCfg.scale) or 1
+  if type(scale) ~= "number" or scale <= 0 then scale = 1 end
+
   frame:SetFrameStrata("LOW")
   frame:SetFrameLevel(0)
   frame:SetSize(788, 220)
   frame:ClearAllPoints()
-  local relativeTo = (type(artCfg.pos.af) == "string" and _G[artCfg.pos.af]) or artCfg.pos.af or UIParent
-  frame:SetPoint(artCfg.pos.a1, relativeTo, artCfg.pos.a2, artCfg.pos.x, artCfg.pos.y)
-  frame:SetScale(artCfg.scale)
-  frame.__rothArtworkConfig = artCfg
+  frame:SetPoint(point, relativeTo, relativePoint, x, y)
+  frame:SetScale(scale)
+  backgroundConfig = artCfg
+  backgroundPlayerFrame = playerFrame
+  backgroundLayoutReady = true
   ns.ActionBarBackground = frame
 
   if playerFrame then
     playerFrame.ActionBarBackground = frame
   end
+  return true
 end
 
 local function EnsureArtworkFrame()
   local artCfg, playerFrame = ResolveArtworkConfig()
+  backgroundConfig = artCfg
+  backgroundPlayerFrame = playerFrame
+
   if type(artCfg) ~= "table" or artCfg.show == false then
+    if backgroundFrame then backgroundFrame:Hide() end
     return nil
   end
 
+  if InCombatLockdown and InCombatLockdown() then
+    if backgroundFrame then ApplyArtworkVisibility(backgroundFrame) end
+    return backgroundFrame
+  end
+
   if not backgroundFrame then
-    backgroundFrame = CreateFrame("Frame", "Roth_UIActionBarBackground", playerFrame or UIParent)
+    backgroundFrame = CreateFrame("Frame", "Roth_UIActionBarBackground", UIParent)
     backgroundFrame.texture = backgroundFrame:CreateTexture(nil, "BACKGROUND", nil, -8)
     backgroundFrame.texture:SetAllPoints(backgroundFrame)
 
     if func and type(func.applyDragFunctionality) == "function" then
       func.applyDragFunctionality(backgroundFrame)
     end
-
-    backgroundFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    backgroundFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    backgroundFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-    backgroundFrame:RegisterEvent("UNIT_ENTERED_VEHICLE")
-    backgroundFrame:RegisterEvent("UNIT_EXITED_VEHICLE")
-    backgroundFrame:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
-    backgroundFrame:RegisterEvent("UPDATE_OVERRIDE_ACTIONBAR")
+    backgroundFrame.RefreshActionBarArtwork = function() ns.RefreshActionBarArtwork() end
   end
 
   ApplyArtworkLayout(backgroundFrame, artCfg, playerFrame)
@@ -232,11 +302,10 @@ local function EnsureArtworkFrame()
 end
 
 local function ResolveBarDimension(value, fallback)
-  local n = tonumber(value)
-  if type(n) ~= "number" or n <= 0 then
-    return fallback
-  end
-  return n
+  if not IsAccessible(value) then return fallback end
+  local number = tonumber(value)
+  if type(number) ~= "number" or number <= 0 then return fallback end
+  return number
 end
 
 local function ResolveExpRepHeight(primaryCfg, secondaryCfg, primaryDefaults, secondaryDefaults)
@@ -251,7 +320,13 @@ local function ResolveExpRepHeight(primaryCfg, secondaryCfg, primaryDefaults, se
   return 1
 end
 
-local function RefreshArtwork()
+RefreshArtwork = function()
+  if InCombatLockdown and InCombatLockdown() then
+    ApplyArtworkVisibility(backgroundFrame)
+    return
+  end
+
+  InstallAuxiliaryBarHooks()
   ApplyMainBarVisualState()
 
   local frame = EnsureArtworkFrame()
@@ -259,24 +334,20 @@ local function RefreshArtwork()
     return
   end
 
-  local artCfg = frame.__rothArtworkConfig
-  local playerFrame = ResolvePlayerFrame()
+  local artCfg = backgroundConfig
+  local playerFrame = backgroundPlayerFrame or ResolvePlayerFrame()
   local playerCfg = ResolvePlayerConfig(playerFrame)
   local texture = frame.texture
   if not (artCfg and texture and playerCfg) then
     return
   end
 
-  if InCombatLockdown() then
-    ApplyArtworkVisibility(frame)
-    return
-  end
-
-  local expCfg = playerCfg.expbar or {}
-  local repCfg = playerCfg.repbar or {}
+  local expCfg = type(playerCfg.expbar) == "table" and playerCfg.expbar or {}
+  local repCfg = type(playerCfg.repbar) == "table" and playerCfg.repbar or {}
   local playerDefaults = (ns and ns.cfgDefaults and ns.cfgDefaults.units and ns.cfgDefaults.units.player) or {}
   local defaultExpCfg = playerDefaults.expbar or {}
   local defaultRepCfg = playerDefaults.repbar or {}
+  local artScale = ResolveBarDimension(artCfg.scale, 1)
   local expDefaultW = ResolveBarDimension(expCfg.width, 365)
   local expDefaultH = ResolveExpRepHeight(expCfg, repCfg, defaultExpCfg, defaultRepCfg)
   local repDefaultW = ResolveBarDimension(repCfg.width, 365)
@@ -301,8 +372,8 @@ local function RefreshArtwork()
 
     if shouldShow then
       targetFrame:ClearAllPoints()
-      targetFrame:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, y * artCfg.scale)
-      targetFrame:SetSize(w * artCfg.scale, h * artCfg.scale)
+      targetFrame:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, y * artScale)
+      targetFrame:SetSize(w * artScale, h * artScale)
       targetFrame:Show()
     else
       targetFrame:Hide()
@@ -388,30 +459,27 @@ local function InstallMainBarHooks()
 
   local editModeActionBarSystemMixin = _G["EditModeActionBarSystemMixin"]
   if type(editModeActionBarSystemMixin) == "table" and type(editModeActionBarSystemMixin.RefreshBarArt) == "function" then
-    hooksecurefunc(editModeActionBarSystemMixin, "RefreshBarArt", function(self)
-      if IsMainActionBarSystem(self) then
-        RefreshArtwork()
-      end
-    end)
+    -- Any action-bar layout refresh can change the number of visible rows.
+    -- Coalesce all systems into one next-frame artwork refresh.
+    hooksecurefunc(editModeActionBarSystemMixin, "RefreshBarArt", QueueArtworkRefresh)
   end
 end
 
-local frame = EnsureArtworkFrame()
-if frame then
-  frame:SetScript("OnEvent", function(self, event, unit)
-    if event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
-      ApplyArtworkVisibility(self)
-      return
-    end
-
-    if unit and unit ~= "player" then
-      return
-    end
-
-    RefreshArtwork()
-  end)
-  frame.RefreshActionBarArtwork = RefreshArtwork
-end
+controller:RegisterEvent("PLAYER_REGEN_DISABLED")
+controller:RegisterEvent("PLAYER_REGEN_ENABLED")
+controller:RegisterEvent("PLAYER_ENTERING_WORLD")
+controller:RegisterEvent("UNIT_ENTERED_VEHICLE")
+controller:RegisterEvent("UNIT_EXITED_VEHICLE")
+controller:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
+controller:RegisterEvent("UPDATE_OVERRIDE_ACTIONBAR")
+controller:SetScript("OnEvent", function(_, event, unit)
+  if event == "PLAYER_REGEN_DISABLED" then
+    ApplyArtworkVisibility(backgroundFrame)
+    return
+  end
+  if unit ~= nil and (not IsAccessible(unit) or unit ~= "player") then return end
+  RefreshArtwork()
+end)
 
 InstallMainBarHooks()
 RefreshArtwork()
