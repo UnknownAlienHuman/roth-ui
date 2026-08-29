@@ -1,8 +1,9 @@
 ## Interface: 120100
 ## Author: Neomorph
 ## Title: Roth UI
-## Version: 3.3.8-v57.8-B4.3.1
+## Version: 3.3.8-v57.8-B4.3.2
 ## Notes: Lightweight Diablo-inspired oUF layout for Retail 12.1.
+## IconTexture: Interface\AddOns\Roth_UI\media\d3_head_diablo.tga
 ## RequiredDeps: oUF
 ## OptionalDeps: RothFont, RothLib
 ## SavedVariables: Roth_UI_DB
@@ -17,13 +18,14 @@ Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua
 Libs/LibSharedMedia-3.0/lib.xml
 
 init.lua
+core/safety.lua
+core/ouf_contract.lua
 
 oUF/elements/target_border.lua
 oUF/elements/experience.lua
 oUF/elements/reputation.lua
 defaults/party.lua
 defaults/raid.lua
-core/safety.lua
 core/deferred_scheduler.lua
 core/group_header_visibility.lua
 core/config_persistence_owner.lua
@@ -62,13 +64,13 @@ core/transfer.lua
 core/settings_transfer.lua
 core/debug_commands.lua
 core/slashcmd.lua
+core/minimap_button.lua
 core/unit_value_runtime.lua
 core/unit_misc_runtime.lua
 core/aura_runtime.lua
 core/frame_policy.lua
 core/font_policy.lua
 core/group_policy.lua
-core/unit_policy.lua
 core/frame_policy_bootstrap.lua
 core/tags.lua
 core/bars.lua
