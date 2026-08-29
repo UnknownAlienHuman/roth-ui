@@ -15,28 +15,7 @@ local function GetMoverRuntime()
   return moverRuntime
 end
 
-local function EnsureOptionsLoaded(unavailableMessage)
-  local loader = ns and ns.LoadOptionsAddon
-  if type(loader) ~= "function" then
-    print(unavailableMessage)
-    return false
-  end
-  local loaded, reason = loader()
-  if loaded then
-    return true
-  end
-  if reason == "combat" then
-    print("Roth_UI: options cannot be loaded during combat.")
-  else
-    print(unavailableMessage)
-  end
-  return false
-end
-
 local function OpenSettingsCategory(categoryKey, unavailableMessage)
-  if not EnsureOptionsLoaded(unavailableMessage) then
-    return false
-  end
   local settingsUI = ns and ns.SettingsUI
   local openCategory = type(settingsUI) == "table" and settingsUI.Open or nil
   if type(openCategory) ~= "function" then
@@ -119,9 +98,6 @@ function actions.ResetTemplateLibrary()
 end
 
 local function ShowTransferDialog(methodName, unavailableMessage, mode)
-  if not EnsureOptionsLoaded(unavailableMessage) then
-    return false
-  end
   local transfer = ns and ns.transfer
   local method = type(transfer) == "table" and transfer[methodName] or nil
   if type(method) ~= "function" then

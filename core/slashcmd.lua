@@ -10,15 +10,6 @@ local function GetDebugCommands()
   if type(commands) == "table" then
     return commands
   end
-
-  local loader = ns and ns.LoadOptionsAddon
-  if type(loader) == "function" then
-    loader()
-  end
-  commands = ns and ns.debugCommands
-  if type(commands) == "table" then
-    return commands
-  end
   return nil
 end
 

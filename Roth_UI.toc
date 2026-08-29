@@ -1,7 +1,7 @@
 ## Interface: 120100
 ## Author: Neomorph
 ## Title: Roth UI
-## Version: 3.3.8-v57.8-B4.3
+## Version: 3.3.8-v57.8-B4.3.1
 ## Notes: Lightweight Diablo-inspired oUF layout for Retail 12.1.
 ## RequiredDeps: oUF
 ## OptionalDeps: RothFont, RothLib
@@ -45,12 +45,23 @@ core/db.lua
 core/orb_persistence_owner.lua
 core/frame_registry.lua
 core/orb_runtime.lua
-core/options_loader.lua
-core/settings_actions.lua
-core/target_castbar.lua
-core/slashcmd.lua
 core/lib.lua
 core/mover_runtime.lua
+core/combat_fader.lua
+core/settings_actions.lua
+core/target_castbar.lua
+core/logger.lua
+core/persistence_report_service.lua
+core/sv_doctor.lua
+core/settings_main.lua
+core/settings_general.lua
+core/settings_target.lua
+core/settings_groups.lua
+core/settings_orbs.lua
+core/transfer.lua
+core/settings_transfer.lua
+core/debug_commands.lua
+core/slashcmd.lua
 core/unit_value_runtime.lua
 core/unit_misc_runtime.lua
 core/aura_runtime.lua

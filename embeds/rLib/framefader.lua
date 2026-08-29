@@ -8,7 +8,7 @@
 
 local A, L = ...
 
-local SpellFlyout = SpellFlyout
+local SpellFlyout = _G.SpellFlyout
 
 -----------------------------
 -- Functions
@@ -77,11 +77,15 @@ function L:StartFadeOut(frame)
   frame.fader:Play()
 end
 
+local function RegionIsMouseOver(region)
+  return region and type(region.IsMouseOver) == "function" and region:IsMouseOver() == true
+end
+
 local function IsMouseOverFrame(frame)
-  if MouseIsOver(frame) then return true end
-  if not SpellFlyout:IsShown() then return false end
+  if RegionIsMouseOver(frame) then return true end
+  if not (SpellFlyout and SpellFlyout.IsShown and SpellFlyout:IsShown()) then return false end
   if not SpellFlyout.__faderParent then return false end
-  if SpellFlyout.__faderParent == frame and MouseIsOver(SpellFlyout) then return true end
+  if SpellFlyout.__faderParent == frame and RegionIsMouseOver(SpellFlyout) then return true end
   return false
 end
 
@@ -110,8 +114,10 @@ local function OffFrameHandler(self)
 end
 
 local function SpellFlyoutOnShow(self)
-  local frame = self:GetParent():GetParent():GetParent()
-  if not frame.fader then return end
+  local parent = self and self.GetParent and self:GetParent()
+  parent = parent and parent.GetParent and parent:GetParent()
+  local frame = parent and parent.GetParent and parent:GetParent()
+  if not (frame and frame.fader) then return end
   --set new frame parent
   self.__faderParent = frame
   if not self.__faderHook then
@@ -119,7 +125,7 @@ local function SpellFlyoutOnShow(self)
     SpellFlyout:HookScript("OnLeave", OffFrameHandler)
     self.__faderHook = true
   end
-  for i=1, NUM_ACTIONBAR_BUTTONS do --hopefully 12 is enough
+  for i = 1, (NUM_ACTIONBAR_BUTTONS or 12) do --hopefully 12 is enough
     local button = _G["SpellFlyoutButton"..i]
     if not button then break end
     button.__faderParent = frame
@@ -130,7 +136,9 @@ local function SpellFlyoutOnShow(self)
     end
   end
 end
-SpellFlyout:HookScript("OnShow", SpellFlyoutOnShow)
+if SpellFlyout and type(SpellFlyout.HookScript) == "function" then
+  SpellFlyout:HookScript("OnShow", SpellFlyoutOnShow)
+end
 
 function rLib:CreateFrameFader(frame, faderConfig)
   ApplyFaderConfig(frame, faderConfig)
