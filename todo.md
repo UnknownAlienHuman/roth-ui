@@ -9,7 +9,7 @@
 
 **Три принципа:**
 1. **oUF делает всё что может** — unit frames, health, power, castbar, auras, indicators, range, ClassPower, Runes
-2. **Action bars по паттерну ElvUI** — LAB buttons, state drivers, единый shell owner, combat defer
+2. **Action bars через единый LAB/secure-owner паттерн** — LAB buttons, state drivers, единый shell owner, combat defer
 3. **Persistence максимально просто** — 2-3 файла вместо 8, один read/write path
 
 **Порядок:** Сначала hotfix (P0), потом ownership consolidation (P1-P2), потом cleanup (P3+).
@@ -88,9 +88,9 @@ end
 ns.ListenForLoaded(InitBar2)
 ```
 
-**Паттерн ElvUI (ActionBars.lua):**
+**Единый secure action-bar паттерн:**
 ```lua
--- ElvUI — ОДИН код для всех bars, отличаются только настройки:
+-- Один owner-код для всех bars; отличаются только настройки:
 function AB:PositionAndSizeBar(barName)
   local bar = AB.handledBars[barName]
   local db = bar.db
@@ -165,9 +165,9 @@ clickOnDown = GetCVarBoolSafe("ActionButtonUseKeyDown"),
   3. SavePosition / RestorePosition (SV)
   4. Category system (art, bars, units, orbs)
 
-**Паттерн ElvUI (Movers.lua):**
+**Единый mover-owner паттерн:**
 ```lua
--- ElvUI: E:CreateMover(parent, name, text, snapOffset, postdrag, moverTypes, holdConfig)
+-- Single-owner mover API: CreateMover(parent, name, text, snapOffset, postdrag, moverTypes, holdConfig)
 function E:CreateMover(parent, name, text, snapOffset, postdrag, moverTypes, ...)
   local mover = CreateFrame('Button', name, E.UIParent)
   mover:SetFrameLevel(parent:GetFrameLevel() + 1)
@@ -264,7 +264,7 @@ end)
 
 ---
 
-## Фаза 1 — Action Bar Ownership (паттерн ElvUI)
+## Фаза 1 — Action Bar Ownership (единый secure-owner паттерн)
 
 ### 1.1 `[NOT DONE]` Единый shell owner для bar1-5
 
@@ -362,7 +362,7 @@ GetActionBarPage()               -- returns number (current page)
 #### Паттерн: secure state driver
 
 ```lua
--- oUF/ElvUI используют один RegisterStateDriver per frame:
+-- oUF и secure-bar реализации используют один RegisterStateDriver per frame:
 RegisterStateDriver(bar, "visibility", visibilityCondition)
 -- visibilityCondition — secure condition string:
 -- "[petbattle][vehicleui] hide; [combat] show; show"
@@ -459,9 +459,9 @@ core/bars.lua:60-350          → ещё одна реализация (Enable/D
   - `settings_general.lua` — проверяет InCombatLockdown() но не откладывает
   - `deferred_scheduler.lua` — универсальный ns.defer.Schedule() (уже есть!)
 
-**Паттерн ElvUI:**
+**Единый combat-defer паттерн:**
 ```lua
--- ElvUI: всё через один defer:
+-- Все protected updates проходят через один defer:
 function AB:PositionAndSizeBar(barName)
   if InCombatLockdown() then
     self:RegisterEvent("PLAYER_REGEN_ENABLED", function()
@@ -519,9 +519,9 @@ end
 1. Не ломает ли reparent `ExtraAbilityContainer` в combat?
 2. `ZoneAbilityFrame` — тоже protected, нужен ли отдельный holder?
 
-**Паттерн ElvUI (ExtraAction):**
+**Thin-wrapper паттерн для ExtraAction:**
 ```lua
--- ElvUI НЕ создаёт holder. Только:
+-- Thin-wrapper path не создаёт holder. Только:
 -- 1. Mover для позиционирования
 -- 2. Skin (backdrop, border)
 -- 3. Visibility — оставляет Blizzard
@@ -561,9 +561,9 @@ AB:CreateMover(ExtraAbilityContainer, "BossButton", L["Boss Button"])
 MAIN_BAR_PAGE_DRIVER = "[overridebar][vehicleui][possessbar] possess; [shapeshift] 11; [bar:2] 2; [bar:3] 3; [bar:4] 4; [bar:5] 5; [bar:6] 6; [bonusbar:5] 11; 1"
 ```
 
-**Нюанс:** `[possessbar]` и `[vehicleui]` — разные состояния. ElvUI обрабатывает их отдельно:
+**Нюанс:** `[possessbar]` и `[vehicleui]` — разные состояния. Зрелые secure-bar реализации обрабатывают их отдельно:
 ```lua
--- ElvUI fullConditions:
+-- Secure bar page-driver conditions:
 format('[overridebar] %d; [vehicleui][possessbar] %d;', GetOverrideBarIndex(), GetVehicleBarIndex())
 ```
 
@@ -1251,9 +1251,9 @@ else
 end
 ```
 
-**ElvUI делает именно так:**
+**Нативный Retail-путь использует этот подход:**
 ```lua
--- ElvUI Health bar configuration:
+-- Native Retail health-bar configuration:
 if E.Retail then
   health.smoothing = (db.health.smoothbars and StatusBarInterpolation.ExponentialEaseOut)
     or StatusBarInterpolation.Immediate
@@ -1287,13 +1287,13 @@ end
   - persistence_control_plane → оставить как thin facade (50 строк max) или убрать
   - persistence_report_service → merge в sv_doctor
 
-#### Паттерн ElvUI (persistence)
+#### Единая persistence-модель
 
 ```lua
--- ElvUI: 3 уровня SV
--- ElvDB          — global (synced across all chars)
--- ElvPrivateDB   — char-locked (never synced)
--- ElvCharacterDB — per-char profile (transferable)
+-- Три уровня SavedVariables
+-- GlobalDB          — global (synced across all chars)
+-- PrivateDB   — char-locked (never synced)
+-- CharacterDB — per-char profile (transferable)
 
 -- Defaults deep-copy:
 function E:CopyTable(currentTable, defaultTable)
@@ -1310,9 +1310,9 @@ end
 
 -- Init:
 function E:Initialize()
-  E.db = E:CopyTable(ElvCharacterDB.profile or {}, P)
-  E.global = E:CopyTable(ElvDB.global or {}, G)
-  E.private = E:CopyTable(ElvPrivateDB.profile or {}, V)
+  E.db = E:CopyTable(CharacterDB.profile or {}, P)
+  E.global = E:CopyTable(GlobalDB.global or {}, G)
+  E.private = E:CopyTable(PrivateDB.profile or {}, V)
 end
 ```
 
@@ -1683,13 +1683,13 @@ EventRegistry:RegisterCallback("EditMode.Exit", function()
   -- Restore Roth movers
 end)
 
--- ElvUI подход:
+-- Addon-owned Edit Mode isolation pattern:
 hooksecurefunc(EditModeManagerFrame, "EnterEditMode", function()
-  -- 1. Hide all ElvUI movers
-  -- 2. Show notification "Use /elvui to move ElvUI frames"
+  -- 1. Hide all Roth movers
+  -- 2. Show notification "Use /rothui unlock to move Roth UI frames"
 end)
 hooksecurefunc(EditModeManagerFrame, "ExitEditMode", function()
-  -- 1. Restore ElvUI layout
+  -- 1. Restore Roth UI layout
 end)
 ```
 
@@ -1765,7 +1765,7 @@ local IsSecret = assert(ns.safety and ns.safety.IsSecret, "safety.IsSecret requi
 ### 5.6 `[NOT DONE]` ★ Nameplate support (future consideration)
 
 - oUF поддерживает nameplates через `oUF:SpawnNamePlates()`
-- ElvUI активно использует это для custom nameplates
+- Зрелые oUF layouts используют это для custom nameplates
 - Roth_UI пока НЕ имеет nameplate модуля
 - **Не блокирует рефакторинг**, но после стабилизации unit frames — natural next step
 
@@ -1842,7 +1842,7 @@ end
   0.7 ★ Fix event cleanup party/raid → нет stale listeners (НОВОЕ)
 
 Фаза 1: Action Bar Ownership
-  1.1 Shell owner per bar → ElvUI pattern
+  1.1 Shell owner per bar → single-owner pattern
   1.2 Visibility owner → state drivers
   1.3 Dock owner → единый
   1.4 Art owner → единый (+ удалить Exp/Rep из bars.lua)
@@ -1893,7 +1893,7 @@ end
 2. **Не чинить симптомы** — убирать dual-ownership root cause.
 3. **Не трогать P8 items** до закрытия P0-P1 блокеров.
 4. **oUF — авторитет** для unit frame logic. Если oUF element делает то же — удалять свой код.
-5. **ElvUI — референс** для action bar pattern. Дизайн свой, архитектура от них.
+5. **Единый LAB/secure-owner контракт — референс** для action bar architecture; визуальный дизайн остаётся собственным.
 6. **Один owner на surface** — всегда. Нет exceptions.
 7. **Combat defer** — обязательно для любых frame operations.
 8. **Blizzard Settings Framework** — для settings UI. Не изобретать своё.
@@ -2004,16 +2004,6 @@ end
 - `C:\Tools\WoW_Dev_Tools\wow-ui-source/Blizzard_UI_12.0.1.66384/Blizzard_NamePlateUI`
 
 ### Reference Addons
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/ActionBars/ActionBars.lua`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/UnitFrames/UnitFrames.lua`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/UnitFrames/Elements/Health.lua`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/UnitFrames/Elements/Power.lua`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/UnitFrames/Elements/CastBar.lua`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/UnitFrames/Elements/Auras.lua`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/UnitFrames/Elements/ClassBars.lua`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/UnitFrames/Units/Player.lua`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/NamePlates/NamePlates.lua`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI_Libraries/Game/Shared/LibActionButton-1.0/LibActionButton-1.0.lua`
 - `_Reference/ReferenceAddonsFull/oUF/ouf.lua`
 - `_Reference/ReferenceAddonsFull/oUF/elements/castbar.lua`
 - `_Reference/ReferenceAddonsFull/oUF/elements/auras.lua`
