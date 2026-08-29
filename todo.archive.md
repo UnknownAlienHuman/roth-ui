@@ -278,7 +278,7 @@ ns.ownership = {
 
 ## Альтернатива
 
-- `Long-term rewrite mode`: сразу уходить в свои addon-owned bars по модели ElvUI/LAB.
+- `Long-term rewrite mode`: сразу уходить в свои addon-owned bars по модели единого LAB/secure-owner.
 - Это правильнее архитектурно, но это уже отдельный крупный этап, а не "быстро доделать".
 
 ## Где смотреть
@@ -286,7 +286,6 @@ ns.ownership = {
 - `modules/Roth_UI_rActionBarStyler/core/bar1.lua:30-136`
 - `modules/Roth_UI_rActionBarStyler/core/dock.lua:7-257`
 - `modules/Roth_UI_rActionBarStyler/core/background.lua:238-396`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/ActionBars/ActionBars.lua:418-524`
 
 ## Done when
 
@@ -341,7 +340,7 @@ end
 
 ## Альтернатива
 
-- Полный переход на свои secure bars по модели ElvUI.
+- Полный переход на свои secure bars по модели единого LAB/secure-owner.
 - Для "доделать сейчас" это слишком большой объём. Для "починить архитектуру правильно" это лучший long-term путь.
 
 ## Где смотреть
@@ -960,10 +959,6 @@ end
 Документация:
 - `_Info/KB/nodes/BlizzardUI_ActionBars.md`
 
-Референсы:
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/ActionBars/ActionBars.lua`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI_Libraries/Game/Shared/LibActionButton-1.0/LibActionButton-1.0.lua`
-
 ## Done when
 
 - старый и новый bar stack не работают одновременно для одной и той же bar surface;
@@ -1044,10 +1039,6 @@ bar:SetVisibilityProfile("main")
 
 Документация:
 - `_Info/KB/nodes/BlizzardUI_ActionBars.md`
-
-Референсы:
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/ActionBars/ActionBars.lua`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI_Libraries/Game/Shared/LibActionButton-1.0/LibActionButton-1.0.lua`
 
 ## 1.2 Multibar visibility сейчас почти наверняка имеет двух владельцев
 
@@ -1748,10 +1739,6 @@ Blizzard UI source:
 - `C:\Tools\WoW_Dev_Tools\wow-ui-source/Blizzard_UI_12.0.1.66198/Blizzard_ZoneAbility`
 - `C:\Tools\WoW_Dev_Tools\wow-ui-source/Blizzard_UI_12.0.1.66198/Blizzard_UnitFrame`
 
-ElvUI для action bars и ownership patterns:
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/ActionBars/ActionBars.lua`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI_Libraries/Game/Shared/LibActionButton-1.0/LibActionButton-1.0.lua`
-
 oUF для unit frames и castbar lifecycle:
 - `_Reference/ReferenceAddonsFull/oUF/ouf.lua`
 - `_Reference/ReferenceAddonsFull/oUF/elements/castbar.lua`
@@ -2378,7 +2365,7 @@ Raid:
 
 ---
 
-# Addendum 3 - подтверждения из Blizzard, ElvUI и oUF
+# Addendum 3 - подтверждения из Blizzard, внешних реализаций и oUF
 
 Этот блок нужен для того, чтобы следующие решения были не просто логичными,
 а согласованными с тем, как система реально устроена в текущем клиенте и в зрелых аддонах.
@@ -2442,18 +2429,14 @@ Raid:
 - ExtraAction и ZoneAbility действительно нельзя рассматривать как два независимых кастомных бара;
 - holder/art-only стратегия для Roth здесь подтверждается Blizzard source.
 
-## E3 - ElvUI решает bars не через Blizzard numbered layout, а через собственные бары и LAB
+## E3 - Зрелые LAB-based реализации используют собственные secure bars вместо Blizzard numbered layout
 
-`confirmed-static`: ElvUI строит бары через свою bar abstraction и `LAB:CreateButton(...)`.
-
-Подтверждение:
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI/Game/Shared/Modules/ActionBars/ActionBars.lua:418-520`
-- `_Reference/ReferenceAddonsFull/ElvUI/ElvUI_Libraries/Game/Shared/LibActionButton-1.0/LibActionButton-1.0.lua:266-370`
+`confirmed-static`: зрелая LAB-based реализация строит бары через собственную bar abstraction и `LAB:CreateButton(...)`.
 
 Что особенно важно:
 - `CreateBar(id)` создаёт свой `SecureHandlerStateTemplate` bar;
 - дальше через `LAB:CreateButton(...)` создаются собственные secure action buttons;
-- layout, paging, visibility и mover ownership живут у ElvUI bar owner.
+- layout, paging, visibility и mover ownership живут у единого bar owner.
 
 Практический вывод:
 - Option B из todo подтверждается зрелой реализацией;
@@ -2572,7 +2555,7 @@ Raid:
 
 ## Обновлённый design rule set для будущего implementation pass
 
-На основе текущего кода + Blizzard/ElvUI/oUF безопаснее всего держаться таких правил:
+На основе текущего кода, Blizzard source, LAB-based реализаций и oUF evidence безопаснее всего держаться таких правил:
 
 1. Blizzard secure/action surfaces:
 - не брать в долгосрочное layout ownership без полного secure replacement;
@@ -2601,7 +2584,7 @@ Raid:
 IDE crash check:
 - `todo.md` существует
 - размер файла около `75 KB`
-- последние addendum по Blizzard/ElvUI/oUF не потерялись
+- последние addendum по Blizzard, LAB-based реализациям и oUF evidence не потерялись
 
 Последние зафиксированные наблюдения после recovery-check:
 
