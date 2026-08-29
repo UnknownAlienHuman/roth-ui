@@ -248,7 +248,7 @@ core/action_bar_background.lua          → bar artwork/background: exp/rep art 
 ```
 modules/Roth_UI_oUFModules/    → oUF_Smooth (smoothing animation library)
                                   ★ Retail 12.x: StatusBarInterpolation.ExponentialEaseOut —
-                                  нативная альтернатива. ElvUI использует нативный API.
+                                  нативная альтернатива, используемая зрелыми Retail UI-реализациями.
                                   oUF_Smooth может быть НЕ нужен на Retail.
 modules/Roth_UI_rActionBarStyler/ → ★ LEGACY:
   rActionBar.xml               → загружает: hide_blizzart, slashcmd, spellflyout, cooldown
@@ -361,7 +361,7 @@ end)
 │                                                             │
 │  Path A: secureActionBarRuntime.IsEnabled()                 │
 │    → LAB:CreateButton(), Roth_UISecureBar* фреймы           │
-│    → (ElvUI-паттерн, гейт: cfg.bars.secureOwnerBars=false) │
+│    → (единый LAB/secure-owner паттерн, гейт: cfg.bars.secureOwnerBars=false) │
 │    → НЕАКТИВЕН (secureOwnerBars=false в config.lua:622)     │
 │                                                             │
 │  Path B: ns.disableProtectedActionBarOwnership  ★ АКТИВЕН   │
@@ -565,7 +565,7 @@ core/mover_runtime.lua        → new: persistence, categories, saved layout,
 Строки ~1000-1074: Runes element (DK, ★ ЗАМЕНИТЬ на oUF ClassPower + Runes)
 ```
 
-**Нюанс:** oUF ClassPower element обрабатывает ВСЕ class resources через единый интерфейс. ElvUI использует именно его. Roth_UI реализует каждый класс отдельно — это ~700 строк которые заменяются ~30 строками ClassPower setup.
+**Нюанс:** oUF ClassPower element обрабатывает ВСЕ class resources через единый интерфейс. Зрелые oUF layouts используют именно его. Roth_UI реализует каждый класс отдельно — это ~700 строк которые заменяются ~30 строками ClassPower setup.
 
 ### 5c. units/player.lua (32 KB, 1049 строк)
 
@@ -717,7 +717,7 @@ self.ClassPower = ClassPower
 
 **Retail 12.x** предоставляет нативную интерполяцию:
 ```lua
--- ElvUI паттерн (Retail):
+-- Native Retail pattern:
 if E.Retail then
   health.smoothing = StatusBarInterpolation.ExponentialEaseOut
 else
@@ -729,9 +729,9 @@ end
 
 ---
 
-## 7. Что берём у ElvUI (паттерны, не код)
+## 7. Проверенные внешние паттерны (без копирования кода)
 
-| Паттерн                        | ElvUI                          | Roth_UI план                    |
+| Паттерн                        | External reference             | Roth_UI план                    |
 |--------------------------------|--------------------------------|---------------------------------|
 | Module registration            | E:NewModule()                  | ns:NewModule() или простой table|
 | Combat defer                   | InCombatLockdown() → defer     | ns.defer.Schedule() (уже есть)  |
@@ -742,7 +742,7 @@ end
 | Handled bars registry          | AB.handledBars = {}            | bar_runtime_registry (есть)     |
 | Button config table            | bar.buttonConfig → UpdateConfig| BuildButtonConfig (есть)        |
 | Fade parent (mouseover)        | AB.fadeParent                  | rButtonBarFader (есть)          |
-| Three-tier SV                  | ElvDB/ElvPrivateDB/ElvCharDB   | Roth_UI_DB/Roth_UI_DB_Char     |
+| Three-tier SV                  | GlobalDB/PrivateDB/CharacterDB | Roth_UI_DB/Roth_UI_DB_Char     |
 | DeepCopy defaults              | E:CopyTable(sv, defaults)      | DeepMerge (есть)               |
 | Hidden parent frame            | E.HiddenFrame → SetParent      | group_policy.ParkFrame (есть)  |
 | Position string                | 'POINT,Anchor,RelPt,X,Y'      | mover_runtime (похожий формат) |
@@ -752,12 +752,12 @@ end
 | Construct/Configure separation | Construct_*() + Configure_*()  | Нет (всё в style function)     |
 | CVar access                    | C_CVar.GetCVar()               | GetCVarBool (★ BROKEN — fix)   |
 
-### 7a. ★ ElvUI Construct/Configure pattern
+### 7a. ★ Construct/Configure pattern
 
-ElvUI разделяет **создание** виджетов (Construct) и **настройку** (Configure). Это позволяет обновлять layout без пересоздания фреймов:
+Зрелые UI-реализации разделяют **создание** виджетов (Construct) и **настройку** (Configure). Это позволяет обновлять layout без пересоздания фреймов:
 
 ```lua
--- ElvUI: Construct (один раз при создании фрейма)
+-- Construct: один раз при создании фрейма
 function UF:Construct_HealthBar(frame, bg, text, textPos)
   local health = CreateFrame('StatusBar', '$parent_HealthBar', frame)
   health:SetFrameLevel(10)
@@ -774,7 +774,7 @@ function UF:Construct_HealthBar(frame, bg, text, textPos)
   return health
 end
 
--- ElvUI: Configure (каждый раз при изменении настроек)
+-- Configure: при каждом изменении настроек
 function UF:Configure_HealthBar(frame, powerUpdate)
   local db = frame.db
   local health = frame.Health
@@ -978,22 +978,22 @@ Blizzard Edit Mode (12.x) управляет позициями Blizzard frames.
 - `EditModeManagerFrame:IsEditModeActive()` — проверка активности
 - `EventRegistry:RegisterCallback("EditMode.Enter", callback)` / `"EditMode.Exit"` — hooks
 
-ElvUI решает это через:
+Зрелая UI-реализация решает это через:
 ```lua
--- ElvUI полностью отключает Edit Mode для своих frames:
+-- Addon-owned frames изолируются от Blizzard Edit Mode:
 if EditModeManagerFrame then
   hooksecurefunc(EditModeManagerFrame, "EnterEditMode", function()
-    -- Hide ElvUI movers, show Blizzard
+    -- Hide Roth movers, show Blizzard
   end)
   hooksecurefunc(EditModeManagerFrame, "ExitEditMode", function()
-    -- Restore ElvUI movers
+    -- Restore Roth movers
   end)
 end
 ```
 
 ### 9n. ★ Nameplate support (future)
 
-oUF поддерживает nameplates через `oUF:SpawnNamePlates()`. ElvUI активно использует это. Roth_UI пока НЕ имеет nameplate модуля, но oUF инфраструктура готова.
+oUF поддерживает nameplates через `oUF:SpawnNamePlates()`. Зрелые oUF layouts используют этот путь. Roth_UI пока НЕ имеет nameplate модуля, но oUF инфраструктура готова.
 
 ### 9o. ★ group_aura_watch performance
 
@@ -1084,8 +1084,8 @@ self:RegisterEvent("UNIT_AURA", func.QueueGroupAuraColorUpdate)
 │                      Roth_UI                           │
 ├──────────────┬──────────────┬──────────┬───────────────┤
 │  oUF Layout  │  Action Bars │  Orbs    │  Settings     │
-│  (thin       │  (ElvUI      │  (custom │  (Blizzard    │
-│   style fn)  │   pattern)   │   render)│   Settings    │
+│  (thin       │  (secure     │  (custom │  (Blizzard    │
+│   style fn)  │   owner)     │   render)│   Settings    │
 │              │              │          │   Framework)  │
 ├──────────────┼──────────────┼──────────┼───────────────┤
 │              │              │          │               │
@@ -1109,7 +1109,7 @@ self:RegisterEvent("UNIT_AURA", func.QueueGroupAuraColorUpdate)
 
 ### Принципы целевой архитектуры:
 1. **oUF делает всё что может** — Health, Power, Castbar, Auras, Portrait, Range, Indicators, ClassPower, Runes, HealthPrediction
-2. **Action bars по паттерну ElvUI** — LAB buttons, state drivers, единый mover, combat defer
+2. **Action bars через единый LAB/secure-owner паттерн** — LAB buttons, state drivers, единый mover, combat defer
 3. **Persistence — максимум 3 файла** — sv_store (API), config_owner (config domain), orb_owner (orb domain)
 4. **Один mover** — убрать legacy dragframe, оставить mover_runtime
 5. **Settings — Blizzard Settings Framework** — уже частично готово
