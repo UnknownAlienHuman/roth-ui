@@ -6,7 +6,9 @@ local InCombatLockdown = InCombatLockdown
 local pairs = pairs
 local setmetatable = setmetatable
 local tonumber = tonumber
-local CanAccessValue = assert(func.CanAccessValue, "Roth_UI: func.CanAccessValue is required by combat_fader.lua")
+local CanAccessValue = (ns.safety and ns.safety.CanAccess) or func.CanAccessValue or function(value)
+  return not func.IsSecretValue(value)
+end
 
 -- All fader metadata is owned here. Resource bars are addon-owned frames, but
 -- keeping state in a weak table avoids exporting private fields onto widgets and
