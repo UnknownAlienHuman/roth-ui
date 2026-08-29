@@ -1,12 +1,6 @@
 name: Addon validation and package
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
-      - "codex/**"
-      - "fix/**"
   workflow_dispatch:
 
 permissions:
@@ -82,7 +76,7 @@ jobs:
           retention-days: 30
 
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 10
