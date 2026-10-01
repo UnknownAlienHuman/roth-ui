@@ -37,6 +37,9 @@ jobs:
       - name: Validate exact secure-header visibility semantics
         run: python3 tools/validate_group_visibility.py
 
+      - name: Validate lazy Settings and action-button hardening
+        run: python3 tools/validate_runtime_hardening.py
+
       - name: Parse all Lua 5.1 sources
         shell: bash
         run: |
@@ -50,11 +53,14 @@ jobs:
         run: |
           set -euo pipefail
           lua5.1 tests/test_safety.lua
+          lua5.1 tests/test_safety_aspects.lua
           lua5.1 tests/test_ouf_contract.lua
           lua5.1 tests/test_target_castbar.lua
           lua5.1 tests/test_aura_lazy.lua
           lua5.1 tests/test_combat_fader.lua
           lua5.1 tests/test_group_header_visibility.lua
+          lua5.1 tests/test_settings_lifecycle.lua
+          lua5.1 tests/test_action_button_skin.lua
           lua5.1 tests/test_minimap_button.lua
           lua5.1 tests/test_action_bar_background.lua
 
@@ -120,16 +126,16 @@ jobs:
           cat > RELEASE_NOTES.md <<'NOTES'
           ## Roth UI 3.3.8-v57.8-B4.3.3
 
-          Retail/Midnight 12.1 secure group-header lifecycle update.
+          Retail/Midnight 12.1 secure lifecycle and runtime hardening update.
 
           - requires current oUF 14.1.1 or newer;
           - keeps each party/raid secure header session-owned instead of rebuilding protected headers from Settings;
           - structural party/raid options are persisted as reload-required changes;
-          - group visibility uses the oUF header contract when available and never reparents secure headers;
-          - exact unconditional show/hide states use oUF's custom-condition path;
-          - visibility bookkeeping is addon-owned and weak-keyed;
-          - validates the secure-header contract with dedicated static and Lua regression guards;
-          - retains the B4.3.2 Secret/Forbidden, managed-aura, castbar, action-bar and persistence boundaries;
+          - group visibility uses the oUF header contract and exact custom show/hide conditions;
+          - Blizzard Settings pages register lazily without forcing `Blizzard_Settings` to load at login;
+          - action-button skinning checks access and operation-specific forbidden aspects before mutating Blizzard regions;
+          - late action buttons are coalesced until combat ends, with no permanent polling;
+          - validates these contracts with dedicated static and Lua regression guards;
           - produces one deterministic runtime-only `Roth_UI` addon directory.
 
           Source/static validation passed on the tagged commit. Retail-client combat, taint, party/raid transition and visual validation remain a separate acceptance gate.

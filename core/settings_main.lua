@@ -1,5 +1,5 @@
 local addonName = ...
-local ns = assert(_G.Roth_UI, "Roth_UI_Options: main Roth_UI namespace is required")
+local ns = assert(_G.Roth_UI, "Roth_UI: main namespace is required")
 
 ns.SettingsUI = ns.SettingsUI or {}
 local ui = ns.SettingsUI
@@ -27,6 +27,7 @@ ui.categories = ui.categories or {}
 ui.categorySpecs = ui.categorySpecs or {}
 ui.settings = ui.settings or {}
 ui.registered = ui.registered or false
+ui.registering = false
 
 local CATEGORY_SPECS = {
   { key = "root",       name = "Roth UI" },
@@ -115,20 +116,22 @@ local function NormalizeCategoryKey(categoryOrKey)
 end
 
 local function EnsureRegenQueue()
-  if ui.regenFrame then
-    return
+  ui.pendingCombatCallbacks = ui.pendingCombatCallbacks or {}
+
+  if not ui.regenFrame then
+    ui.regenFrame = CreateFrame("Frame")
+    ui.regenFrame:SetScript("OnEvent", function(self)
+      self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+      local pending = ui.pendingCombatCallbacks
+      ui.pendingCombatCallbacks = {}
+      for _, callback in pairs(pending) do
+        TryCall(callback)
+      end
+    end)
   end
 
-  ui.pendingCombatCallbacks = ui.pendingCombatCallbacks or {}
-  ui.regenFrame = CreateFrame("Frame")
+  -- Register only while work is pending; repeated registrations are idempotent.
   ui.regenFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-  ui.regenFrame:SetScript("OnEvent", function()
-    local pending = ui.pendingCombatCallbacks
-    ui.pendingCombatCallbacks = {}
-    for _, callback in pairs(pending) do
-      TryCall(callback)
-    end
-  end)
 end
 
 function ui:RegisterBuilder(name, builder)
@@ -148,6 +151,9 @@ function ui:EnsureSettingsLoaded()
     return true
   end
 
+  if not (C_AddOns and type(C_AddOns.LoadAddOn) == "function") then
+    return false
+  end
   C_AddOns.LoadAddOn("Blizzard_Settings")
 
   return _G.Settings ~= nil
@@ -448,7 +454,9 @@ function ui:GetDebugSnapshot()
 end
 
 function ui:Open(categoryKey, scrollToElementName)
-  self:Register()
+  if self:Register() ~= true and self.registered ~= true then
+    return false
+  end
 
   local category = self.categories[categoryKey]
   if not category or not Settings or not Settings.OpenToCategory then
@@ -465,8 +473,13 @@ function ui:Register()
   if self.registered then
     return true
   end
+  if self.registering then
+    return false
+  end
 
+  self.registering = true
   if not self:EnsureSettingsLoaded() then
+    self.registering = false
     return false
   end
 
@@ -496,26 +509,43 @@ function ui:Register()
 
   Settings.RegisterAddOnCategory(self.categories.root)
   self.registered = true
+  self.registering = false
   return true
 end
 
-local function ContinueOnOwnAddonLoaded(callback)
+local function RegisterWhenBlizzardSettingsLoads()
+  if _G.Settings then
+    ui:Register()
+    return
+  end
+
+  local callback = function()
+    ui:Register()
+  end
+
   if EventUtil and type(EventUtil.ContinueOnAddOnLoaded) == "function" then
-    EventUtil.ContinueOnAddOnLoaded(addonName, callback)
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_Settings", callback)
+    return
+  end
+
+  if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("Blizzard_Settings") then
+    callback()
     return
   end
 
   local frame = CreateFrame("Frame")
   frame:RegisterEvent("ADDON_LOADED")
   frame:SetScript("OnEvent", function(self, _, loadedAddon)
-    if loadedAddon ~= addonName then
+    if loadedAddon ~= "Blizzard_Settings" then
       return
     end
     self:UnregisterEvent("ADDON_LOADED")
+    self:SetScript("OnEvent", nil)
     callback()
   end)
 end
 
-ContinueOnOwnAddonLoaded(function()
-  ui:Register()
-end)
+-- Do not force Blizzard_Settings to load at login. Registration happens when
+-- Blizzard opens its Settings addon, or synchronously when Roth's own entry
+-- point calls ui:Open().
+RegisterWhenBlizzardSettingsLoads()

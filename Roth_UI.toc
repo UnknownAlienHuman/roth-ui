@@ -19,6 +19,7 @@ Libs/LibSharedMedia-3.0/lib.xml
 
 init.lua
 core/safety.lua
+core/safety_aspects.lua
 core/ouf_contract.lua
 
 oUF/elements/target_border.lua
