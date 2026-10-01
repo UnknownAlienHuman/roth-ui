@@ -34,6 +34,9 @@ jobs:
       - name: Validate load graph, ownership and Retail 12.1 boundaries
         run: python3 tools/validate_addon.py
 
+      - name: Validate exact secure-header visibility semantics
+        run: python3 tools/validate_group_visibility.py
+
       - name: Parse all Lua 5.1 sources
         shell: bash
         run: |
@@ -123,8 +126,9 @@ jobs:
           - keeps each party/raid secure header session-owned instead of rebuilding protected headers from Settings;
           - structural party/raid options are persisted as reload-required changes;
           - group visibility uses the oUF header contract when available and never reparents secure headers;
+          - exact unconditional show/hide states use oUF's custom-condition path;
           - visibility bookkeeping is addon-owned and weak-keyed;
-          - validates the secure-header contract with a dedicated Lua regression test;
+          - validates the secure-header contract with dedicated static and Lua regression guards;
           - retains the B4.3.2 Secret/Forbidden, managed-aura, castbar, action-bar and persistence boundaries;
           - produces one deterministic runtime-only `Roth_UI` addon directory.
 

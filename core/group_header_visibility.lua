@@ -30,6 +30,13 @@ local function ResolveVisibility(visibility)
   if value == "" then
     return nil
   end
+
+  -- oUF only recognizes named shorthands such as party/raid/solo. Passing the
+  -- literal word "show" through its shorthand path resolves to "hide". Force
+  -- exact unconditional states through the documented custom-condition path.
+  if value == "show" or value == "hide" then
+    return "custom " .. value
+  end
   return value
 end
 

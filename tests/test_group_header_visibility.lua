@@ -42,9 +42,12 @@ expect(calls[1] == "custom [group] show; hide", "custom condition was changed be
 expect(service.Apply(header, "custom [group] show; hide") == true, "idempotent apply failed")
 expect(#calls == 1, "identical visibility was registered twice")
 
-expect(service.Hide(header) == true and calls[2] == "hide", "hide state was not applied")
-expect(service.Show(header) == true and calls[3] == "show", "show state was not applied")
-expect(service.Park(header, "unused") == true and calls[4] == "hide", "Park must degrade to hide")
+expect(service.Hide(header) == true and calls[2] == "custom hide",
+  "hide state did not use the exact oUF custom path")
+expect(service.Show(header) == true and calls[3] == "custom show",
+  "show state did not use the exact oUF custom path")
+expect(service.Park(header, "unused") == true and calls[4] == "custom hide",
+  "Park must degrade to exact hide")
 expect(header.parent == nil, "Park reparented a secure header")
 
 inCombat = true
@@ -53,13 +56,17 @@ expect(#calls == 4, "combat attempt reached the protected header")
 inCombat = false
 
 local fallback = {}
-expect(service.Apply(fallback, "custom [party] show; hide") == true, "state-driver fallback failed")
-expect(#fallbackCalls == 2, "fallback did not replace exactly one driver")
+expect(service.Apply(fallback, "show") == true, "unconditional fallback show failed")
+expect(#fallbackCalls == 2, "fallback show did not replace exactly one driver")
 expect(fallbackCalls[1][1] == "unregister" and fallbackCalls[1][3] == "visibility",
   "fallback did not clear the previous visibility driver")
 expect(fallbackCalls[2][1] == "register" and fallbackCalls[2][3] == "visibility",
   "fallback did not register the visibility driver")
-expect(fallbackCalls[2][4] == "[party] show; hide", "fallback did not normalize custom prefix")
+expect(fallbackCalls[2][4] == "show", "fallback unconditional show was not preserved")
+
+expect(service.Apply(fallback, "custom [party] show; hide") == true, "conditional fallback failed")
+expect(#fallbackCalls == 4, "conditional fallback did not replace exactly one driver")
+expect(fallbackCalls[4][4] == "[party] show; hide", "fallback did not normalize custom prefix")
 
 service.Forget(header)
 expect(ns.GroupHeaderVisibility.states[header] == nil, "weak metadata was not cleared")
