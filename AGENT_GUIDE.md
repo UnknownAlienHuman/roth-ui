@@ -1,20 +1,20 @@
 # Roth UI agent guide
 
-Current production target: Retail/Midnight `12.1.0`, Interface `120100`, verified Blizzard build `12.1.0.69497`, external oUF `14.0.2+`. Current addon version: `3.3.8-v57.8-B4.3.2`.
+Current production target: Retail/Midnight `12.1.0`, Interface `120100`, verified Blizzard build `12.1.0.69497`, external oUF `14.1.1+`. Current addon version: `3.3.8-v57.8-B4.3.3`.
 
-Before editing, read the current `UnknownAlienHuman/wow-addon-engineering-kb` channel/instructions and this repository's TOC, architecture, status and code.
+Before editing, read the current `UnknownAlienHuman/wow-addon-engineering-kb` channel/instructions and this repository's TOC, architecture, status and code. Inspect third-party repository policy/license files before using their implementation as evidence; a repository prohibition on AI/reference use is binding.
 
 Authority order:
 
 1. Current Roth UI repository code, TOC and this guide for project behavior.
 2. Selected current policy/routes in `UnknownAlienHuman/wow-addon-engineering-kb`.
 3. Exact pinned Blizzard source/generated API documentation for platform contracts.
-4. Exact external oUF 14.0.2+ source for framework contracts.
+4. Exact external oUF `14.1.1+` source for framework contracts.
 5. Named-client runtime evidence for state/data/restriction behavior.
 
 Hard boundaries:
 
-- One package root: `Roth_UI`. Do not restore `Roth_UI_Options`.
+- One package root: `Roth_UI`. Do not restore a separate options addon.
 - `core/safety.lua` owns Secret/Forbidden/access and serializable-copy guards.
 - `core/aura_runtime.lua` is the only first-party managed-aura owner.
 - Do not add raw aura scans or addon-owned `UNIT_AURA` state.
@@ -22,6 +22,8 @@ Hard boundaries:
 - Do not branch, compare, format, serialize, retain or index secret-capable values before access gating.
 - Do not restore replacement action buttons, LibActionButton, LibKeyBound or `oUF_Smooth` without a new measured design review.
 - Blizzard action buttons/state drivers remain Blizzard-owned; Roth art is additive and `UIParent`-owned.
+- oUF secure party/raid headers are session-owned. Never reparent or live-rebuild them; structural settings require reload.
+- Keep foreign/protected-frame bookkeeping in addon-owned weak-key tables.
 - Do not register a second Blizzard Settings category owner.
 - Do not write SavedVariables root globals outside `core/config_persistence_owner.lua`.
 - `core/combat_fader.lua` is the only class-bar fade owner; the global alias may only point to it.
@@ -42,6 +44,7 @@ lua5.1 tests/test_ouf_contract.lua
 lua5.1 tests/test_target_castbar.lua
 lua5.1 tests/test_aura_lazy.lua
 lua5.1 tests/test_combat_fader.lua
+lua5.1 tests/test_group_header_visibility.lua
 lua5.1 tests/test_minimap_button.lua
 lua5.1 tests/test_action_bar_background.lua
 python3 tools/package_release.py

@@ -12,7 +12,7 @@ local CanAccess = assert(ns.safety and ns.safety.CanAccess, "Roth_UI: safety.Can
 local type = type
 local tonumber = tonumber
 
-local MIN_MAJOR, MIN_MINOR, MIN_PATCH = 14, 0, 2
+local MIN_MAJOR, MIN_MINOR, MIN_PATCH = 14, 1, 1
 
 local REQUIRED_METHODS = {
   "AddElement",
@@ -21,6 +21,7 @@ local REQUIRED_METHODS = {
   "RegisterStyle",
   "SetActiveStyle",
   "Spawn",
+  "SpawnHeader",
 }
 
 local function ParseVersion(value)
@@ -61,13 +62,14 @@ if type(C_AddOns) == "table" and type(C_AddOns.GetAddOnMetadata) == "function" t
 end
 local major, minor, patch = ParseVersion(version)
 if major and IsOlder(major, minor, patch) then
-  error(("Roth_UI: oUF %d.%d.%d is too old; version 14.0.2 or newer is required")
+  error(("Roth_UI: oUF %d.%d.%d is too old; version 14.1.1 or newer is required")
     :format(major, minor, patch), 0)
 end
 
 ns.oUFContract = {
-  minimumVersion = "14.0.2",
+  minimumVersion = "14.1.1",
   detectedVersion = version,
   managedAuras = true, -- verified when the first oUF frame is initialized
   nativeInterpolation = true,
+  sessionOwnedSecureHeaders = true,
 }

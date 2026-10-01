@@ -1,5 +1,5 @@
 local addonName = ...
-local ns = assert(_G.Roth_UI, "Roth_UI_Options: main Roth_UI namespace is required")
+local ns = assert(_G.Roth_UI, "Roth_UI: main namespace is required")
 
 local ui = assert(ns and ns.SettingsUI, "Roth_UI: SettingsUI is required by settings_groups.lua")
 
@@ -15,21 +15,9 @@ local function ApplyPartyLayout()
   end
 end
 
-local function ApplyPartyStructure()
-  if type(ns.RebuildPartyStructureRuntime) == "function" then
-    ui:RunOutOfCombat("settings_party_structure", ns.RebuildPartyStructureRuntime)
-  end
-end
-
 local function ApplyRaidLayout()
   if type(ns.ApplyRaidLayoutRuntime) == "function" then
     ui:RunOutOfCombat("settings_raid_layout", ns.ApplyRaidLayoutRuntime)
-  end
-end
-
-local function ApplyRaidStructure()
-  if type(ns.RebuildRaidStructureRuntime) == "function" then
-    ui:RunOutOfCombat("settings_raid_structure", ns.RebuildRaidStructureRuntime)
   end
 end
 
@@ -56,7 +44,7 @@ ui:RegisterBuilder("groups", function()
     category = "party",
     variable = "ROTH_UI_PARTY_PROVIDER",
     label = "Use Roth Party Frames",
-    tooltip = "Toggles Roth party headers against Blizzard party frames through the compatibility policy layer.",
+    tooltip = "Toggles the existing Roth party header against Blizzard party frames through the compatibility policy layer.",
     path = { "units", "party", "show" },
     defaultValue = ui:GetConfigDefault({ "units", "party", "show" }, true),
     reloadRequired = false,
@@ -112,24 +100,21 @@ ui:RegisterBuilder("groups", function()
     category = "party",
     variable = "ROTH_UI_PARTY_PORTRAIT_3D",
     label = "Party Portraits Use 3D",
-    tooltip = "Changes the portrait region type for party frames and rebuilds the party header out of combat.",
+    tooltip = "Changes the child-region type of the secure party header. Reload is required because oUF headers are session-owned and are not rebuilt live.",
     path = { "units", "party", "portrait", "use3D" },
     defaultValue = ui:GetConfigDefault({ "units", "party", "portrait", "use3D" }, true),
-    reloadRequired = false,
-    apply = ApplyPartyStructure,
+    reloadRequired = true,
   })
 
   ui:AddCheckbox({
     category = "party",
     variable = "ROTH_UI_PARTY_VERTICAL",
     label = "Vertical Party Frames",
-    tooltip = "Restores the vertical party layout and rebuilds the party header out of combat.",
+    tooltip = "Changes secure-header child geometry. Reload is required because existing protected unit buttons are not destroyed or replaced live.",
     path = { "units", "party", "vertical" },
     defaultValue = ui:GetConfigDefault({ "units", "party", "vertical" }, true),
-    reloadRequired = false,
-    apply = ApplyPartyStructure,
+    reloadRequired = true,
   })
-
 
   ui:AddSlider({
     category = "party",
@@ -150,7 +135,7 @@ ui:RegisterBuilder("groups", function()
     category = "party",
     variable = "ROTH_UI_PARTY_HEAL_PREDICTION",
     label = "Party Heal Prediction",
-    tooltip = "Lets oUF Health handle incoming-heal prediction for party frames. Reload is required because the prediction bars are created when the party style is spawned.",
+    tooltip = "Lets oUF Health handle incoming-heal prediction for party frames. Reload is required because prediction regions are created with the secure header children.",
     path = { "units", "party", "healprediction", "show" },
     defaultValue = ui:GetConfigDefault({ "units", "party", "healprediction", "show" }, true),
     reloadRequired = true,
@@ -160,18 +145,17 @@ ui:RegisterBuilder("groups", function()
     category = "party",
     variable = "ROTH_UI_PARTY_AURAWATCH",
     label = "Party Aura Watch",
-    tooltip = "Creates or removes the party aura watch indicators out of combat.",
+    tooltip = "Adds or removes managed aura slots on secure party child frames. Reload is required; the header is not rebuilt live.",
     path = { "units", "party", "aurawatch", "show" },
     defaultValue = ui:GetConfigDefault({ "units", "party", "aurawatch", "show" }, true),
-    reloadRequired = false,
-    apply = ApplyPartyStructure,
+    reloadRequired = true,
   })
 
   ui:AddCheckbox({
     category = "raid",
     variable = "ROTH_UI_RAID_PROVIDER",
     label = "Use Roth Raid Frames",
-    tooltip = "Toggles Roth raid headers against Blizzard raid frames through the compatibility policy layer.",
+    tooltip = "Toggles the existing Roth raid headers against Blizzard raid frames through the compatibility policy layer.",
     path = { "units", "raid", "show" },
     defaultValue = ui:GetConfigDefault({ "units", "raid", "show" }, true),
     reloadRequired = false,
@@ -193,7 +177,6 @@ ui:RegisterBuilder("groups", function()
     labelFormatter = FormatScale,
   })
 
-
   ui:AddSlider({
     category = "raid",
     variable = "ROTH_UI_RAID_RANGE_ALPHA",
@@ -213,7 +196,7 @@ ui:RegisterBuilder("groups", function()
     category = "raid",
     variable = "ROTH_UI_RAID_HEAL_PREDICTION",
     label = "Raid Heal Prediction",
-    tooltip = "Lets oUF Health handle incoming-heal prediction for raid frames. Reload is required because the prediction bars are created when the raid style is spawned.",
+    tooltip = "Lets oUF Health handle incoming-heal prediction for raid frames. Reload is required because prediction regions are created with the secure header children.",
     path = { "units", "raid", "healprediction", "show" },
     defaultValue = ui:GetConfigDefault({ "units", "raid", "healprediction", "show" }, false),
     reloadRequired = true,
@@ -223,33 +206,30 @@ ui:RegisterBuilder("groups", function()
     category = "raid",
     variable = "ROTH_UI_RAID_AURAS_ENABLED",
     label = "Raid Aura Icons",
-    tooltip = "Creates or removes native raid aura icon frames out of combat.",
+    tooltip = "Adds or removes managed aura containers on secure raid child frames. Reload is required; existing headers are not rebuilt live.",
     path = { "units", "raid", "auras", "show" },
     defaultValue = ui:GetConfigDefault({ "units", "raid", "auras", "show" }, false),
-    reloadRequired = false,
-    apply = ApplyRaidStructure,
+    reloadRequired = true,
   })
 
   ui:AddCheckbox({
     category = "raid",
     variable = "ROTH_UI_RAID_AURA_BUFFS",
     label = "Raid Buff Icons",
-    tooltip = "Adds the raid buff row out of combat when raid aura icons are enabled.",
+    tooltip = "Adds or removes the managed raid buff group. Reload is required because the secure header children are session-owned.",
     path = { "units", "raid", "auras", "showBuffs" },
     defaultValue = ui:GetConfigDefault({ "units", "raid", "auras", "showBuffs" }, false),
-    reloadRequired = false,
-    apply = ApplyRaidStructure,
+    reloadRequired = true,
   })
 
   ui:AddCheckbox({
     category = "raid",
     variable = "ROTH_UI_RAID_AURAWATCH",
     label = "Raid Aura Watch",
-    tooltip = "Creates or removes the raid aura watch indicators out of combat.",
+    tooltip = "Adds or removes managed healer-watch slots on secure raid child frames. Reload is required; the headers are not rebuilt live.",
     path = { "units", "raid", "aurawatch", "show" },
     defaultValue = ui:GetConfigDefault({ "units", "raid", "aurawatch", "show" }, true),
-    reloadRequired = false,
-    apply = ApplyRaidStructure,
+    reloadRequired = true,
   })
 
   ui:AddSlider({

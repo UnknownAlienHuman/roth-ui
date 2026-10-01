@@ -1,79 +1,107 @@
+-- Secure oUF group-header visibility owner.
+--
+-- oUF creates protected SecureGroupHeaderTemplate frames and retains them in
+-- its header registry. Roth UI therefore never reparents or respawns an active
+-- header to apply settings. Visibility is updated out of combat through oUF's
+-- public header method when available; ordinary bookkeeping stays in a weak
+-- addon-owned table rather than on the protected frame.
+
 local addon, ns = ...
 
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by group_header_visibility.lua")
 local TryCall = assert(safety.TryCall, "Roth_UI: safety.TryCall is required by group_header_visibility.lua")
-local TryMethod = assert(safety.TryMethod, "Roth_UI: safety.TryMethod is required by group_header_visibility.lua")
+local InCombatLockdown = InCombatLockdown
+local RegisterStateDriver = RegisterStateDriver
+local UnregisterStateDriver = UnregisterStateDriver
+local type = type
+local setmetatable = setmetatable
 
 local service = ns.GroupHeaderVisibility or {}
 ns.GroupHeaderVisibility = service
 
-service.hiddenParents = service.hiddenParents or {}
+local states = service.states or setmetatable({}, { __mode = "k" })
+service.states = states
 
-function service.Normalize(visibility)
-  if visibility == nil then
+local function ResolveVisibility(visibility)
+  if type(visibility) ~= "string" then
     return nil
   end
-  return tostring(visibility):gsub("^custom%s+", "")
+  local value = visibility:match("^%s*(.-)%s*$")
+  if value == "" then
+    return nil
+  end
+  return value
 end
 
-function service.GetHiddenParent(key)
-  local id = type(key) == "string" and key or "default"
-  local parent = service.hiddenParents[id]
-  if parent then
-    return parent
-  end
+local function ResolveFallbackCondition(visibility)
+  local custom = visibility:match("^custom%s+(.+)$")
+  return custom or visibility
+end
 
-  parent = CreateFrame("Frame")
-  parent:Hide()
-  service.hiddenParents[id] = parent
-  return parent
+local function GetState(frame)
+  local state = states[frame]
+  if not state then
+    state = {}
+    states[frame] = state
+  end
+  return state
 end
 
 function service.Apply(frame, visibility)
-  if not (frame and visibility) then
+  if not frame then
     return false
   end
 
-  local vis = service.Normalize(visibility)
-  if not vis or vis == "" then
+  local value = ResolveVisibility(visibility)
+  if not value then
+    return false
+  end
+  if InCombatLockdown and InCombatLockdown() then
     return false
   end
 
-  if UnregisterStateDriver then
-    TryCall(UnregisterStateDriver, frame, "visibility")
+  local state = GetState(frame)
+  if state.applied == value then
+    return true
   end
-  local ok = TryCall(RegisterStateDriver, frame, "visibility", vis)
-  return ok == true
+
+  local ok
+  if type(frame.SetVisibility) == "function" then
+    ok = TryCall(frame.SetVisibility, frame, value)
+  else
+    if type(RegisterStateDriver) ~= "function" then
+      return false
+    end
+    if type(UnregisterStateDriver) == "function" then
+      TryCall(UnregisterStateDriver, frame, "visibility")
+    end
+    ok = TryCall(RegisterStateDriver, frame, "visibility", ResolveFallbackCondition(value))
+  end
+
+  if ok == true then
+    state.applied = value
+    return true
+  end
+  return false
 end
 
 function service.Hide(frame)
-  if not frame then
-    return false
-  end
-
-  service.Apply(frame, "hide")
-  TryMethod(frame, "Hide")
-  return true
+  return service.Apply(frame, "hide")
 end
 
 function service.Show(frame)
-  if not frame then
-    return false
-  end
-
-  service.Apply(frame, "show")
-  TryMethod(frame, "Show")
-  return true
+  return service.Apply(frame, "show")
 end
 
-function service.Park(frame, key)
-  if not frame then
-    return false
-  end
+-- Historical rebuild code called Park before spawning another secure header.
+-- Secure headers cannot be destroyed and oUF retains them, so reparenting is
+-- prohibited. Keep this compatibility entry point as hide-only fail-safe.
+function service.Park(frame)
+  return service.Hide(frame)
+end
 
-  service.Hide(frame)
-  if frame.SetParent then
-    TryCall(frame.SetParent, frame, service.GetHiddenParent(key))
+function service.Forget(frame)
+  if frame then
+    states[frame] = nil
   end
-  return true
 end

@@ -10,10 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "3.3.8-v57.8-B4.3.2"
+VERSION = "3.3.8-v57.8-B4.3.3"
 INTERFACE = "120100"
 TARGET_BUILD = "12.1.0.69497"
-OUF_MIN = "14.0.2"
+OUF_MIN = "14.1.1"
 MAIN_TOC = ROOT / "Roth_UI.toc"
 
 RETIRED_PATHS = {
@@ -37,6 +37,15 @@ RETIRED_PATHS = {
 FIRST_PARTY_PREFIXES = (
     "init.lua", "config.lua", "charspecific.lua", "defaults/", "core/", "units/", "oUF/",
     "embeds/rLib/",
+)
+
+STRUCTURAL_GROUP_SETTINGS = (
+    "ROTH_UI_PARTY_PORTRAIT_3D",
+    "ROTH_UI_PARTY_VERTICAL",
+    "ROTH_UI_PARTY_AURAWATCH",
+    "ROTH_UI_RAID_AURAS_ENABLED",
+    "ROTH_UI_RAID_AURA_BUFFS",
+    "ROTH_UI_RAID_AURAWATCH",
 )
 
 
@@ -170,6 +179,7 @@ def assert_order(entries: list[Entry]) -> None:
     before("init.lua", "core/safety.lua")
     before("core/safety.lua", "core/ouf_contract.lua")
     before("core/ouf_contract.lua", "core/config_persistence_owner.lua")
+    before("core/group_header_visibility.lua", "units/party.lua")
     before("core/config_persistence_owner.lua", "config.lua")
     before("core/lib.lua", "core/mover_runtime.lua")
     before("core/mover_runtime.lua", "core/combat_fader.lua")
@@ -182,6 +192,8 @@ def assert_order(entries: list[Entry]) -> None:
     before("core/persistence_report_service.lua", "core/sv_doctor.lua")
     before("core/transfer.lua", "core/settings_transfer.lua")
     before("core/aura_runtime.lua", "units/target.lua")
+    before("units/raid.lua", "core/group_structure_contract.lua")
+    before("core/group_structure_contract.lua", "core/action_button_skin.lua")
     before("units/player.lua", "core/action_bar_background.lua")
 
 
@@ -241,6 +253,18 @@ def assert_retired_absent() -> None:
         fail("retired/service paths still present: " + ", ".join(present))
 
 
+def find_setting_block(text: str, variable: str) -> str:
+    marker = f'variable = "{variable}"'
+    marker_pos = text.find(marker)
+    if marker_pos < 0:
+        fail(f"structural group setting missing: {variable}")
+    start = text.rfind("ui:AddCheckbox({", 0, marker_pos)
+    end = text.find("\n  })", marker_pos)
+    if start < 0 or end < 0:
+        fail(f"unable to isolate structural group setting: {variable}")
+    return text[start:end]
+
+
 def assert_runtime_boundaries(graph: list[Entry]) -> None:
     sources = first_party_lua(graph)
     combined = "\n".join(sources.values())
@@ -260,13 +284,15 @@ def assert_runtime_boundaries(graph: list[Entry]) -> None:
     required_sources = {
         "core/safety.lua",
         "core/ouf_contract.lua",
+        "core/group_header_visibility.lua",
+        "core/group_structure_contract.lua",
         "core/minimap_button.lua",
         "core/slash_aliases.lua",
         "core/action_bar_background.lua",
     }
     missing = sorted(required_sources.difference(sources))
     if missing:
-        fail("required B4.3.2 runtime modules missing from graph: " + ", ".join(missing))
+        fail("required B4.3.3 runtime modules missing from graph: " + ", ".join(missing))
 
     for path, text in sources.items():
         if path != "core/aura_runtime.lua" and re.search(r"\b(?:CreateAuras|AddGroup|AddSlot)\s*\(", text):
@@ -280,9 +306,36 @@ def assert_runtime_boundaries(graph: list[Entry]) -> None:
             fail(f"safety boundary missing: {token}")
 
     contract = sources.get("core/ouf_contract.lua", "")
-    for token in ("14.0.2", "AddElement", "RegisterStyle", "AuraContainerSortMethod"):
+    for token in ("14.1.1", "AddElement", "RegisterStyle", "SpawnHeader", "AuraContainerSortMethod"):
         if token not in contract:
             fail(f"oUF contract missing: {token}")
+
+    group_visibility = sources.get("core/group_header_visibility.lua", "")
+    if "SetParent" in group_visibility or "hiddenParents" in group_visibility:
+        fail("secure group-header visibility owner must never reparent headers")
+    for token in ("SetVisibility", '__mode = "k"', "InCombatLockdown", "function service.Park"):
+        if token not in group_visibility:
+            fail(f"group-header visibility contract missing: {token}")
+
+    group_structure = sources.get("core/group_structure_contract.lua", "")
+    for token in (
+        "liveRebuild = false",
+        "reloadRequired = true",
+        "ns.RebuildPartyStructureRuntime = nil",
+        "ns.RebuildRaidStructureRuntime = nil",
+    ):
+        if token not in group_structure:
+            fail(f"secure group-structure contract missing: {token}")
+
+    settings_groups = sources.get("core/settings_groups.lua", "")
+    if "ApplyPartyStructure" in settings_groups or "ApplyRaidStructure" in settings_groups:
+        fail("Settings must not rebuild secure party/raid headers live")
+    for variable in STRUCTURAL_GROUP_SETTINGS:
+        block = find_setting_block(settings_groups, variable)
+        if "reloadRequired = true" not in block:
+            fail(f"secure structural setting must require reload: {variable}")
+        if re.search(r"\bapply\s*=", block):
+            fail(f"secure structural setting must not have a live apply callback: {variable}")
 
     bars = sources.get("core/bars.lua", "")
     if "AttachCombatFader(" not in bars and "rCombatFrameFader(" not in bars:

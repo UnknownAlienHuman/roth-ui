@@ -7,8 +7,8 @@ A lightweight Diablo-inspired World of Warcraft Retail interface built on the ex
 - World of Warcraft Retail / Midnight `12.1.0`
 - Interface `120100`
 - Verified Blizzard UI baseline: `12.1.0.69497`, source `027d26c3406d3de2cbd2b1f67d468fe033a1bcd4`
-- Required dependency: oUF `14.0.2` or newer
-- Roth UI version: `3.3.8-v57.8-B4.3.2`
+- Required dependency: oUF `14.1.1` or newer
+- Roth UI version: `3.3.8-v57.8-B4.3.3`
 - Author: Neomorph
 
 ## Installation
@@ -19,7 +19,7 @@ Install the release archive's single addon folder into `_retail_/Interface/AddOn
 Roth_UI/
 ```
 
-Install oUF `14.0.2` or newer separately. Settings, import/export, diagnostics and the minimap button are included in `Roth_UI`; there is no `Roth_UI_Options` companion folder.
+Install oUF `14.1.1` or newer separately. Settings, import/export, diagnostics and the minimap button are included in `Roth_UI`; there is no companion options addon.
 
 ## Commands
 
@@ -33,8 +33,10 @@ The addon-owned minimap button opens Settings with left-click and shows command 
 ## Runtime architecture
 
 - Blizzard owns action buttons, paging, bindings, vehicle/override state and visibility. Roth UI applies additive art/skin only.
-- oUF owns unit-frame lifecycle, health/power/class resources and cast discovery/timing.
-- General aura display uses Blizzard-managed AuraContainers through oUF 14; Roth UI does not enumerate raw AuraData or own `UNIT_AURA` state.
+- oUF owns unit-frame lifecycle, health/power/class resources, secure group headers and cast discovery/timing.
+- Party and raid secure headers are created at most once per UI session. Provider visibility, scale, position and range can update live; child-structure changes are persisted as reload-required settings.
+- Group-header visibility uses the oUF header contract outside combat and never reparents protected headers.
+- General aura display uses Blizzard-managed AuraContainers through oUF; Roth UI does not enumerate raw AuraData or own `UNIT_AURA` state.
 - `core/safety.lua` owns Secret/Forbidden/access and serializable-copy guards.
 - `core/config_persistence_owner.lua` is the only SavedVariables root writer.
 - `core/settings_main.lua` is the only Blizzard Settings category owner.
@@ -49,13 +51,14 @@ The manual `Addon validation and package` workflow performs:
 
 - repository text-policy checks;
 - TOC/XML closure, metadata, load-order and ownership validation;
+- secure group-header lifecycle and reload-only structure checks;
 - rejection of retired aura scanners, replacement action bars, duplicate Settings/SavedVariables owners and legacy rLib modules;
 - Lua 5.1 parsing of all Lua sources;
-- isolated safety, oUF, castbar, aura, combat-fader, minimap and action-bar event tests;
+- isolated safety, oUF, castbar, aura, combat-fader, group-header, minimap and action-bar event tests;
 - two deterministic package builds followed by byte comparison;
 - runtime-only ZIP inventory and SHA-256 generation.
 
-Static checks do not prove in-client safety. Before calling a release client-certified, validate login/reload, target/focus/boss casts, party/raid auras, stance/action bars, vehicle/override/possess states, Edit Mode, persistence migration, `/console taintLog 1` and `C_AddOnProfiler` on the target Retail client.
+Static checks do not prove in-client safety. Before calling a release client-certified, validate login/reload, target/focus/boss casts, party/raid auras, secure header enable/disable and reload-required transitions, stance/action bars, vehicle/override/possess states, Edit Mode, persistence migration, `/console taintLog 1` and `C_AddOnProfiler` on the target Retail client.
 
 ## License
 

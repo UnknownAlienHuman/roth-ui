@@ -27,6 +27,7 @@ local requiredMethods = {
   "RegisterStyle",
   "SetActiveStyle",
   "Spawn",
+  "SpawnHeader",
 }
 
 local function NewOUF()
@@ -55,25 +56,27 @@ local function Run(version, oUF)
   return ns
 end
 
-local current = Run("14.0.2", NewOUF())
+local current = Run("14.1.1", NewOUF())
 expect(type(current.oUFContract) == "table", "oUF contract was not published")
-expect(current.oUFContract.minimumVersion == "14.0.2", "minimum oUF version changed")
-expect(current.oUFContract.detectedVersion == "14.0.2", "detected version was lost")
+expect(current.oUFContract.minimumVersion == "14.1.1", "minimum oUF version changed")
+expect(current.oUFContract.detectedVersion == "14.1.1", "detected version was lost")
 expect(current.oUFContract.managedAuras == true, "managed-aura capability was not declared")
+expect(current.oUFContract.sessionOwnedSecureHeaders == true,
+  "secure-header lifecycle capability was not declared")
 
 local oldOK, oldError = pcall(function()
-  Run("13.9.9", NewOUF())
+  Run("14.1.0", NewOUF())
 end)
 expect(oldOK == false and tostring(oldError):find("too old", 1, true),
   "old oUF version was not rejected")
 
 local broken = NewOUF()
-broken.Spawn = nil
+broken.SpawnHeader = nil
 local brokenOK, brokenError = pcall(function()
-  Run("14.0.2", broken)
+  Run("14.1.1", broken)
 end)
-expect(brokenOK == false and tostring(brokenError):find("missing Spawn", 1, true),
-  "missing oUF capability was not rejected")
+expect(brokenOK == false and tostring(brokenError):find("missing SpawnHeader", 1, true),
+  "missing oUF group-header capability was not rejected")
 
 local development = Run("@project-version@", NewOUF())
 expect(development.oUFContract.detectedVersion == "@project-version@",

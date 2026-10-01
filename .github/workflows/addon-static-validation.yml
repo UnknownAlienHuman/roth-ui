@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: Publish the B4.3.2 GitHub release after validation
+        description: Publish the B4.3.3 GitHub release after validation
         required: false
         default: false
         type: boolean
@@ -51,6 +51,7 @@ jobs:
           lua5.1 tests/test_target_castbar.lua
           lua5.1 tests/test_aura_lazy.lua
           lua5.1 tests/test_combat_fader.lua
+          lua5.1 tests/test_group_header_visibility.lua
           lua5.1 tests/test_minimap_button.lua
           lua5.1 tests/test_action_bar_background.lua
 
@@ -71,17 +72,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist-a dist-b dist
-          python3 tools/package_release.py "dist-a/Roth_UI-3.3.8-v57.8-B4.3.2.zip"
-          python3 tools/package_release.py "dist-b/Roth_UI-3.3.8-v57.8-B4.3.2.zip"
-          cmp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.2.zip" "dist-b/Roth_UI-3.3.8-v57.8-B4.3.2.zip"
-          cp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.2.zip" dist/
-          (cd dist && sha256sum Roth_UI-3.3.8-v57.8-B4.3.2.zip > SHA256SUMS.txt)
-          unzip -Z1 dist/Roth_UI-3.3.8-v57.8-B4.3.2.zip > dist/ZIP-CONTENTS.txt
+          python3 tools/package_release.py "dist-a/Roth_UI-3.3.8-v57.8-B4.3.3.zip"
+          python3 tools/package_release.py "dist-b/Roth_UI-3.3.8-v57.8-B4.3.3.zip"
+          cmp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.3.zip" "dist-b/Roth_UI-3.3.8-v57.8-B4.3.3.zip"
+          cp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.3.zip" dist/
+          (cd dist && sha256sum Roth_UI-3.3.8-v57.8-B4.3.3.zip > SHA256SUMS.txt)
+          unzip -Z1 dist/Roth_UI-3.3.8-v57.8-B4.3.3.zip > dist/ZIP-CONTENTS.txt
 
       - name: Upload verified package
         uses: actions/upload-artifact@v4
         with:
-          name: Roth_UI-3.3.8-v57.8-B4.3.2
+          name: Roth_UI-3.3.8-v57.8-B4.3.3
           path: dist/*
           if-no-files-found: error
           retention-days: 30
@@ -98,14 +99,14 @@ jobs:
       - name: Download verified package
         uses: actions/download-artifact@v4
         with:
-          name: Roth_UI-3.3.8-v57.8-B4.3.2
+          name: Roth_UI-3.3.8-v57.8-B4.3.3
           path: dist
 
-      - name: Publish B4.3.2 release once
+      - name: Publish B4.3.3 release once
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v3.3.8-v57.8-B4.3.2
+          TAG: v3.3.8-v57.8-B4.3.3
         run: |
           set -euo pipefail
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -114,27 +115,27 @@ jobs:
           fi
 
           cat > RELEASE_NOTES.md <<'NOTES'
-          ## Roth UI 3.3.8-v57.8-B4.3.2
+          ## Roth UI 3.3.8-v57.8-B4.3.3
 
-          Retail/Midnight 12.1 ownership, safety and packaging update.
+          Retail/Midnight 12.1 secure group-header lifecycle update.
 
-          - one `Roth_UI` addon directory; Settings, import/export and diagnostics are included;
-          - fail-fast oUF 14.0.2 contract and centralized Secret/Forbidden access helpers;
-          - lazy Blizzard-managed aura containers with no Roth raw aura scanner;
-          - one event-driven combat-fader owner with no permanent first-party polling;
-          - Blizzard-owned action buttons with additive Roth art and corrected login/vehicle refresh routing;
-          - addon-owned minimap button for Settings and command access;
-          - one SavedVariables root owner and a single Settings category owner;
-          - deterministic runtime package with retired service/development modules excluded.
+          - requires current oUF 14.1.1 or newer;
+          - keeps each party/raid secure header session-owned instead of rebuilding protected headers from Settings;
+          - structural party/raid options are persisted as reload-required changes;
+          - group visibility uses the oUF header contract when available and never reparents secure headers;
+          - visibility bookkeeping is addon-owned and weak-keyed;
+          - validates the secure-header contract with a dedicated Lua regression test;
+          - retains the B4.3.2 Secret/Forbidden, managed-aura, castbar, action-bar and persistence boundaries;
+          - produces one deterministic runtime-only `Roth_UI` addon directory.
 
-          Requires oUF 14.0.2 or newer. Source/static validation passed on the tagged commit. Retail-client combat, taint, vehicle, aura and visual validation remain a separate acceptance gate.
+          Source/static validation passed on the tagged commit. Retail-client combat, taint, party/raid transition and visual validation remain a separate acceptance gate.
           NOTES
 
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Roth UI 3.3.8-v57.8-B4.3.2" \
+            --title "Roth UI 3.3.8-v57.8-B4.3.3" \
             --notes-file RELEASE_NOTES.md \
-            dist/Roth_UI-3.3.8-v57.8-B4.3.2.zip \
+            dist/Roth_UI-3.3.8-v57.8-B4.3.3.zip \
             dist/SHA256SUMS.txt \
             dist/ZIP-CONTENTS.txt
