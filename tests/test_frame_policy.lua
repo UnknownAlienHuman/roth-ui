@@ -40,12 +40,25 @@ local function NewRegion()
 end
 
 local region = NewRegion()
+expect(policy.SetSuppressed(region, false) == true, "unsuppressed no-op failed")
+expect(region.mutations == 0, "unsuppressed no-op mutated a Blizzard frame")
+
 expect(policy.SetSuppressed(region, true) == true, "ordinary suppression failed")
 expect(region.alpha == 0 and region.mouse == false, "suppression state was not applied")
 expect(policy.GetSuppressionState(region) == true, "suppression state was not recorded")
 expect(policy.SetSuppressed(region, false) == true, "ordinary restore failed")
 expect(region.alpha == 0.75 and region.mouse == true, "captured frame state was not restored")
-expect(policy.GetSuppressionState(region) == false, "restored state was not recorded")
+expect(policy.GetSuppressionState(region) == false, "restored state was not cleared")
+
+-- Blizzard may change its own ordinary state after restoration. A new Roth
+-- suppression cycle must capture and restore the new values, not the old ones.
+region.alpha = 0.45
+region.mouse = false
+expect(policy.SetSuppressed(region, true) == true, "second suppression failed")
+expect(region.alpha == 0 and region.mouse == false, "second suppression was not applied")
+expect(policy.SetSuppressed(region, false) == true, "second restore failed")
+expect(region.alpha == 0.45 and region.mouse == false,
+  "second restore replayed a stale suppression snapshot")
 
 inCombat = true
 expect(policy.SetSuppressed(region, true) == false, "combat suppression was not deferred")
@@ -59,7 +72,7 @@ inCombat = false
 regenFrame.scripts.OnEvent(regenFrame, "PLAYER_REGEN_ENABLED")
 expect(policy.GetPendingCount() == 0, "pending queue did not drain")
 expect(regenFrame.events.PLAYER_REGEN_ENABLED == nil, "regen event remained permanently registered")
-expect(region.alpha == 0.75 and region.mouse == true, "latest deferred state did not win")
+expect(region.alpha == 0.45 and region.mouse == false, "latest deferred state did not win")
 
 local callbackValue = 0
 inCombat = true

@@ -22,6 +22,9 @@ local setmetatable = setmetatable
 local policy = ns.framePolicy or {}
 ns.framePolicy = policy
 
+-- State exists only while a foreign frame is suppressed. Once restored, the
+-- record is removed so the next suppression cycle captures Blizzard's current
+-- alpha/input state rather than replaying a stale login-time snapshot.
 local frameState = setmetatable({}, { __mode = "k" })
 local pending = {}
 local regenFrame
@@ -32,10 +35,13 @@ end
 
 local function CaptureFrameState(frame)
   if not CanUseRegion(frame) then return nil end
-  local state = frameState[frame]
-  if state then return state end
 
-  state = { alpha = 1, mouse = true }
+  local state = frameState[frame]
+  if state and state.suppressed == true then
+    return state
+  end
+
+  state = { alpha = 1, mouse = true, suppressed = false }
   local gotAlpha, alpha = TryMethod(frame, "GetAlpha")
   if gotAlpha == true and CanAccess(alpha) and type(alpha) == "number" then
     state.alpha = alpha
@@ -50,19 +56,32 @@ end
 
 local function ApplySuppressed(frame, suppressed)
   if not frame or IsForbidden(frame) then return false end
-  local state = CaptureFrameState(frame)
-  if not state then return false end
+
+  local state
+  if suppressed then
+    state = CaptureFrameState(frame)
+    if not state then return false end
+  else
+    state = frameState[frame]
+    if not state then return true end
+  end
 
   local alphaTarget = suppressed and 0 or state.alpha
   local mouseTarget = state.mouse
   if suppressed then mouseTarget = false end
+
   local alphaApplied = TryMethod(frame, "SetAlpha", alphaTarget) == true
   local mouseApplied = TryMethod(frame, "EnableMouse", mouseTarget) == true
-  if alphaApplied or mouseApplied then
-    state.suppressed = suppressed and true or false
-    return true
+  if not (alphaApplied and mouseApplied) then
+    return false
   end
-  return false
+
+  if suppressed then
+    state.suppressed = true
+  else
+    frameState[frame] = nil
+  end
+  return true
 end
 
 local function FlushPending(self)
