@@ -1,9 +1,8 @@
-## Interface: 70000
+## Interface: 120100
 ## Author: zork
-## Title: rLib
-## Notes: Zork's addon library.
+## Title: rLib (Roth UI embedded subset)
+## Notes: Drag-frame and snap-guide helpers used by Roth UI.
 
 core.lua
+snapguides.lua
 dragframe.lua
-framefader.lua
-slashcmd.lua

@@ -1,8 +1,5 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
 	<Script file='core.lua' />
-	<Script file='grid.lua' />
 	<Script file='snapguides.lua' />
 	<Script file='dragframe.lua' />
-	<Script file='framefader.lua' />
-	<Script file='slashcmd.lua' />
 </Ui>

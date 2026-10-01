@@ -2,6 +2,12 @@ name: Addon validation and package
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish the B4.3.2 GitHub release after validation
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -22,7 +28,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes lua5.1
 
-      - name: Validate load graphs, ownership and Retail 12.1 boundaries
+      - name: Validate repository text policy
+        run: python3 tools/validate_repository_text.py
+
+      - name: Validate load graph, ownership and Retail 12.1 boundaries
         run: python3 tools/validate_addon.py
 
       - name: Parse all Lua 5.1 sources
@@ -33,21 +42,23 @@ jobs:
             luac5.1 -p "$file"
           done < <(find . -type f -name '*.lua' -not -path './.git/*' -print0)
 
-      - name: Run castbar and lazy-aura regression tests
+      - name: Run isolated regression tests
         shell: bash
         run: |
           set -euo pipefail
+          lua5.1 tests/test_safety.lua
+          lua5.1 tests/test_ouf_contract.lua
           lua5.1 tests/test_target_castbar.lua
           lua5.1 tests/test_aura_lazy.lua
           lua5.1 tests/test_combat_fader.lua
+          lua5.1 tests/test_minimap_button.lua
+          lua5.1 tests/test_action_bar_background.lua
 
       - name: Reject whitespace and conflict-marker errors
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            git diff --check "${{ github.event.pull_request.base.sha }}"..HEAD
-          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
             git diff --check HEAD^..HEAD
           fi
           if git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- . ':!*.md'; then
@@ -60,23 +71,23 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist-a dist-b dist
-          python3 tools/package_release.py "dist-a/Roth_UI-3.3.8-v57.8-B4.3.1.zip"
-          python3 tools/package_release.py "dist-b/Roth_UI-3.3.8-v57.8-B4.3.1.zip"
-          cmp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.1.zip" "dist-b/Roth_UI-3.3.8-v57.8-B4.3.1.zip"
-          cp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.1.zip" dist/
-          (cd dist && sha256sum Roth_UI-3.3.8-v57.8-B4.3.1.zip > SHA256SUMS.txt)
-          unzip -Z1 dist/Roth_UI-3.3.8-v57.8-B4.3.1.zip > dist/ZIP-CONTENTS.txt
+          python3 tools/package_release.py "dist-a/Roth_UI-3.3.8-v57.8-B4.3.2.zip"
+          python3 tools/package_release.py "dist-b/Roth_UI-3.3.8-v57.8-B4.3.2.zip"
+          cmp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.2.zip" "dist-b/Roth_UI-3.3.8-v57.8-B4.3.2.zip"
+          cp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.2.zip" dist/
+          (cd dist && sha256sum Roth_UI-3.3.8-v57.8-B4.3.2.zip > SHA256SUMS.txt)
+          unzip -Z1 dist/Roth_UI-3.3.8-v57.8-B4.3.2.zip > dist/ZIP-CONTENTS.txt
 
       - name: Upload verified package
         uses: actions/upload-artifact@v4
         with:
-          name: Roth_UI-3.3.8-v57.8-B4.3.1
+          name: Roth_UI-3.3.8-v57.8-B4.3.2
           path: dist/*
           if-no-files-found: error
           retention-days: 30
 
   release:
-    if: github.event_name == 'workflow_dispatch'
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release }}
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -87,14 +98,14 @@ jobs:
       - name: Download verified package
         uses: actions/download-artifact@v4
         with:
-          name: Roth_UI-3.3.8-v57.8-B4.3.1
+          name: Roth_UI-3.3.8-v57.8-B4.3.2
           path: dist
 
-      - name: Publish B4.3.1 hotfix release once
+      - name: Publish B4.3.2 release once
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v3.3.8-v57.8-B4.3.1
+          TAG: v3.3.8-v57.8-B4.3.2
         run: |
           set -euo pipefail
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -103,27 +114,27 @@ jobs:
           fi
 
           cat > RELEASE_NOTES.md <<'NOTES'
-          ## Roth UI 3.3.8-v57.8-B4.3.1
+          ## Roth UI 3.3.8-v57.8-B4.3.2
 
-          Retail/Midnight 12.1 performance and architecture cleanup.
+          Retail/Midnight 12.1 ownership, safety and packaging update.
 
-          - lazy oUF 14 managed aura containers, allocated on first actual frame show;
-          - one managed aura owner and no Roth raw aura scanner;
-          - exact oUF 14 castbar callbacks with secret-safe interruptibility sinks;
-          - native status-bar interpolation instead of the legacy Lua smoothing loop;
-          - Blizzard-owned action buttons with additive Roth styling only;
-          - Settings, import/export and diagnostics are included in the main `Roth_UI` addon folder;
-          - single SavedVariables root writer and explicit runtime ownership boundaries;
-          - deterministic runtime-only package with one `Roth_UI` addon directory.
+          - one `Roth_UI` addon directory; Settings, import/export and diagnostics are included;
+          - fail-fast oUF 14.0.2 contract and centralized Secret/Forbidden access helpers;
+          - lazy Blizzard-managed aura containers with no Roth raw aura scanner;
+          - one event-driven combat-fader owner with no permanent first-party polling;
+          - Blizzard-owned action buttons with additive Roth art and corrected login/vehicle refresh routing;
+          - addon-owned minimap button for Settings and command access;
+          - one SavedVariables root owner and a single Settings category owner;
+          - deterministic runtime package with retired service/development modules excluded.
 
-          Requires oUF 14.0.2 or newer. Source/static validation passed on the tagged commit. Retail-client combat, taint and visual validation remain a separate acceptance gate.
+          Requires oUF 14.0.2 or newer. Source/static validation passed on the tagged commit. Retail-client combat, taint, vehicle, aura and visual validation remain a separate acceptance gate.
           NOTES
 
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Roth UI 3.3.8-v57.8-B4.3.1" \
+            --title "Roth UI 3.3.8-v57.8-B4.3.2" \
             --notes-file RELEASE_NOTES.md \
-            dist/Roth_UI-3.3.8-v57.8-B4.3.1.zip \
+            dist/Roth_UI-3.3.8-v57.8-B4.3.2.zip \
             dist/SHA256SUMS.txt \
             dist/ZIP-CONTENTS.txt

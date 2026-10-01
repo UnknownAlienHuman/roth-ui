@@ -2,8 +2,8 @@ local addonName, ns = ...
 local Roth_UI = ns
 local LSM = assert(LibStub("LibSharedMedia-3.0"), "Roth_UI: LibSharedMedia-3.0 is required")
 
--- LoadOnDemand companion addons attach to the main runtime namespace through
--- this single explicit bridge.
+-- Settings, import/export and diagnostics live in this same addon root. Publish
+-- one explicit bridge for internal modules and existing Roth integrations.
 _G.Roth_UI = Roth_UI
 
 -- Retail 12.1 requires the current external oUF release. No compatibility path
@@ -17,9 +17,9 @@ Roth_UI.rLib = Roth_UI.rLib or _G.rLib
 -- config.lua defines defaults and overlays SavedVariables into:
 --   ns.cfg      (runtime config)
 --
--- We keep the original "ListenForLoaded" callback model so external module
--- addons can safely run after config is finalized, but we no longer create an
--- AceDB profile. Persistence is intentionally split by ownership:
+-- We keep the original "ListenForLoaded" callback model so internal and
+-- external modules can run after config is finalized, but no AceDB profile is
+-- created. Persistence is intentionally split by ownership:
 --   * Roth_UI_DB.account.settings   -> main UI config
 --   * Roth_UI_DB.account.templates  -> shared orb templates
 --   * Roth_UI_DB_Char.orbs          -> character orb state

@@ -1,22 +1,6 @@
+-- Roth UI unit-frame registry.
+-- This is a namespace table, not an event or visual frame.
 
-  --get the addon namespace
-  local addon, ns = ...
+local addonName, ns = ...
 
-  --object container
-  local unit = CreateFrame("Frame")
-  unit:Hide()
-
-  ---------------------------------------------
-  -- UNITS
-  ---------------------------------------------
-
-  --just in case needed
-
-  ---------------------------------------------
-  -- HANDOVER
-  ---------------------------------------------
-
-  --object container to addon namespace
-  ns.unit = unit
-
-  
+ns.unit = ns.unit or {}

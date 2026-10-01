@@ -1,22 +1,43 @@
-# Roth UI code graph — B4.3
+# Roth UI code graph — B4.3.2
 
 ```text
 Roth_UI.toc
-  init.lua
-  config persistence owner -> config.lua -> persistence services
-  runtime helpers
-    unit values / tags / movers / native bars
+  embeds/rLib
+    core + snapguides + temporary drag worker
+  libraries
+  init bridge
+  safety -> oUF capability contract
+  config persistence owner -> defaults/config -> persistence services
+  runtime services
+    frame registry / movers / event-driven combat fader
+    Settings actions/pages / diagnostics / slash aliases / minimap entry
+    unit values / tags / bars / orb controllers
     target castbar visual adapter
     lazy managed aura lifecycle
-    reversible Blizzard frame policy
-  unit layouts -> oUF 14
-  Blizzard action-button skin + decorative artwork
-
-Roth_UI_Options.toc (LoadOnDemand)
-  logger / reports / SV doctor
-  Settings owner and page builders
-  transfer/import/export
-  debug commands
+    reversible Blizzard frame/group policy
+  unit layouts -> external oUF 14
+  Blizzard action-button skin + UIParent-owned action-bar artwork
 ```
 
-High-frequency state remains in oUF or native Blizzard widgets. Roth UI callbacks primarily configure regions and react to framework events.
+## State flow
+
+```text
+SavedVariables owner
+  -> validated/migrated ordinary config
+  -> runtime config/store services
+  -> settings actions and frame refresh callbacks
+```
+
+```text
+oUF events/elements
+  -> Roth integration adapters
+  -> native widgets/addon-owned regions
+```
+
+```text
+Blizzard action/vehicle/Edit Mode signals
+  -> coalesced presentation refresh
+  -> no replacement secure owner
+```
+
+High-frequency state remains in oUF or Blizzard native widgets. Roth callbacks configure addon-owned regions and react to bounded framework/native events. Static tests and packaging files are not loaded by the addon and are excluded from release archives.

@@ -1,34 +1,50 @@
 # Roth UI agent guide
 
-Current production target: Retail/Midnight `12.1.0`, Interface `120100`, Blizzard build `12.1.0.69497`, oUF `14.0.2+`.
+Current production target: Retail/Midnight `12.1.0`, Interface `120100`, verified Blizzard build `12.1.0.69497`, external oUF `14.0.2+`. Current addon version: `3.3.8-v57.8-B4.3.2`.
+
+Before editing, read the current `UnknownAlienHuman/wow-addon-engineering-kb` channel/instructions and this repository's TOC, architecture, status and code.
 
 Authority order:
 
-1. Current repository code and TOCs.
-2. Pinned Blizzard source/generated API documentation.
-3. oUF `14.0.2` source.
-4. `UnknownAlienHuman/wow-addon-engineering-kb`.
-5. Runtime evidence from the named client build.
+1. Current Roth UI repository code, TOC and this guide for project behavior.
+2. Selected current policy/routes in `UnknownAlienHuman/wow-addon-engineering-kb`.
+3. Exact pinned Blizzard source/generated API documentation for platform contracts.
+4. Exact external oUF 14.0.2+ source for framework contracts.
+5. Named-client runtime evidence for state/data/restriction behavior.
 
 Hard boundaries:
 
+- One package root: `Roth_UI`. Do not restore `Roth_UI_Options`.
+- `core/safety.lua` owns Secret/Forbidden/access and serializable-copy guards.
 - `core/aura_runtime.lua` is the only first-party managed-aura owner.
 - Do not add raw aura scans or addon-owned `UNIT_AURA` state.
 - Do not poll casts outside oUF.
-- Do not branch, compare, format, serialize or index secret-capable values before access gating.
+- Do not branch, compare, format, serialize, retain or index secret-capable values before access gating.
 - Do not restore replacement action buttons, LibActionButton, LibKeyBound or `oUF_Smooth` without a new measured design review.
+- Blizzard action buttons/state drivers remain Blizzard-owned; Roth art is additive and `UIParent`-owned.
 - Do not register a second Blizzard Settings category owner.
 - Do not write SavedVariables root globals outside `core/config_persistence_owner.lua`.
+- `core/combat_fader.lua` is the only class-bar fade owner; the global alias may only point to it.
 - Do not add permanent first-party `OnUpdate`; the active-drag worker is the sole approved exception.
-- Do not override Blizzard globals or reparent/unregister protected Blizzard frames.
+- Do not override Blizzard globals, reparent protected Blizzard frames, unregister Blizzard events or infer hidden state from errors/visibility/animation/timing.
+- Retired `core/unit_policy.lua` and legacy rLib fader/grid/slash modules must remain absent.
 
-Before merge run:
+Repository work is performed directly in `main`, with non-forced fast-forward publication and remote readback. Do not create task branches or worktrees.
+
+Before publication run, when tools are available:
 
 ```bash
+python3 tools/validate_repository_text.py
 python3 tools/validate_addon.py
+find . -type f -name '*.lua' -not -path './.git/*' -print0 | xargs -0 -n1 luac5.1 -p
+lua5.1 tests/test_safety.lua
+lua5.1 tests/test_ouf_contract.lua
 lua5.1 tests/test_target_castbar.lua
 lua5.1 tests/test_aura_lazy.lua
+lua5.1 tests/test_combat_fader.lua
+lua5.1 tests/test_minimap_button.lua
+lua5.1 tests/test_action_bar_background.lua
 python3 tools/package_release.py
 ```
 
-Do not call a build client-verified without attaching the complete in-game matrix and taint/profiler evidence.
+If Lua/client/Actions execution is unavailable, report tests as `NOT-RUN`; do not infer PASS from source review. Do not call a build client-verified without the complete in-game matrix plus taint/profiler evidence.

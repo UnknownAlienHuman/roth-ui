@@ -10,14 +10,14 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "3.3.8-v57.8-B4.3.1"
+VERSION = "3.3.8-v57.8-B4.3.2"
 INTERFACE = "120100"
 TARGET_BUILD = "12.1.0.69497"
 OUF_MIN = "14.0.2"
 MAIN_TOC = ROOT / "Roth_UI.toc"
 
 RETIRED_PATHS = {
-    "Roth_UI_Options", "core/options_loader.lua",
+    "Roth_UI_Options", "core/options_loader.lua", "core/unit_policy.lua",
     "STOP.txt", "_branch_marker.txt", "_probe_do_not_keep.txt", "oops.txt",
     "core/aura_runtime_12_1.lua", "core/aura_runtime_12_1_guard.lua",
     "core/group_aura_watch.lua", "oUF/elements/rune_orbs.lua",
@@ -28,6 +28,7 @@ RETIRED_PATHS = {
     "core/bar_runtime_registry.lua", "core/pet_action_bar.lua", "core/stance_bar.lua",
     "core/micromenu_bar.lua", "core/bags_bar.lua", "core/extrabar_holder.lua",
     "core/leave_vehicle_bar.lua", "core/hide_endcaps.lua",
+    "embeds/rLib/framefader.lua", "embeds/rLib/grid.lua", "embeds/rLib/slashcmd.lua",
     "modules/Roth_UI_oUFModules/modules/oUF_Smooth.lua",
     "Libs/LibActionButton-1.0-GE/LibActionButton-1.0-GE.lua",
     "Libs/LibKeyBound-1.0/LibKeyBound-1.0.lua",
@@ -153,6 +154,8 @@ def assert_metadata(meta: dict[str, str]) -> None:
     for key, value in expected.items():
         if meta.get(key) != value:
             fail(f"Roth_UI.toc {key} must be {value!r}, got {meta.get(key)!r}")
+    if "IconTexture" not in meta:
+        fail("Roth_UI.toc must expose the addon icon used by the minimap button")
 
 
 def assert_order(entries: list[Entry]) -> None:
@@ -164,17 +167,22 @@ def assert_order(entries: list[Entry]) -> None:
         if pos[a] >= pos[b]:
             fail(f"load order: {a} must load before {b}")
 
-    before("init.lua", "core/config_persistence_owner.lua")
+    before("init.lua", "core/safety.lua")
+    before("core/safety.lua", "core/ouf_contract.lua")
+    before("core/ouf_contract.lua", "core/config_persistence_owner.lua")
     before("core/config_persistence_owner.lua", "config.lua")
     before("core/lib.lua", "core/mover_runtime.lua")
     before("core/mover_runtime.lua", "core/combat_fader.lua")
     before("core/combat_fader.lua", "core/bars.lua")
     before("core/settings_actions.lua", "core/settings_general.lua")
+    before("core/settings_actions.lua", "core/minimap_button.lua")
     before("core/debug_commands.lua", "core/slashcmd.lua")
+    before("core/slashcmd.lua", "core/slash_aliases.lua")
     before("core/settings_main.lua", "core/settings_general.lua")
     before("core/persistence_report_service.lua", "core/sv_doctor.lua")
     before("core/transfer.lua", "core/settings_transfer.lua")
     before("core/aura_runtime.lua", "units/target.lua")
+    before("units/player.lua", "core/action_bar_background.lua")
 
 
 def strip_lua_comments(text: str) -> str:
@@ -249,19 +257,68 @@ def assert_runtime_boundaries(graph: list[Entry]) -> None:
         if re.search(pattern, combined, re.MULTILINE):
             fail(f"{label} reintroduced into first-party runtime")
 
+    required_sources = {
+        "core/safety.lua",
+        "core/ouf_contract.lua",
+        "core/minimap_button.lua",
+        "core/slash_aliases.lua",
+        "core/action_bar_background.lua",
+    }
+    missing = sorted(required_sources.difference(sources))
+    if missing:
+        fail("required B4.3.2 runtime modules missing from graph: " + ", ".join(missing))
+
     for path, text in sources.items():
         if path != "core/aura_runtime.lua" and re.search(r"\b(?:CreateAuras|AddGroup|AddSlot)\s*\(", text):
             fail(f"managed aura ownership escaped core/aura_runtime.lua: {path}")
         if re.search(r"(?:Set|Hook)Script\s*\(\s*[\"']OnUpdate", text) and path != "embeds/rLib/dragframe.lua":
             fail(f"unapproved first-party OnUpdate: {path}")
 
+    safety = sources.get("core/safety.lua", "")
+    for token in ("canaccessvalue", "CopySerializable", "CanUseRegion", "TryMethod"):
+        if token not in safety:
+            fail(f"safety boundary missing: {token}")
+
+    contract = sources.get("core/ouf_contract.lua", "")
+    for token in ("14.0.2", "AddElement", "RegisterStyle", "AuraContainerSortMethod"):
+        if token not in contract:
+            fail(f"oUF contract missing: {token}")
+
     bars = sources.get("core/bars.lua", "")
     if "AttachCombatFader(" not in bars and "rCombatFrameFader(" not in bars:
         fail("class bars must attach through the combat-fader owner")
     combat = sources.get("core/combat_fader.lua", "")
-    for token in ("PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "func.AttachCombatFader", "_G.rCombatFrameFader"):
+    for token in (
+        "PLAYER_REGEN_DISABLED",
+        "PLAYER_REGEN_ENABLED",
+        "func.AttachCombatFader",
+        "func.DetachCombatFader",
+        "_G.rCombatFrameFader",
+    ):
         if token not in combat:
             fail(f"combat fader contract missing: {token}")
+
+    minimap = sources.get("core/minimap_button.lua", "")
+    if "RegisterEvent(" in minimap or "OnUpdate" in minimap:
+        fail("minimap button must remain eventless and polling-free")
+    for token in ("settingsActions", "OpenOptions", "InCombatLockdown"):
+        if token not in minimap:
+            fail(f"minimap button contract missing: {token}")
+
+    aliases = sources.get("core/slash_aliases.lua", "")
+    for token in ("/rothui", "/rui", "SlashCmdList.roth"):
+        if token not in aliases:
+            fail(f"slash alias contract missing: {token}")
+
+    action_art = sources.get("core/action_bar_background.lua", "")
+    for token in (
+        'event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE"',
+        "PLAYER_ENTERING_WORLD",
+        "CanUseRegion",
+        "QueueArtworkRefresh",
+    ):
+        if token not in action_art:
+            fail(f"action-bar artwork contract missing: {token}")
 
     settings_registrars = [path for path, text in sources.items() if "RegisterVerticalLayoutCategory" in text]
     if settings_registrars != ["core/settings_main.lua"]:
