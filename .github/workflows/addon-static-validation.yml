@@ -37,7 +37,7 @@ jobs:
       - name: Validate exact secure-header visibility semantics
         run: python3 tools/validate_group_visibility.py
 
-      - name: Validate lazy Settings and action-button hardening
+      - name: Validate lazy Settings, bounded bootstrap and action-button hardening
         run: python3 tools/validate_runtime_hardening.py
 
       - name: Parse all Lua 5.1 sources
@@ -55,6 +55,7 @@ jobs:
           lua5.1 tests/test_safety.lua
           lua5.1 tests/test_safety_aspects.lua
           lua5.1 tests/test_frame_policy.lua
+          lua5.1 tests/test_frame_policy_bootstrap.lua
           lua5.1 tests/test_ouf_contract.lua
           lua5.1 tests/test_target_castbar.lua
           lua5.1 tests/test_aura_lazy.lua
@@ -134,6 +135,7 @@ jobs:
           - keeps each party/raid secure header session-owned instead of rebuilding protected headers from Settings;
           - stores desired/applied secure-header visibility in addon-owned weak metadata;
           - centralizes post-combat callbacks in one coalescing event queue;
+          - bounds login/addon bootstrap listeners and unregisters them after their named work completes;
           - structural party/raid options are persisted as reload-required changes;
           - Blizzard Settings pages register lazily without forcing `Blizzard_Settings` to load at login;
           - action-button skinning checks access and operation-specific forbidden aspects before mutating Blizzard regions;

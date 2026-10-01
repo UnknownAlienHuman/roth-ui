@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static guard for lazy Settings and forbidden-aspect-safe action skinning."""
+"""Static guard for lazy Settings, bounded bootstrap and safe action skinning."""
 
 from __future__ import annotations
 
@@ -53,6 +53,17 @@ def main() -> int:
     ):
         assert_contains(settings, token, "lazy Settings lifecycle")
 
+    bootstrap = read("core/frame_policy_bootstrap.lua")
+    for token in (
+        'ContinueOnAddOnLoaded',
+        'self:UnregisterEvent("PLAYER_LOGIN")',
+        'self:UnregisterEvent("ADDON_LOADED")',
+        'self:SetScript("OnEvent", nil)',
+        'Blizzard_UnitFrame',
+        'Blizzard_CompactRaidFrames',
+    ):
+        assert_contains(bootstrap, token, "bounded frame-policy bootstrap")
+
     skin = read("core/action_button_skin.lua")
     for forbidden in ("__rothSkinBackground", "__rothSkinBorder"):
         if forbidden in skin:
@@ -70,6 +81,7 @@ def main() -> int:
 
     for test_path in (
         "tests/test_safety_aspects.lua",
+        "tests/test_frame_policy_bootstrap.lua",
         "tests/test_settings_lifecycle.lua",
         "tests/test_action_button_skin.lua",
     ):
