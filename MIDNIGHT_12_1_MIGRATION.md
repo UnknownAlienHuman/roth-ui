@@ -22,7 +22,11 @@ oUF retains every spawned secure header. Roth UI therefore creates party/raid he
 
 ### Shared post-combat work
 
-`core/frame_policy.lua` owns the keyed/coalescing `PLAYER_REGEN_ENABLED` queue used by provider/frame policy. It unregisters after every drain, executes callbacks through the safety owner and holds foreign-frame suppression state in a weak-key table.
+`core/frame_policy.lua` owns the keyed/coalescing `PLAYER_REGEN_ENABLED` queue used by provider/frame policy. It unregisters after every drain, executes callbacks through the safety owner and holds only active suppression snapshots in a weak-key table. A successful restoration discards the snapshot so the next cycle captures Blizzard's current state.
+
+### Bootstrap events
+
+`core/frame_policy_bootstrap.lua` uses a one-shot `PLAYER_LOGIN` listener and named `ContinueOnAddOnLoaded` callbacks. Its compatibility `ADDON_LOADED` fallback tracks only `Blizzard_UnitFrame` and `Blizzard_CompactRaidFrames` and unregisters after both resolve.
 
 ### Settings
 
@@ -42,7 +46,7 @@ Blizzard owns buttons, paging, bindings and vehicle/override/possess state. Roth
 
 ## Repository/static acceptance
 
-The manual workflow must pass repository text policy, B4.3.4 TOC/XML/load-order/ownership validation, secure-header/runtime hardening guards, Lua 5.1 parsing, twelve isolated tests, deterministic double package construction and single-root ZIP inventory.
+The manual workflow must pass repository text policy, B4.3.4 TOC/XML/load-order/ownership validation, secure-header/runtime hardening guards, Lua 5.1 parsing, thirteen isolated tests, deterministic double package construction and single-root ZIP inventory.
 
 ## Required client matrix
 

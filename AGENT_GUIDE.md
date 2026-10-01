@@ -27,6 +27,7 @@ Hard boundaries:
 - Keep desired/applied visibility and all foreign-widget bookkeeping in addon-owned weak-key tables.
 - Use the shared frame-policy queue for bounded post-combat work; do not add parallel permanent `PLAYER_REGEN_ENABLED` owners.
 - Blizzard Settings registration remains lazy and must not force `Blizzard_Settings` to load on normal login.
+- Bootstrap login/addon listeners must be named, bounded and unregistered when their work is complete.
 - Do not register a second Blizzard Settings category owner.
 - Do not write SavedVariables root globals outside `core/config_persistence_owner.lua`.
 - `core/combat_fader.lua` is the only class-bar fade owner; the global alias may only point to it.
@@ -47,6 +48,7 @@ find . -type f -name '*.lua' -not -path './.git/*' -print0 | xargs -0 -n1 luac5.
 lua5.1 tests/test_safety.lua
 lua5.1 tests/test_safety_aspects.lua
 lua5.1 tests/test_frame_policy.lua
+lua5.1 tests/test_frame_policy_bootstrap.lua
 lua5.1 tests/test_ouf_contract.lua
 lua5.1 tests/test_target_castbar.lua
 lua5.1 tests/test_aura_lazy.lua

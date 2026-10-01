@@ -15,8 +15,10 @@ Status date: 2026-10-01.
 - Blizzard action buttons remain Blizzard-owned; Roth skinning is additive, out-of-combat, access-gated and forbidden-aspect-aware.
 - One event-driven combat-fader owner; no permanent first-party polling.
 - One shared keyed/coalescing post-combat queue; it unregisters `PLAYER_REGEN_ENABLED` after every drain.
+- Login and late-Blizzard-addon bootstrap listeners are named, bounded and unregister after completion.
 - Party/raid secure headers are session-owned: Settings never respawn or reparent them.
-- Desired/applied header visibility and foreign-frame suppression state are stored in addon-owned weak-key tables.
+- Desired/applied header visibility and active foreign-frame suppression state are stored in addon-owned weak-key tables.
+- Foreign-frame alpha/mouse state is captured per suppression cycle and discarded after restoration.
 - Structural group settings are reload-required; provider visibility, scale, position and range remain live.
 - Addon-owned minimap button opens Settings/help without modifying Minimap state.
 - Deterministic packaging is configured for one runtime addon directory.
@@ -24,8 +26,8 @@ Status date: 2026-10-01.
 ## Auxiliary validation completed
 
 - Remote Git tree/readback and fast-forward ancestry checks.
-- Python syntax/static guards for group visibility, lazy Settings and action-button hardening.
-- Available LuaTeX runtime: safety aspects, frame policy, oUF contract, group visibility, Settings lifecycle and action-button safety tests.
+- Python syntax/static guards for group visibility, lazy Settings, bounded bootstrap and action-button hardening.
+- Available LuaTeX runtime: safety aspects, frame policy, frame-policy bootstrap, oUF contract, group visibility, Settings lifecycle and action-button safety tests.
 - No open pull requests remain.
 
 ## Not yet executed
