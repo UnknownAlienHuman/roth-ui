@@ -1,35 +1,46 @@
-# Current status — Roth UI B4.3.3
+# Current status — Roth UI B4.3.4
 
 Status date: 2026-10-01.
 
 ## Implemented/source-reviewed
 
 - Single addon root: `Roth_UI`; Settings/import/export/diagnostics remain in the main TOC.
-- Interface `120100`, verified Blizzard baseline `12.1.0.69497`, oUF minimum `14.1.1`.
-- Central safety owner for Secret/Forbidden/access and serializable-copy boundaries.
+- Interface `120100`, verified live Blizzard baseline `12.1.0.69933`, oUF minimum `14.1.1`.
+- Central Secret/Forbidden/access/serialization owner plus operation-specific forbidden-aspect guards.
 - Fail-fast oUF capability/version contract including `SpawnHeader`.
 - One SavedVariables root writer and one Blizzard Settings category owner.
+- Blizzard Settings registration/page construction is lazy and reentrancy-safe.
 - Managed AuraContainers are first-show lazy and do not use raw aura enumeration.
 - Target/focus/boss castbars use exact oUF callbacks and native boolean sinks.
-- Blizzard action buttons remain Blizzard-owned; Roth UI applies additive skin/art only.
+- Blizzard action buttons remain Blizzard-owned; Roth skinning is additive, out-of-combat, access-gated and forbidden-aspect-aware.
 - One event-driven combat-fader owner; no permanent first-party polling.
-- Party/raid secure headers are session-owned: standard Settings no longer respawn or reparent them.
+- One shared keyed/coalescing post-combat queue; it unregisters `PLAYER_REGEN_ENABLED` after every drain.
+- Party/raid secure headers are session-owned: Settings never respawn or reparent them.
+- Desired/applied header visibility and foreign-frame suppression state are stored in addon-owned weak-key tables.
 - Structural group settings are reload-required; provider visibility, scale, position and range remain live.
-- Group visibility prefers the oUF header method, is out-of-combat-only and stores state in weak-key addon metadata.
 - Addon-owned minimap button opens Settings/help without modifying Minimap state.
-- Deterministic packaging produces one runtime addon directory.
+- Deterministic packaging is configured for one runtime addon directory.
 
-## Repository validation configured
+## Auxiliary validation completed
 
-The manual workflow runs repository text policy, B4.3.3 load-graph/ownership/metadata validation, Lua 5.1 parsing, eight isolated regression tests and deterministic double package construction.
+- Remote Git tree/readback and fast-forward ancestry checks.
+- Python syntax/static guards for group visibility, lazy Settings and action-button hardening.
+- Available LuaTeX runtime: safety aspects, frame policy, oUF contract, group visibility, Settings lifecycle and action-button safety tests.
+- No open pull requests remain.
 
-The current source pass locally verified Python syntax, workflow YAML parsing and the new static text contracts. Lua 5.1, the complete repository validator, deterministic packaging and WoW-client execution remain `NOT-RUN` until the workflow/client matrix is executed.
+## Not yet executed
 
-## Intentionally pending client evidence
+- Full Lua 5.1 parse of every repository Lua file.
+- Full repository validators against a materialized checkout.
+- Deterministic double package build and ZIP inventory.
+- New GitHub Actions workflow run.
+- Retail client matrix and taint/profiler evidence.
+
+## Required client evidence
 
 - Login and `/reload` with fresh/migrated/corrupted SavedVariables.
-- Party/raid provider enable/disable and structural setting application after reload.
-- Party/raid roster churn, arena transitions, click targeting/casting and taint log.
+- Party/raid provider enable/disable, arena override, roster churn and structural settings after reload.
+- Click targeting/click casting and `/console taintLog 1` with secure headers.
 - Target/focus/boss cast, channel, empower and interruptibility matrix.
 - Party/raid/nameplate aura layout and healer-watch coverage.
 - Stance, vehicle, override, possess and temporary bar states.

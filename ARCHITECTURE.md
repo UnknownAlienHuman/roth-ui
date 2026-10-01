@@ -1,4 +1,4 @@
-# Roth UI architecture — B4.3.3
+# Roth UI architecture — B4.3.4
 
 ## Package boundary
 
@@ -8,13 +8,14 @@ Roth UI ships one addon root:
 Roth_UI/
 ```
 
-Settings, import/export, diagnostics, commands and the minimap button are part of the same TOC. A separate options addon is not part of the product contract.
+Settings, import/export, diagnostics, commands and the minimap button are part of the same TOC. Blizzard Settings registration and page construction are deferred until `Blizzard_Settings` is loaded or Roth's own settings entry point is opened.
 
 ## Ownership map
 
 | State or subsystem | Authoritative owner |
 |---|---|
 | Secret/Forbidden/access/serialization guards | `core/safety.lua` |
+| Operation-specific forbidden aspects | `core/safety_aspects.lua` |
 | External oUF capability/version contract | `core/ouf_contract.lua` |
 | SavedVariables root replacement/reset | `core/config_persistence_owner.lua` |
 | Runtime config reads/writes | persistence services and `core/sv_store.lua` |
@@ -26,6 +27,7 @@ Settings, import/export, diagnostics, commands and the minimap button are part o
 | oUF unit-frame/secure-header lifecycle | external oUF `14.1.1+` |
 | Secure group-header visibility | `core/group_header_visibility.lua` |
 | Secure group-structure policy | `core/group_structure_contract.lua` |
+| Shared post-combat deferral / reversible frame policy | `core/frame_policy.lua` |
 | Managed aura specification/lifecycle | `core/aura_runtime.lua` |
 | Cast discovery/timing/interruptibility | oUF Castbar element |
 | Roth castbar visual mapping | `core/target_castbar.lua` |
@@ -33,7 +35,7 @@ Settings, import/export, diagnostics, commands and the minimap button are part o
 | Blizzard action buttons and secure state | Blizzard UI |
 | Roth action-button skin | `core/action_button_skin.lua` |
 | Roth action-bar artwork | `core/action_bar_background.lua` |
-| Blizzard-frame visual suppression | `core/frame_policy.lua` and `core/group_policy.lua` |
+| Blizzard-frame provider policy | `core/group_policy.lua` and `core/frame_policy_bootstrap.lua` |
 
 ## Secure party/raid lifecycle
 
@@ -47,7 +49,13 @@ spawn once outside combat
   -> apply structural settings after reload
 ```
 
-`GroupHeaderVisibility` uses `header:SetVisibility` when available, falls back to a state driver only outside combat, stores bookkeeping in a weak-key table and never reparents a header. Historical rebuild entry points are retired after layout initialization.
+`GroupHeaderVisibility` stores desired/applied visibility in a weak-key addon table, uses `header:SetVisibility` when available, falls back to a state driver only outside combat and never reparents a header. Temporary provider/arena overrides do not overwrite the configured visibility condition.
+
+All bounded post-combat provider and suppression work routes through `framePolicy.DeferUntilOutOfCombat`. The queue is keyed/coalesced, executes callbacks through the safety owner and unregisters `PLAYER_REGEN_ENABLED` after every drain.
+
+## Settings lifecycle
+
+The Roth Settings files remain in the single addon root, but category registration and builder execution are lazy. Login does not force `Blizzard_Settings` to load. `/roth options`, `/roth config` and the minimap entry synchronously load/register Settings when needed. Registration is idempotent and guarded against reentrant `LoadAddOn` callbacks.
 
 ## Aura lifecycle
 
@@ -57,7 +65,7 @@ Blizzard candidate filters, sorting, DurationObjects, cooldowns and dispel/steal
 
 ## Action bars
 
-Blizzard owns secure buttons, paging, state drivers, vehicles, override/possess state, bindings and visibility. Roth UI adds presentation to public regions, suppresses selected decorative art with alpha only, keeps its artwork `UIParent`-owned and coalesces Edit Mode/auxiliary-bar refreshes.
+Blizzard owns secure buttons, paging, state drivers, vehicles, override/possess state, bindings and visibility. Roth UI adds presentation only outside combat. Foreign-region access and operation-specific texture restrictions are checked before mutation; bookkeeping remains in weak-key addon tables.
 
 ## Performance constraints
 
@@ -67,8 +75,10 @@ Blizzard owns secure buttons, paging, state drivers, vehicles, override/possess 
 - No Lua status-bar smoothing loop.
 - No eager 3D portrait construction for optional unit frames.
 - No secure party/raid header respawn loop.
+- No parallel permanent post-combat queues.
+- No eager Blizzard Settings registration.
 - No unbounded event/timer retry loop or broad foreign-frame sweep.
 
 ## Safety boundary
 
-The addon does not override Blizzard globals, reparent protected Blizzard frames, unregister Blizzard events, manage Blizzard addon enable state or write Blizzard CVars. Potentially restricted values are gated before Lua use. Addon persistence accepts only ordinary serializable primitives/tables.
+The addon does not override Blizzard globals, reparent protected Blizzard frames, unregister Blizzard events, manage Blizzard addon enable state or write Blizzard CVars. Potentially restricted values are gated before Lua use. Operation-specific forbidden aspects are queried before relevant foreign-widget mutations. Addon persistence accepts only ordinary serializable primitives/tables.

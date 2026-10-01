@@ -1,8 +1,8 @@
-# Midnight 12.1 migration record — B4.3.3
+# Midnight 12.1 migration record — B4.3.4
 
 - Interface: `120100`
-- Addon: `3.3.8-v57.8-B4.3.3`
-- Verified Blizzard source: `Gethe/wow-ui-source@027d26c3406d3de2cbd2b1f67d468fe033a1bcd4` (`12.1.0.69497`)
+- Addon: `3.3.8-v57.8-B4.3.4`
+- Verified live Blizzard source: `Gethe/wow-ui-source@09b9db7948abc9b9648dedaab51eb0cf3ee67b31` (`12.1.0.69933`)
 - oUF requirement: `14.1.1` or newer
 - Package: one `Roth_UI` addon directory
 
@@ -10,7 +10,7 @@
 
 ### Security/access
 
-`core/safety.lua` centralizes access checks, Forbidden-region handling, safe method/property calls and serializable ordinary-data copies. Restricted values do not enter feature state or SavedVariables.
+`core/safety.lua` centralizes access checks, Forbidden-region handling, safe method/property calls and serializable ordinary-data copies. `core/safety_aspects.lua` handles operation-specific restrictions such as `Enum.ForbiddenAspect.SetTexture`. Restricted values do not enter feature state or SavedVariables.
 
 ### oUF
 
@@ -18,7 +18,15 @@
 
 ### Secure party/raid headers
 
-oUF retains every spawned secure header. Roth UI therefore creates party/raid headers once per UI session, changes visibility through the oUF header contract outside combat and never reparents them. Settings that alter child construction—orientation, portrait type, aura containers or healer-watch slots—persist normally but require reload. Provider visibility, scale, position and range remain live.
+oUF retains every spawned secure header. Roth UI therefore creates party/raid headers once per UI session, stores desired/applied visibility in weak-key addon metadata, changes visibility through the oUF header contract outside combat and never reparents them. Settings that alter child construction—orientation, portrait type, aura containers or healer-watch slots—persist normally but require reload. Provider visibility, scale, position and range remain live.
+
+### Shared post-combat work
+
+`core/frame_policy.lua` owns the keyed/coalescing `PLAYER_REGEN_ENABLED` queue used by provider/frame policy. It unregisters after every drain, executes callbacks through the safety owner and holds foreign-frame suppression state in a weak-key table.
+
+### Settings
+
+Settings files remain in the single addon root, but category registration and builder execution are lazy. Normal login does not load `Blizzard_Settings`; Roth entry points load/register it synchronously when requested. Registration is idempotent and reentrancy-safe.
 
 ### Auras
 
@@ -28,24 +36,20 @@ oUF retains every spawned secure header. Roth UI therefore creates party/raid he
 
 oUF owns cast state. Roth UI implements exact callbacks and forwards potentially restricted `notInterruptible` values unchanged to native boolean sinks.
 
-### Settings and persistence
-
-Settings pages, import/export, diagnostics and actions live in the single main addon. `core/config_persistence_owner.lua` is the sole SavedVariables root writer; `core/settings_main.lua` is the sole Settings category registrar.
-
 ### Action buttons/art
 
-Blizzard owns buttons, paging, bindings and vehicle/override/possess state. Roth UI applies additive presentation only. Artwork remains `UIParent`-owned and refreshes from bounded native/Edit Mode signals.
+Blizzard owns buttons, paging, bindings and vehicle/override/possess state. Roth UI applies additive presentation outside combat only. Foreign-region access and operation-specific texture restrictions are checked before mutation; artwork bookkeeping remains addon-owned.
 
 ## Repository/static acceptance
 
-The manual workflow must pass repository text policy, B4.3.3 TOC/XML/load-order/ownership validation, Lua 5.1 parsing, safety/oUF/castbar/aura/fader/group-header/minimap/action-bar tests, deterministic double package construction and single-root ZIP inventory.
+The manual workflow must pass repository text policy, B4.3.4 TOC/XML/load-order/ownership validation, secure-header/runtime hardening guards, Lua 5.1 parsing, twelve isolated tests, deterministic double package construction and single-root ZIP inventory.
 
 ## Required client matrix
 
 1. Clean install with `Roth_UI` plus external oUF 14.1.1+.
 2. Login and `/reload` with fresh, migrated and corrupted SavedVariables.
-3. Party/raid provider enable/disable, roster churn and structural settings applied after reload.
-4. Click targeting/click casting, arena transitions and `/console taintLog 1` with secure headers.
+3. Party/raid provider enable/disable, arena override, roster churn and structural settings applied after reload.
+4. Click targeting/click casting and `/console taintLog 1` with secure headers.
 5. Target/focus/boss cast, channel, empower and interruptibility transitions.
 6. Target/focus/party/raid/nameplate managed aura layout and tooltips.
 7. Stance, vehicle, override, possess and temporary action-bar states.

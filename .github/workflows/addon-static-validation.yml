@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: Publish the B4.3.3 GitHub release after validation
+        description: Publish the B4.3.4 GitHub release after validation
         required: false
         default: false
         type: boolean
@@ -82,17 +82,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist-a dist-b dist
-          python3 tools/package_release.py "dist-a/Roth_UI-3.3.8-v57.8-B4.3.3.zip"
-          python3 tools/package_release.py "dist-b/Roth_UI-3.3.8-v57.8-B4.3.3.zip"
-          cmp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.3.zip" "dist-b/Roth_UI-3.3.8-v57.8-B4.3.3.zip"
-          cp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.3.zip" dist/
-          (cd dist && sha256sum Roth_UI-3.3.8-v57.8-B4.3.3.zip > SHA256SUMS.txt)
-          unzip -Z1 dist/Roth_UI-3.3.8-v57.8-B4.3.3.zip > dist/ZIP-CONTENTS.txt
+          python3 tools/package_release.py "dist-a/Roth_UI-3.3.8-v57.8-B4.3.4.zip"
+          python3 tools/package_release.py "dist-b/Roth_UI-3.3.8-v57.8-B4.3.4.zip"
+          cmp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.4.zip" "dist-b/Roth_UI-3.3.8-v57.8-B4.3.4.zip"
+          cp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.4.zip" dist/
+          (cd dist && sha256sum Roth_UI-3.3.8-v57.8-B4.3.4.zip > SHA256SUMS.txt)
+          unzip -Z1 dist/Roth_UI-3.3.8-v57.8-B4.3.4.zip > dist/ZIP-CONTENTS.txt
 
       - name: Upload verified package
         uses: actions/upload-artifact@v4
         with:
-          name: Roth_UI-3.3.8-v57.8-B4.3.3
+          name: Roth_UI-3.3.8-v57.8-B4.3.4
           path: dist/*
           if-no-files-found: error
           retention-days: 30
@@ -109,14 +109,14 @@ jobs:
       - name: Download verified package
         uses: actions/download-artifact@v4
         with:
-          name: Roth_UI-3.3.8-v57.8-B4.3.3
+          name: Roth_UI-3.3.8-v57.8-B4.3.4
           path: dist
 
-      - name: Publish B4.3.3 release once
+      - name: Publish B4.3.4 release once
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v3.3.8-v57.8-B4.3.3
+          TAG: v3.3.8-v57.8-B4.3.4
         run: |
           set -euo pipefail
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
@@ -125,16 +125,16 @@ jobs:
           fi
 
           cat > RELEASE_NOTES.md <<'NOTES'
-          ## Roth UI 3.3.8-v57.8-B4.3.3
+          ## Roth UI 3.3.8-v57.8-B4.3.4
 
           Retail/Midnight 12.1 secure lifecycle and runtime hardening update.
 
+          - validated against live Blizzard UI baseline `12.1.0.69933`;
           - requires current oUF 14.1.1 or newer;
           - keeps each party/raid secure header session-owned instead of rebuilding protected headers from Settings;
           - stores desired/applied secure-header visibility in addon-owned weak metadata;
           - centralizes post-combat callbacks in one coalescing event queue;
           - structural party/raid options are persisted as reload-required changes;
-          - group visibility uses the oUF header contract and exact custom show/hide conditions;
           - Blizzard Settings pages register lazily without forcing `Blizzard_Settings` to load at login;
           - action-button skinning checks access and operation-specific forbidden aspects before mutating Blizzard regions;
           - validates these contracts with dedicated static and Lua regression guards;
@@ -146,8 +146,8 @@ jobs:
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Roth UI 3.3.8-v57.8-B4.3.3" \
+            --title "Roth UI 3.3.8-v57.8-B4.3.4" \
             --notes-file RELEASE_NOTES.md \
-            dist/Roth_UI-3.3.8-v57.8-B4.3.3.zip \
+            dist/Roth_UI-3.3.8-v57.8-B4.3.4.zip \
             dist/SHA256SUMS.txt \
             dist/ZIP-CONTENTS.txt

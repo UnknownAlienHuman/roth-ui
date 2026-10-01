@@ -10,9 +10,9 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "3.3.8-v57.8-B4.3.3"
+VERSION = "3.3.8-v57.8-B4.3.4"
 INTERFACE = "120100"
-TARGET_BUILD = "12.1.0.69497"
+TARGET_BUILD = "12.1.0.69933"
 OUF_MIN = "14.1.1"
 MAIN_TOC = ROOT / "Roth_UI.toc"
 
@@ -177,7 +177,8 @@ def assert_order(entries: list[Entry]) -> None:
             fail(f"load order: {a} must load before {b}")
 
     before("init.lua", "core/safety.lua")
-    before("core/safety.lua", "core/ouf_contract.lua")
+    before("core/safety.lua", "core/safety_aspects.lua")
+    before("core/safety_aspects.lua", "core/ouf_contract.lua")
     before("core/ouf_contract.lua", "core/config_persistence_owner.lua")
     before("core/group_header_visibility.lua", "units/party.lua")
     before("core/config_persistence_owner.lua", "config.lua")
@@ -283,6 +284,7 @@ def assert_runtime_boundaries(graph: list[Entry]) -> None:
 
     required_sources = {
         "core/safety.lua",
+        "core/safety_aspects.lua",
         "core/ouf_contract.lua",
         "core/group_header_visibility.lua",
         "core/group_structure_contract.lua",
@@ -292,7 +294,7 @@ def assert_runtime_boundaries(graph: list[Entry]) -> None:
     }
     missing = sorted(required_sources.difference(sources))
     if missing:
-        fail("required B4.3.3 runtime modules missing from graph: " + ", ".join(missing))
+        fail("required B4.3.4 runtime modules missing from graph: " + ", ".join(missing))
 
     for path, text in sources.items():
         if path != "core/aura_runtime.lua" and re.search(r"\b(?:CreateAuras|AddGroup|AddSlot)\s*\(", text):
@@ -305,6 +307,11 @@ def assert_runtime_boundaries(graph: list[Entry]) -> None:
         if token not in safety:
             fail(f"safety boundary missing: {token}")
 
+    safety_aspects = sources.get("core/safety_aspects.lua", "")
+    for token in ("HasAnyForbiddenAspects", "HasForbiddenAspect", "CanUseRegionFor"):
+        if token not in safety_aspects:
+            fail(f"forbidden-aspect boundary missing: {token}")
+
     contract = sources.get("core/ouf_contract.lua", "")
     for token in ("14.1.1", "AddElement", "RegisterStyle", "SpawnHeader", "AuraContainerSortMethod"):
         if token not in contract:
@@ -313,9 +320,26 @@ def assert_runtime_boundaries(graph: list[Entry]) -> None:
     group_visibility = sources.get("core/group_header_visibility.lua", "")
     if "SetParent" in group_visibility or "hiddenParents" in group_visibility:
         fail("secure group-header visibility owner must never reparent headers")
-    for token in ("SetVisibility", '__mode = "k"', "InCombatLockdown", "function service.Park"):
+    for token in (
+        "SetVisibility",
+        '__mode = "k"',
+        "InCombatLockdown",
+        "function service.ApplyDesired",
+        "function service.Park",
+    ):
         if token not in group_visibility:
             fail(f"group-header visibility contract missing: {token}")
+
+    frame_policy = sources.get("core/frame_policy.lua", "")
+    for token in (
+        "CanUseRegion",
+        "TryMethod",
+        'UnregisterEvent("PLAYER_REGEN_ENABLED")',
+        "local work = pending",
+        "pending = {}",
+    ):
+        if token not in frame_policy:
+            fail(f"shared frame-policy queue contract missing: {token}")
 
     group_structure = sources.get("core/group_structure_contract.lua", "")
     for token in (
