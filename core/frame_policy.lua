@@ -1,15 +1,23 @@
--- Minimal reversible policy for Blizzard-owned unit frames.
+-- Minimal reversible policy for Blizzard-owned frames.
 --
--- Roth UI never reparents protected frames, unregisters their events, mutates
--- Blizzard globals, changes addon enable state, or writes Blizzard CVars. The
--- policy only applies ordinary visual/input state outside combat and restores
--- the state captured before Roth UI first touched each frame.
+-- Roth UI never reparents protected frames, unregisters Blizzard events,
+-- mutates Blizzard globals, changes addon enable state, or writes Blizzard
+-- CVars. The policy applies ordinary visual/input state outside combat and owns
+-- the single coalescing PLAYER_REGEN_ENABLED queue used by runtime services.
 
 local addonName, ns = ...
 
 local safety = assert(ns and ns.safety, "Roth_UI: safety is required by frame_policy.lua")
-local IsSecret = assert(safety.IsSecret, "Roth_UI: safety.IsSecret is required by frame_policy.lua")
+local CanAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by frame_policy.lua")
+local CanUseRegion = assert(safety.CanUseRegion, "Roth_UI: safety.CanUseRegion is required by frame_policy.lua")
+local TryCall = assert(safety.TryCall, "Roth_UI: safety.TryCall is required by frame_policy.lua")
+local TryMethod = assert(safety.TryMethod, "Roth_UI: safety.TryMethod is required by frame_policy.lua")
 local InCombatLockdown = InCombatLockdown
+local CreateFrame = CreateFrame
+local pairs = pairs
+local type = type
+local tostring = tostring
+local setmetatable = setmetatable
 
 local policy = ns.framePolicy or {}
 ns.framePolicy = policy
@@ -19,27 +27,22 @@ local pending = {}
 local regenFrame
 
 local function IsForbidden(frame)
-  if not frame then return false end
-  if safety.IsForbiddenTable and safety.IsForbiddenTable(frame) then return true end
-  if type(frame.IsForbidden) == "function" then
-    local forbidden = frame:IsForbidden()
-    return not IsSecret(forbidden) and forbidden == true
-  end
-  return false
+  return frame ~= nil and not CanUseRegion(frame)
 end
 
 local function CaptureFrameState(frame)
+  if not CanUseRegion(frame) then return nil end
   local state = frameState[frame]
   if state then return state end
 
   state = { alpha = 1, mouse = true }
-  if type(frame.GetAlpha) == "function" then
-    local alpha = frame:GetAlpha()
-    if not IsSecret(alpha) and type(alpha) == "number" then state.alpha = alpha end
+  local gotAlpha, alpha = TryMethod(frame, "GetAlpha")
+  if gotAlpha == true and CanAccess(alpha) and type(alpha) == "number" then
+    state.alpha = alpha
   end
-  if type(frame.IsMouseEnabled) == "function" then
-    local enabled = frame:IsMouseEnabled()
-    if not IsSecret(enabled) and type(enabled) == "boolean" then state.mouse = enabled end
+  local gotMouse, enabled = TryMethod(frame, "IsMouseEnabled")
+  if gotMouse == true and CanAccess(enabled) and type(enabled) == "boolean" then
+    state.mouse = enabled
   end
   frameState[frame] = state
   return state
@@ -48,22 +51,36 @@ end
 local function ApplySuppressed(frame, suppressed)
   if not frame or IsForbidden(frame) then return false end
   local state = CaptureFrameState(frame)
-  if type(frame.SetAlpha) == "function" then
-    frame:SetAlpha(suppressed and 0 or state.alpha)
+  if not state then return false end
+
+  local alphaTarget = suppressed and 0 or state.alpha
+  local mouseTarget = state.mouse
+  if suppressed then mouseTarget = false end
+  local alphaApplied = TryMethod(frame, "SetAlpha", alphaTarget) == true
+  local mouseApplied = TryMethod(frame, "EnableMouse", mouseTarget) == true
+  if alphaApplied or mouseApplied then
+    state.suppressed = suppressed and true or false
+    return true
   end
-  if type(frame.EnableMouse) == "function" then
-    frame:EnableMouse(suppressed and false or state.mouse)
+  return false
+end
+
+local function FlushPending(self)
+  if InCombatLockdown and InCombatLockdown() then return false end
+  if self then self:UnregisterEvent("PLAYER_REGEN_ENABLED") end
+  local work = pending
+  pending = {}
+  for _, callback in pairs(work) do
+    TryCall(callback)
   end
-  state.suppressed = suppressed and true or false
   return true
 end
 
-local function FlushPending()
-  if InCombatLockdown and InCombatLockdown() then return end
-  for key, callback in pairs(pending) do
-    pending[key] = nil
-    callback()
-  end
+local function EnsureRegenFrame()
+  if regenFrame then return regenFrame end
+  regenFrame = CreateFrame("Frame")
+  regenFrame:SetScript("OnEvent", FlushPending)
+  return regenFrame
 end
 
 local function DeferUntilOutOfCombat(key, callback)
@@ -71,11 +88,7 @@ local function DeferUntilOutOfCombat(key, callback)
   if not (InCombatLockdown and InCombatLockdown()) then return false end
 
   pending[key] = callback
-  if not regenFrame then
-    regenFrame = CreateFrame("Frame")
-    regenFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    regenFrame:SetScript("OnEvent", FlushPending)
-  end
+  EnsureRegenFrame():RegisterEvent("PLAYER_REGEN_ENABLED")
   return true
 end
 
@@ -104,10 +117,15 @@ policy.IsForbidden = IsForbidden
 policy.IsRothEnabled = IsRothEnabled
 policy.SetSuppressed = SetSuppressed
 policy.DeferUntilOutOfCombat = DeferUntilOutOfCombat
-policy.FlushPending = FlushPending
+policy.FlushPending = function() return FlushPending(regenFrame) end
 policy.GetSuppressionState = function(frame)
   local state = frame and frameState[frame]
   return state and state.suppressed == true or false
+end
+policy.GetPendingCount = function()
+  local count = 0
+  for _ in pairs(pending) do count = count + 1 end
+  return count
 end
 
 ns.IsRothEnabled = IsRothEnabled

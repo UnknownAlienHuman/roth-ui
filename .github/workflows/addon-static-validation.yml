@@ -54,6 +54,7 @@ jobs:
           set -euo pipefail
           lua5.1 tests/test_safety.lua
           lua5.1 tests/test_safety_aspects.lua
+          lua5.1 tests/test_frame_policy.lua
           lua5.1 tests/test_ouf_contract.lua
           lua5.1 tests/test_target_castbar.lua
           lua5.1 tests/test_aura_lazy.lua
@@ -130,11 +131,12 @@ jobs:
 
           - requires current oUF 14.1.1 or newer;
           - keeps each party/raid secure header session-owned instead of rebuilding protected headers from Settings;
+          - stores desired/applied secure-header visibility in addon-owned weak metadata;
+          - centralizes post-combat callbacks in one coalescing event queue;
           - structural party/raid options are persisted as reload-required changes;
           - group visibility uses the oUF header contract and exact custom show/hide conditions;
           - Blizzard Settings pages register lazily without forcing `Blizzard_Settings` to load at login;
           - action-button skinning checks access and operation-specific forbidden aspects before mutating Blizzard regions;
-          - late action buttons are coalesced until combat ends, with no permanent polling;
           - validates these contracts with dedicated static and Lua regression guards;
           - produces one deterministic runtime-only `Roth_UI` addon directory.
 

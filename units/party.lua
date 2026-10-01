@@ -1,4 +1,3 @@
-
   --get the addon namespace
   local addon, ns = ...
 
@@ -11,9 +10,11 @@
 
   --get the functions
   local func = ns.func
-  local safety = assert(ns and ns.safety, "Roth_UI: safety helpers are required by units/party.lua")
   local groupVisibility = assert(ns and ns.GroupHeaderVisibility, "Roth_UI: GroupHeaderVisibility is required by units/party.lua")
   local frameRegistry = assert(ns and ns.frameRegistry, "Roth_UI: frameRegistry is required by units/party.lua")
+  local framePolicy = assert(ns and ns.framePolicy, "Roth_UI: framePolicy is required by units/party.lua")
+  local DeferUntilOutOfCombat = assert(framePolicy.DeferUntilOutOfCombat,
+    "Roth_UI: framePolicy.DeferUntilOutOfCombat is required by units/party.lua")
 
   --get the unit container
   local unit = ns.unit
@@ -31,8 +32,6 @@
   local UnitPowerMax = UnitPowerMax
   local UnitIsDeadOrGhost = UnitIsDeadOrGhost
   local UnitIsConnected = UnitIsConnected
-  local TryCall = safety.TryCall
-  local TryMethod = safety.TryMethod
   ---------------------------------------------
   -- UNIT SPECIFIC FUNCTIONS
   ---------------------------------------------
@@ -47,17 +46,17 @@
   --actionbar background
   local createArtwork = function(self)
     local t = self:CreateTexture(nil,"BACKGROUND",nil,-8)
-	if self.cfg.vertical == true then
-		t:SetPoint("TOP",0,40)
-		t:SetPoint("LEFT",-0,0)
-		t:SetPoint("RIGHT",0,0)
-		t:SetPoint("BOTTOM",0,-20)
-	else
-		t:SetPoint("TOP",0,20)
-		t:SetPoint("LEFT",-10,0)
-		t:SetPoint("RIGHT",10,0)
-		t:SetPoint("BOTTOM",0,-20)
-	end
+    if self.cfg.vertical == true then
+      t:SetPoint("TOP",0,40)
+      t:SetPoint("LEFT",-0,0)
+      t:SetPoint("RIGHT",0,0)
+      t:SetPoint("BOTTOM",0,-20)
+    else
+      t:SetPoint("TOP",0,20)
+      t:SetPoint("LEFT",-10,0)
+      t:SetPoint("RIGHT",10,0)
+      t:SetPoint("BOTTOM",0,-20)
+    end
     t:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget")
   end
 
@@ -67,19 +66,19 @@
 
     --health
     local h = CreateFrame("StatusBar", nil, self)
-	if self.cfg.vertical == true then
-	 h:SetPoint("TOP",0,-15)
-	 h:SetPoint("LEFT",47,0)
-	 h:SetPoint("RIGHT",-47,0)
-	 h:SetPoint("BOTTOM",0,35)
-	 h:SetFrameStrata("BACKGROUND")
-	else
-     h:SetPoint("TOP",0,-25)
-     h:SetPoint("LEFT",10,0)
-     h:SetPoint("RIGHT",-10,0)
-     h:SetPoint("BOTTOM",0,25)
-	 h:SetFrameStrata("BACKGROUND")
-	end
+    if self.cfg.vertical == true then
+      h:SetPoint("TOP",0,-15)
+      h:SetPoint("LEFT",47,0)
+      h:SetPoint("RIGHT",-47,0)
+      h:SetPoint("BOTTOM",0,35)
+      h:SetFrameStrata("BACKGROUND")
+    else
+      h:SetPoint("TOP",0,-25)
+      h:SetPoint("LEFT",10,0)
+      h:SetPoint("RIGHT",-10,0)
+      h:SetPoint("BOTTOM",0,25)
+      h:SetFrameStrata("BACKGROUND")
+    end
     h:SetStatusBarTexture(cfg.texture)
     h.bg = h:CreateTexture(nil,"BORDER",nil,-6)
     h.bg:SetTexture(cfg.texture)
@@ -87,18 +86,18 @@
 
     h.glow = h:CreateTexture(nil,"OVERLAY",nil,-5)
     h.glow:SetTexture(mediapath.."targettarget_hpglow")
-	if self.cfg.vertical == true then
-		h.glow:SetPoint("TOP",0,15)
-		h.glow:SetPoint("LEFT",-40,0)
-		h.glow:SetPoint("RIGHT",40,0)
-		h.glow:SetPoint("BOTTOM",0,-35)
-	else
-		h.glow:SetPoint("TOP", 0, 20)
-        h.glow:SetPoint("LEFT",-20,0)
-        h.glow:SetPoint("RIGHT",20,0)
-        h.glow:SetPoint("BOTTOM",0,-20)
-	end
-		
+    if self.cfg.vertical == true then
+      h.glow:SetPoint("TOP",0,15)
+      h.glow:SetPoint("LEFT",-40,0)
+      h.glow:SetPoint("RIGHT",40,0)
+      h.glow:SetPoint("BOTTOM",0,-35)
+    else
+      h.glow:SetPoint("TOP", 0, 20)
+      h.glow:SetPoint("LEFT",-20,0)
+      h.glow:SetPoint("RIGHT",20,0)
+      h.glow:SetPoint("BOTTOM",0,-20)
+    end
+        
     h.highlight = h:CreateTexture(nil,"OVERLAY",nil,-4)
     h.highlight:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget_highlight")
     h.highlight:SetAllPoints(h.glow)
@@ -113,19 +112,19 @@
 
     --power
     local h = CreateFrame("StatusBar", nil, self.Health)
-	if self.cfg.vertical == true then
-     h:SetPoint("TOP",0,-20)
-     h:SetPoint("LEFT",6,0)
-     h:SetPoint("RIGHT",-6,0)
-     h:SetPoint("BOTTOM",0,-20)
-	 h:SetFrameStrata("BACKGROUND")
-	else
-     h:SetPoint("TOP",0,-20)
-     h:SetPoint("LEFT",5,0)
-     h:SetPoint("RIGHT",-5,0)
-     h:SetPoint("BOTTOM",0,-15)
-	 h:SetFrameStrata("BACKGROUND")
-	end
+    if self.cfg.vertical == true then
+      h:SetPoint("TOP",0,-20)
+      h:SetPoint("LEFT",6,0)
+      h:SetPoint("RIGHT",-6,0)
+      h:SetPoint("BOTTOM",0,-20)
+      h:SetFrameStrata("BACKGROUND")
+    else
+      h:SetPoint("TOP",0,-20)
+      h:SetPoint("LEFT",5,0)
+      h:SetPoint("RIGHT",-5,0)
+      h:SetPoint("BOTTOM",0,-15)
+      h:SetFrameStrata("BACKGROUND")
+    end
     h:SetStatusBarTexture(cfg.texture)
 
     h.bg = h:CreateTexture(nil,"BORDER",nil,-6)
@@ -144,16 +143,16 @@
     local valueSize = math.min(9, tonumber(self.cfg.health and self.cfg.health.fontSize) or 9)
 
     local name = func.createFontString(self.Health, cfg.font, nameSize, "THINOUTLINE")
-	if self.cfg.vertical == true then
-		name:SetPoint("BOTTOM", self, "TOP", 0, -6)
-		name:SetPoint("LEFT", self.Health, 0, 0)
-		name:SetPoint("RIGHT", self.Health, 0, 0)
-	else
-		name:SetPoint("TOP", self, "TOP", 0, 56)
-		name:SetPoint("LEFT", self.Health, 0, 0)
-		name:SetPoint("RIGHT", self.Health, 0, 0)
-	end
-	self.Name = name
+    if self.cfg.vertical == true then
+      name:SetPoint("BOTTOM", self, "TOP", 0, -6)
+      name:SetPoint("LEFT", self.Health, 0, 0)
+      name:SetPoint("RIGHT", self.Health, 0, 0)
+    else
+      name:SetPoint("TOP", self, "TOP", 0, 56)
+      name:SetPoint("LEFT", self.Health, 0, 0)
+      name:SetPoint("RIGHT", self.Health, 0, 0)
+    end
+    self.Name = name
 
     local hpval = func.createFontString(self.Health, cfg.font, valueSize, "THINOUTLINE")
     hpval:SetPoint("RIGHT", self.Health, "RIGHT", -4, 0)
@@ -176,7 +175,7 @@
   ---------------------------------------------
 
   local function createStyle(self)
-  self.colors = self.colors or (oUF and oUF.colors) or {}
+    self.colors = self.colors or (oUF and oUF.colors) or {}
     --apply config to self
     self.cfg = (ns.GetUnitConfig and ns.GetUnitConfig("party")) or cfg.units.party
     self.__style = "party"
@@ -207,11 +206,11 @@
         if(InCombatLockdown()) then
           self.PortraitHolder:RegisterEvent("PLAYER_REGEN_ENABLED")
         else
-			if self.cfg.vertical then
-				self:SetHitRectInsets(0,0,0,0)
-			else 
-				self:SetHitRectInsets(0,0,-100,0)
-			end
+          if self.cfg.vertical then
+            self:SetHitRectInsets(0,0,0,0)
+          else 
+            self:SetHitRectInsets(0,0,-100,0)
+          end
         end      
         self.PortraitHolder:SetScript("OnEvent", function(...)
           self.PortraitHolder:UnregisterEvent("PLAYER_REGEN_ENABLED")
@@ -231,7 +230,7 @@
 
     --icons
     self.RaidTargetIndicator = func.createIcon(self,"OVERLAY",18,self.Name,"RIGHT","LEFT",25,0,-1)
-	self.RaidTargetIndicator:SetTexture("Interface\\AddOns\\Roth_UI\\media\\raidicons")
+    self.RaidTargetIndicator:SetTexture("Interface\\AddOns\\Roth_UI\\media\\raidicons")
     self.ReadyCheckIndicator = func.createIcon(self,"OVERLAY",24,self.Health,"CENTER","CENTER",0,0,-1)
     if self.Border then
       self.LeaderIndicator = func.createIcon(self,"OVERLAY",13,self.Border,"BOTTOMRIGHT","TOPRIGHT",-5,-27,-1)
@@ -244,9 +243,8 @@
       self.LeaderIndicator = func.createIcon(self,"OVERLAY",13,self,"RIGHT","LEFT",70,30,-1)
       self.GroupRoleIndicator = func.createIcon(self,"OVERLAY",12,self,"CENTER","CENTER",0,10,-1)
     end
-	self.LeaderIndicator:SetTexture("Interface\\AddOns\\Roth_UI\\media\\leader")
+    self.LeaderIndicator:SetTexture("Interface\\AddOns\\Roth_UI\\media\\leader")
     self.GroupRoleIndicator:SetTexture("Interface\\AddOns\\Roth_UI\\media\\lfd_role")
-    --self.LFDRole:SetDesaturated(1)
 
     func.healPrediction(self)
     
@@ -270,9 +268,8 @@
   ---------------------------------------------
 
   local styleRegistered = false
-  local partyHeaderGeneration = 0
   local partyHeader
-  local partyRegenHook
+  local ApplyEnabled
 
   local partyDragFrame = CreateFrame("Frame", "Roth_UIPartyDragFrame", UIParent)
   partyDragFrame:SetSize(50,50)
@@ -300,12 +297,6 @@
     styleRegistered = true
   end
 
-  local function ParkPartyHeader(header)
-    if header then
-      groupVisibility.Park(header, "party")
-    end
-  end
-
   local function SpawnPartyHeader()
     local partyCfg = GetPartyConfig()
     if type(partyCfg) ~= "table" then
@@ -316,13 +307,11 @@
     oUF:SetActiveStyle("diablo:party")
 
     local attr = partyCfg.attributes or {}
-    partyHeaderGeneration = partyHeaderGeneration + 1
-    local headerName = "Roth_UIPartyHeader" .. partyHeaderGeneration
     local header
 
     if partyCfg.vertical == true then
       header = oUF:SpawnHeader(
-        headerName,
+        "Roth_UIPartyHeader",
         nil,
         "showPlayer",         attr.showPlayer,
         "showSolo",           attr.showSolo,
@@ -338,7 +327,7 @@
       )
     else
       header = oUF:SpawnHeader(
-        headerName,
+        "Roth_UIPartyHeader",
         nil,
         "showPlayer",         attr.showPlayer,
         "showSolo",           attr.showSolo,
@@ -358,9 +347,8 @@
     end
 
     header:ClearAllPoints()
-    header:SetParent(UIParent)
     header:SetPoint("TOPLEFT", partyDragFrame, 0, 0)
-    header.__roth_vis = attr.visibility
+    groupVisibility.Apply(header, attr.visibility or "show")
     return header
   end
 
@@ -369,24 +357,8 @@
     ns.partyHeader = header
   end
 
-  local function QueuePartyEnabled(enabled)
-    if not partyRegenHook then
-      partyRegenHook = CreateFrame("Frame")
-      partyRegenHook:RegisterEvent("PLAYER_REGEN_ENABLED")
-      partyRegenHook:SetScript("OnEvent", function()
-        if ns.__rothPartyPendingEnabled ~= nil then
-          local nextEnabled = ns.__rothPartyPendingEnabled
-          ns.__rothPartyPendingEnabled = nil
-          ns.ApplyPartyEnabled(nextEnabled)
-        end
-      end)
-    end
-    ns.__rothPartyPendingEnabled = enabled and true or false
-  end
-
-  local function ApplyEnabled(enabled)
-    if InCombatLockdown and InCombatLockdown() then
-      QueuePartyEnabled(enabled)
+  ApplyEnabled = function(enabled)
+    if DeferUntilOutOfCombat("party-provider", function() ApplyEnabled(enabled) end) then
       return
     end
 
@@ -396,12 +368,7 @@
       end
       partyDragFrame:Show()
       if partyHeader then
-        if partyHeader.__roth_vis then
-          groupVisibility.Apply(partyHeader, partyHeader.__roth_vis)
-        else
-          groupVisibility.Apply(partyHeader, "show")
-        end
-        TryMethod(partyHeader, "Show")
+        groupVisibility.ApplyDesired(partyHeader, "show")
       end
     else
       partyDragFrame:Hide()
@@ -428,39 +395,9 @@
     end
   end
 
-  local function RebuildPartyStructureRuntime()
-    local partyCfg = GetPartyConfig()
-    if type(partyCfg) ~= "table" then
-      return
-    end
-    if InCombatLockdown and InCombatLockdown() then
-      QueuePartyEnabled(IsPartyEnabled())
-      return
-    end
-
-    local wasEnabled = IsPartyEnabled()
-    local previousHeader = partyHeader
-    SetActivePartyHeader(nil)
-    if previousHeader then
-      ParkPartyHeader(previousHeader)
-    end
-
-    if wasEnabled then
-      SetActivePartyHeader(SpawnPartyHeader())
-    end
-
-    ApplyPartyLayoutRuntime()
-    ApplyEnabled(wasEnabled)
-
-    if wasEnabled and ns and type(ns.RefreshUnitHealthValueText) == "function" then
-      ns.RefreshUnitHealthValueText("party")
-    end
-  end
-
   ns.partyDragFrame = partyDragFrame
   ns.ApplyPartyEnabled = ApplyEnabled
   ns.ApplyPartyLayoutRuntime = ApplyPartyLayoutRuntime
-  ns.RebuildPartyStructureRuntime = RebuildPartyStructureRuntime
 
   -- Optional: hide party frames in arena.
   do

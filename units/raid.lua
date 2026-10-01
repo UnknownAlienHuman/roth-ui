@@ -1,4 +1,3 @@
-
   --get the addon namespace
   local addon, ns = ...
 
@@ -10,9 +9,11 @@
 
   --get the functions
   local func = ns.func
-  local safety = ns and ns.safety
   local groupVisibility = assert(ns and ns.GroupHeaderVisibility, "Roth_UI: GroupHeaderVisibility is required by units/raid.lua")
   local frameRegistry = assert(ns and ns.frameRegistry, "Roth_UI: frameRegistry is required by units/raid.lua")
+  local framePolicy = assert(ns and ns.framePolicy, "Roth_UI: framePolicy is required by units/raid.lua")
+  local DeferUntilOutOfCombat = assert(framePolicy.DeferUntilOutOfCombat,
+    "Roth_UI: framePolicy.DeferUntilOutOfCombat is required by units/raid.lua")
 
   local mediapath = ns.mediapath or "Interface\\AddOns\\Roth_UI\\media\\"
 
@@ -22,15 +23,12 @@
   local pairs = pairs
   local CreateFrame = CreateFrame
   local InCombatLockdown = InCombatLockdown
-  local TryCall = safety and safety.TryCall
-  local TryMethod = safety and safety.TryMethod
-  assert(type(TryCall) == "function" and type(TryMethod) == "function", "Roth_UI: safety.TryCall/TryMethod are required by units/raid.lua")
 
   ---------------------------------------------
   -- UNIT SPECIFIC FUNCTIONS
   ---------------------------------------------
-	-- Always load the module. We spawn the raid headers lazily so the raid frames can be
-	-- enabled/disabled from the in-game options without needing ReloadUI.
+  -- Always load the module. Raid headers are spawned lazily and retained for
+  -- the UI session; provider visibility can change without rebuilding them.
 
   --init parameters
   local initUnitParameters = function(self)
@@ -39,7 +37,6 @@
     self:SetScript("OnLeave", UnitFrame_OnLeave)
   end
 
-
   -- Aura filtering is expressed only through managed container specifications.
 
   -- Health/power presentation is shared with the other unit layouts. Keeping a
@@ -47,7 +44,7 @@
   -- secret-value handling across forty raid frames.
   local updateHealth = assert(func and func.updateHealth, "Roth_UI: shared health runtime is required by units/raid.lua")
 
---check threat
+  --check threat
   local checkThreat = function(self,event,unit)
     self.Health:ForceUpdate()
   end
@@ -70,13 +67,11 @@
       c2:SetPoint("CENTER",32,28)
       c2:SetAlpha(0.9)
     end
-	self.Texture = t
-
+    self.Texture = t
   end
 
   --create health frames
   local createHealthFrame = function(self)
-
     local cfg = self.cfg.health
 
     --health
@@ -85,7 +80,7 @@
     h:SetPoint("LEFT",24.5,0)
     h:SetPoint("RIGHT",-24.5,0)
     h:SetPoint("BOTTOM",0,28.7)
-	h:SetFrameStrata("BACKGROUND")
+    h:SetFrameStrata("BACKGROUND")
 
     h:SetStatusBarTexture(cfg.texture)
     h.bg = h:CreateTexture(nil,"BACKGROUND",nil,-6)
@@ -114,10 +109,10 @@
 
     --power
     local h = CreateFrame("StatusBar", nil, self.Health)
-     h:SetPoint("TOP",0,-13)
-     h:SetPoint("LEFT",5,0)
-     h:SetPoint("RIGHT",-5,0)
-     h:SetPoint("BOTTOM",0,-10)
+    h:SetPoint("TOP",0,-13)
+    h:SetPoint("LEFT",5,0)
+    h:SetPoint("RIGHT",-5,0)
+    h:SetPoint("BOTTOM",0,-10)
 
     h:SetStatusBarTexture(cfg.texture)
 
@@ -132,12 +127,10 @@
 
     self.Power = h
     self.Power.smoothing = func.ResolveStatusBarSmoothing(self.cfg.power and self.cfg.power.smooth)
-
   end
 
   --create health power strings
   local createHealthPowerStrings = function(self)
-
     local name = func.createFontString(self, cfg.font, 10, "THINOUTLINE", "OVERLAY")
     name:SetPoint("BOTTOM", self, "TOP", 0, -22)
     name:SetPoint("LEFT", self.Health, 0, 0)
@@ -157,16 +150,14 @@
     self.Health.valueText = hpval
     self.Health.valueTextMode = func.ResolveHealthValueMode()
     self.Health.perText = perphp
-
   end
-
 
   ---------------------------------------------
   -- RAID STYLE FUNC
   ---------------------------------------------
 
   local function createStyle(self)
-  self.colors = self.colors or (oUF and oUF.colors) or {}
+    self.colors = self.colors or (oUF and oUF.colors) or {}
 
     --apply config to self
     self.cfg = (ns.GetUnitConfig and ns.GetUnitConfig("raid")) or cfg.units.raid
@@ -199,7 +190,7 @@
     --debuffglow
     func.createDebuffGlow(self)
 
-	func.ConfigureGroupRange(self)
+    func.ConfigureGroupRange(self)
 
     -- Managed aura groups are registered lazily on first frame show.
     func.QueueRaidAuras(self)
@@ -207,30 +198,33 @@
 
     --icons
     self.RaidTargetIndicator = func.createIcon(self,"OVERLAY",14,self.Health,"CENTER","CENTER",0,0,7)
-	self.RaidTargetIndicator:SetTexture("Interface\\AddOns\\Roth_UI\\media\\raidicons")
+    self.RaidTargetIndicator:SetTexture("Interface\\AddOns\\Roth_UI\\media\\raidicons")
     self.ReadyCheckIndicator = func.createIcon(self,"OVERLAY",24,self.Health,"CENTER","CENTER",0,0,7)
     self.GroupRoleIndicator = func.createIcon(self,"OVERLAY",14,self.Health,"CENTER","CENTER",0,0,7)
     self.GroupRoleIndicator:SetTexture("Interface\\AddOns\\Roth_UI\\media\\lfd_role")
     self.GroupRoleIndicator:SetDesaturated(1)
-	self.LeaderIndicator = func.createIcon(self,"OVERLAY",14,self.Name,"TOPLEFT","TOPLEFT",-7,-10,7)
-	self.LeaderIndicator:SetTexture("Interface\\AddOns\\Roth_UI\\media\\leader")
+    self.LeaderIndicator = func.createIcon(self,"OVERLAY",14,self.Name,"TOPLEFT","TOPLEFT",-7,-10,7)
+    self.LeaderIndicator:SetTexture("Interface\\AddOns\\Roth_UI\\media\\leader")
 
-	func.healPrediction(self)
+    func.healPrediction(self)
     
     --add total absorb
     func.totalAbsorb(self)
-
   end
 
   ---------------------------------------------
   -- SPAWN RAID UNIT
   ---------------------------------------------
 
-
-  -- Spawn lazily (only when enabled).
   local raidAnchor
   local raidGroups
+  local ApplyEnabled
   local ApplyRaidLayoutRuntime
+
+  local function GetRaidVisibility()
+    local attr = cfg and cfg.units and cfg.units.raid and cfg.units.raid.attributes
+    return type(attr) == "table" and attr.visibility or "show"
+  end
 
   local function SpawnRaid()
     if raidGroups then return end
@@ -285,10 +279,7 @@
       local col = (i-1) % cols
       local row = math.floor((i-1) / cols)
       group:SetPoint('TOPLEFT', raidAnchor, 'TOPLEFT', col*groupSpacingX, -row*groupSpacingY)
-
-      group.__roth_vis = attr.visibility
-      groupVisibility.Apply(group, attr.visibility)
-
+      groupVisibility.Apply(group, attr.visibility or "show")
       raidGroups[i] = group
     end
 
@@ -312,27 +303,14 @@
         if isArena then
           groupVisibility.Show(raidGroups[1])
         else
-          groupVisibility.Apply(raidGroups[1], attr.visibility)
+          groupVisibility.ApplyDesired(raidGroups[1], GetRaidVisibility())
         end
       end)
     end
   end
 
-  local function ApplyEnabled(enabled)
-    if InCombatLockdown and InCombatLockdown() then
-      -- Defer to after combat.
-      if not ns.__rothRaidRegenHook then
-        ns.__rothRaidRegenHook = CreateFrame("Frame")
-        ns.__rothRaidRegenHook:RegisterEvent("PLAYER_REGEN_ENABLED")
-        ns.__rothRaidRegenHook:SetScript("OnEvent", function()
-          if ns.__rothRaidPendingEnabled ~= nil then
-            local v = ns.__rothRaidPendingEnabled
-            ns.__rothRaidPendingEnabled = nil
-            ApplyEnabled(v)
-          end
-        end)
-      end
-      ns.__rothRaidPendingEnabled = enabled and true or false
+  ApplyEnabled = function(enabled)
+    if DeferUntilOutOfCombat("raid-provider", function() ApplyEnabled(enabled) end) then
       return
     end
 
@@ -340,49 +318,22 @@
       SpawnRaid()
       if raidAnchor then raidAnchor:Show() end
       if raidGroups then
-        for _, g in pairs(raidGroups) do
-          if g and g.__roth_vis then
-            groupVisibility.Apply(g, g.__roth_vis)
+        for _, group in pairs(raidGroups) do
+          if group then
+            groupVisibility.ApplyDesired(group, GetRaidVisibility())
           end
         end
       end
     else
       if raidAnchor then raidAnchor:Hide() end
       if raidGroups then
-        for _, g in pairs(raidGroups) do
-          if g then
-            groupVisibility.Hide(g)
+        for _, group in pairs(raidGroups) do
+          if group then
+            groupVisibility.Hide(group)
           end
         end
       end
     end
-  end
-
-  local function RebuildRaidStructureRuntime()
-    if not (cfg and cfg.units and cfg.units.raid) then
-      return
-    end
-    if InCombatLockdown and InCombatLockdown() then
-      ns.__rothRaidPendingEnabled = ((ns.IsRothEnabled and ns.IsRothEnabled(cfg.units.raid.show)) or (cfg.units.raid.show ~= false)) and true or false
-      return
-    end
-
-    local wasEnabled = ((ns.IsRothEnabled and ns.IsRothEnabled(cfg.units.raid.show)) or (cfg.units.raid.show ~= false)) and true or false
-    if raidGroups then
-      for _, group in pairs(raidGroups) do
-        if group then
-          groupVisibility.Park(group, "raid")
-        end
-      end
-    end
-    raidGroups = nil
-    ns.raidGroups = nil
-
-    if wasEnabled then
-      SpawnRaid()
-    end
-    ApplyRaidLayoutRuntime()
-    ApplyEnabled(wasEnabled)
   end
 
   ns.ApplyRaidEnabled = ApplyEnabled
@@ -392,9 +343,9 @@
     if InCombatLockdown and InCombatLockdown() then return end
     local scale = tonumber(cfg.units.raid.scale) or 1
     if raidGroups then
-      for _, g in pairs(raidGroups) do
-        if g and g.SetScale then
-          g:SetScale(scale)
+      for _, group in pairs(raidGroups) do
+        if group and group.SetScale then
+          group:SetScale(scale)
         end
       end
     end
@@ -406,7 +357,6 @@
   end
 
   ns.ApplyRaidLayoutRuntime = ApplyRaidLayoutRuntime
-  ns.RebuildRaidStructureRuntime = RebuildRaidStructureRuntime
 
   -- Initial state.
   ApplyEnabled((ns.IsRothEnabled and ns.IsRothEnabled(cfg.units.raid.show)) or (cfg.units.raid.show ~= false))

@@ -3,7 +3,7 @@
 -- oUF creates protected SecureGroupHeaderTemplate frames and retains them in
 -- its header registry. Roth UI therefore never reparents or respawns an active
 -- header to apply settings. Visibility is updated out of combat through oUF's
--- public header method when available; ordinary bookkeeping stays in a weak
+-- public header method when available; desired/applied state stays in a weak
 -- addon-owned table rather than on the protected frame.
 
 local addon, ns = ...
@@ -54,13 +54,8 @@ local function GetState(frame)
   return state
 end
 
-function service.Apply(frame, visibility)
-  if not frame then
-    return false
-  end
-
-  local value = ResolveVisibility(visibility)
-  if not value then
+local function ApplyResolved(frame, value)
+  if not frame or not value then
     return false
   end
   if InCombatLockdown and InCombatLockdown() then
@@ -92,12 +87,44 @@ function service.Apply(frame, visibility)
   return false
 end
 
+function service.SetDesired(frame, visibility)
+  if not frame then
+    return false
+  end
+  local value = ResolveVisibility(visibility)
+  if not value then
+    return false
+  end
+  GetState(frame).desired = value
+  return true
+end
+
+function service.GetDesired(frame)
+  local state = frame and states[frame]
+  return state and state.desired or nil
+end
+
+function service.Apply(frame, visibility)
+  local value = ResolveVisibility(visibility)
+  if not value then
+    return false
+  end
+  GetState(frame).desired = value
+  return ApplyResolved(frame, value)
+end
+
+function service.ApplyDesired(frame, fallback)
+  local state = frame and states[frame]
+  local value = state and state.desired or ResolveVisibility(fallback)
+  return ApplyResolved(frame, value)
+end
+
 function service.Hide(frame)
-  return service.Apply(frame, "hide")
+  return ApplyResolved(frame, ResolveVisibility("hide"))
 end
 
 function service.Show(frame)
-  return service.Apply(frame, "show")
+  return ApplyResolved(frame, ResolveVisibility("show"))
 end
 
 -- Historical rebuild code called Park before spawning another secure header.
