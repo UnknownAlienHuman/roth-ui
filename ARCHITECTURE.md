@@ -1,4 +1,4 @@
-# Roth UI architecture — 3.4.0
+# Roth UI architecture — 3.4.1
 
 ## Compatibility target
 

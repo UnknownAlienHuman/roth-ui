@@ -189,6 +189,18 @@ expect(getPath({ "movers", "point", "Roth_TestMover" }) == nil
     and getPath({ "movers", "scale", "Roth_TestMover" }) == nil,
   "full reset did not clear persisted geometry")
 
+shiftDown = true
+handle.scripts.OnDragStart(handle)
+frame:ClearAllPoints()
+frame:SetPoint("BOTTOM", _G.UIParent, "TOP", -9, 14)
+frame.stoppedMoving = nil
+handle:Hide()
+expect(frame.stoppedMoving == true, "hiding an active drag handle did not stop frame movement")
+local pointOnHide = getPath({ "movers", "point", "Roth_TestMover" })
+expect(pointOnHide and pointOnHide.a1 == "BOTTOM" and pointOnHide.x == -9 and pointOnHide.y == 14,
+  "drag-handle hide did not persist the last frame position")
+shiftDown = false
+
 expect(ns.func.SetMoverUnlocked(frame, false) == true, "lock failed")
 expect(not handle.shown and not handle.mouse and not handle.mouseWheel,
   "locked handle remained interactive")

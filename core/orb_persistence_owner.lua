@@ -2,8 +2,8 @@ local _, ns = ...
 
 -- Own orb schema targets and store reconcile pipeline separately from db defaults/templates.
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by orb_persistence_owner.lua")
+local CanAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by orb_persistence_owner.lua")
 local CopySerializable = assert(safety.CopySerializable, "Roth_UI: safety.CopySerializable is required by orb_persistence_owner.lua")
-local SanitizeSerializableInPlace = assert(safety.SanitizeSerializableInPlace, "Roth_UI: safety.SanitizeSerializableInPlace is required by orb_persistence_owner.lua")
 local orbText = assert(ns and ns.OrbTextController, "Roth_UI: ns.OrbTextController is required by orb_persistence_owner.lua")
 local configOwner = assert(ns and ns.configPersistence, "Roth_UI: ns.configPersistence is required by orb_persistence_owner.lua")
 local storeApi = assert(ns and ns.store, "Roth_UI: ns.store is required by orb_persistence_owner.lua")
@@ -26,6 +26,15 @@ local ACCOUNT_VAR = configOwner.ACCOUNT_DB_VAR or "Roth_UI_DB"
 local CHAR_VAR = configOwner.CHAR_DB_VAR or "Roth_UI_DB_Char"
 local ORB_CHAR_PATH = "orbs"
 local ORB_GLOBAL_PATH = "account.templates"
+local sanitizedCharStore
+local sanitizedGlobalStore
+local MAX_TEMPLATE_NAME_LENGTH = 24
+local RESERVED_TEMPLATE_NAMES = {
+  TEMPLATE_LIST = true,
+  __selection = true,
+  __schemaPatch = true,
+  reset = true,
+}
 
 orbPersistence.OWNER_FILE = ORB_OWNER_FILE
 
@@ -71,8 +80,9 @@ local function SetCharStore(v)
   if type(store) ~= "table" then
     return false
   end
-  SanitizeSerializableInPlace(store)
-  return SetOrbCharRoot(store)
+  local result = SetOrbCharRoot(store)
+  if result == true then sanitizedCharStore = store end
+  return result
 end
 
 local function GetGlobalStore()
@@ -84,12 +94,9 @@ local function SetGlobalStore(v)
   if type(store) ~= "table" then
     return false
   end
-  if type(store.TEMPLATE_LIST) ~= "table" then
-    local defaults = (db.GetTemplateListDefaults and db:GetTemplateListDefaults()) or {}
-    store.TEMPLATE_LIST = defaults
-  end
-  SanitizeSerializableInPlace(store)
-  return SetOrbGlobalRoot(store)
+  local result = SetOrbGlobalRoot(store)
+  if result == true then sanitizedGlobalStore = store end
+  return result
 end
 
 local function GetStores()
@@ -256,13 +263,20 @@ local function EnsureCharDB()
   local char = GetCharStore()
   if type(char) ~= "table" then
     char = db:GetOrbDefaults()
-    SetCharStore(char)
+    if SetCharStore(char) ~= true then return end
   end
 
   local defaults = db:GetOrbDefaults()
   if type(char) == "table" then
+    -- Migration code reads and normalizes saved values, so discard unsupported
+    -- or restricted descendants once for each newly loaded root.
+    if char ~= sanitizedCharStore then
+      if SetCharStore(char) ~= true then
+        char = defaults
+        if SetCharStore(char) ~= true then return end
+      end
+    end
     ApplyCharSchemaPatches(char, defaults)
-    SetCharStore(char)
   end
 end
 
@@ -270,12 +284,29 @@ local function EnsureGlobalDB()
   local glob = GetGlobalStore()
   if type(glob) ~= "table" then
     glob = db:GetTemplateDefaults()
-    SetGlobalStore(glob)
+    if SetGlobalStore(glob) ~= true then return end
   end
   if type(glob) == "table" then
+    if glob ~= sanitizedGlobalStore then
+      if SetGlobalStore(glob) ~= true then
+        glob = db:GetTemplateDefaults()
+        glob.TEMPLATE_LIST = db:GetTemplateListDefaults()
+        if SetGlobalStore(glob) ~= true then return end
+      end
+    end
     ApplyGlobalSchemaPatches(glob)
-    SetGlobalStore(glob)
   end
+end
+
+local function IsValidNewTemplateName(name)
+  if not CanAccess(name) then return nil end
+  if type(name) ~= "string" then return nil end
+  name = name:gsub("^%s+", ""):gsub("%s+$", "")
+  local characterCount = #name:gsub("[\128-\191]", "")
+  if name == "" or characterCount > MAX_TEMPLATE_NAME_LENGTH or RESERVED_TEMPLATE_NAMES[name] then
+    return nil
+  end
+  return name
 end
 
 local function SyncTemplateListCache()
@@ -385,16 +416,22 @@ end
 function orbPersistence.SanitizeStores()
   local glob = GetGlobalStore()
   if type(glob) == "table" then
-    SanitizeSerializableInPlace(glob)
-    ApplyGlobalSchemaPatches(glob)
-    SetGlobalStore(glob)
+    if SetGlobalStore(glob) == true then
+      ApplyGlobalSchemaPatches(glob)
+    else
+      local defaults = db:GetTemplateDefaults()
+      defaults.TEMPLATE_LIST = db:GetTemplateListDefaults()
+      if SetGlobalStore(defaults) ~= true then return false end
+    end
   end
 
   local char = GetCharStore()
   if type(char) == "table" then
-    SanitizeSerializableInPlace(char)
-    ApplyCharSchemaPatches(char, db:GetOrbDefaults())
-    SetCharStore(char)
+    if SetCharStore(char) == true then
+      ApplyCharSchemaPatches(char, db:GetOrbDefaults())
+    else
+      if SetCharStore(db:GetOrbDefaults()) ~= true then return false end
+    end
   end
 
   SyncTemplateListCache()
@@ -403,7 +440,6 @@ end
 
 function orbPersistence.ReconcileStores()
   orbPersistence.EnsureStores()
-  orbPersistence.SanitizeStores()
   return orbPersistence.GetSchemaInfo()
 end
 
@@ -419,10 +455,10 @@ function orbPersistence.GetTemplateList()
 end
 
 function orbPersistence.LoadGlobalDataDefaults()
-  print("Roth_UI: global data defaults loaded")
   local glob = db:GetTemplateDefaults()
   glob.TEMPLATE_LIST = db:GetTemplateListDefaults()
-  SetGlobalStore(glob)
+  if SetGlobalStore(glob) ~= true then return false end
+  print("Roth_UI: global data defaults loaded")
   orbPersistence.RunPipeline()
   return GetGlobalStore()
 end
@@ -434,24 +470,30 @@ function orbPersistence.LoadGlobalData()
 end
 
 function orbPersistence.ResetOrbToDefaults(orbType)
+  if not CanAccess(orbType) then return false end
+  if orbType ~= nil and (orbType ~= "HEALTH" and orbType ~= "POWER") then
+    return false
+  end
   local defaults = db:GetOrbDefaults()
   local char = GetCharStore()
   if type(char) ~= "table" then
     char = {}
+  else
+    char = CopyOrbPayload(char, {})
   end
 
   if orbType ~= nil then
-    if orbType ~= "HEALTH" and orbType ~= "POWER" then
-      return false
-    end
     char[orbType] = CopyOrbPayload(defaults[orbType], {})
-    print(("Roth_UI: %s orb reseted to default"):format(string.lower(orbType)))
   else
     char = CopyOrbPayload(defaults, {})
-    print("Roth_UI: character data reset to default")
   end
 
-  SetCharStore(char)
+  if SetCharStore(char) ~= true then return false end
+  if orbType then
+    print(("Roth_UI: %s orb reseted to default"):format(string.lower(orbType)))
+  else
+    print("Roth_UI: character data reset to default")
+  end
   orbPersistence.RunPipeline()
   RefreshOrbRuntime(orbType)
   return true
@@ -465,8 +507,9 @@ function orbPersistence.LoadCharacterData()
   orbPersistence.RunPipeline()
   local char = GetCharStore()
   if type(char) == "table" and char.reload then
+    char = CopyOrbPayload(char, {})
     char.reload = false
-    SetCharStore(char)
+    if SetCharStore(char) ~= true then return false end
   end
   RefreshOrbRuntime()
   return true
@@ -482,6 +525,7 @@ function orbPersistence.ResetTemplateLibrary()
   if type(glob) ~= "table" then
     glob = db:GetTemplateDefaults()
   end
+  glob = CopyOrbPayload(glob, db:GetTemplateDefaults())
   glob.reset = true
   if SetGlobalStore(glob) ~= true then
     print("Roth_UI: template reset failed. UI was not reloaded.")
@@ -491,10 +535,11 @@ function orbPersistence.ResetTemplateLibrary()
 end
 
 function orbPersistence.LoadTemplate(name, orbType)
-  if type(name) ~= "string" or name == "" then
+  if not CanAccess(name) or type(name) ~= "string" or name == "" then
     return false
   end
-  if orbType ~= "HEALTH" and orbType ~= "POWER" then
+  if RESERVED_TEMPLATE_NAMES[name] then return false end
+  if not CanAccess(orbType) or (orbType ~= "HEALTH" and orbType ~= "POWER") then
     return false
   end
 
@@ -510,8 +555,9 @@ function orbPersistence.LoadTemplate(name, orbType)
   end
 
   local defaults = db:GetOrbDefaults()
+  char = CopyOrbPayload(char, {})
   char[orbType] = CopyOrbPayload(glob[name], defaults and defaults[orbType])
-  SetCharStore(char)
+  if SetCharStore(char) ~= true then return false end
   orbPersistence.RunPipeline()
   print("Roth_UI: template |c003399FF"..name.."|r loaded into "..string.lower(orbType).." orb")
   RefreshOrbRuntime(orbType)
@@ -519,10 +565,11 @@ function orbPersistence.LoadTemplate(name, orbType)
 end
 
 function orbPersistence.SaveTemplate(name, orbType)
-  if type(name) ~= "string" or name == "" then
+  name = IsValidNewTemplateName(name)
+  if not name then
     return false
   end
-  if orbType ~= "HEALTH" and orbType ~= "POWER" then
+  if not CanAccess(orbType) or (orbType ~= "HEALTH" and orbType ~= "POWER") then
     return false
   end
 
@@ -533,16 +580,18 @@ function orbPersistence.SaveTemplate(name, orbType)
   if type(glob) ~= "table" then
     glob = db:GetTemplateDefaults()
   end
+  glob = CopyOrbPayload(glob, db:GetTemplateDefaults())
   if type(char) ~= "table" then
     char = CopyOrbPayload(defaults, {})
-    SetCharStore(char)
+    if SetCharStore(char) ~= true then return false end
   end
   if type(char[orbType]) ~= "table" then
+    char = CopyOrbPayload(char, {})
     char[orbType] = CopyOrbPayload(defaults and defaults[orbType], {})
-    SetCharStore(char)
+    if SetCharStore(char) ~= true then return false end
   end
 
-  glob[name] = CopyOrbPayload(char[orbType], defaults and defaults.HEALTH)
+  glob[name] = CopyOrbPayload(char[orbType], defaults and defaults[orbType])
   if type(glob.TEMPLATE_LIST) ~= "table" then
     glob.TEMPLATE_LIST = db:GetTemplateListDefaults()
   end
@@ -559,32 +608,33 @@ function orbPersistence.SaveTemplate(name, orbType)
     glob.TEMPLATE_LIST[#glob.TEMPLATE_LIST + 1] = BuildTemplateListEntry(name)
   end
 
-  SetGlobalStore(glob)
+  if SetGlobalStore(glob) ~= true then return false end
   orbPersistence.RunPipeline()
   print("Roth_UI: "..string.lower(orbType).." orb data saved as template |c003399FF"..name.."|r")
   if type(ns.RefreshOrbsVisual) == "function" then
     ns.RefreshOrbsVisual()
   end
-  return true
+  return true, name
 end
 
 function orbPersistence.DeleteTemplate(name)
-  if type(name) ~= "string" or name == "" then
+  if not CanAccess(name) or type(name) ~= "string" or name == "" then
     return false
   end
+  if RESERVED_TEMPLATE_NAMES[name] then return false end
 
   orbPersistence.RunPipeline()
   local glob = GetGlobalStore()
   if type(glob) ~= "table" then
     return false
   end
+  glob = CopyOrbPayload(glob, {})
   if type(glob[name]) ~= "table" then
     print("Roth_UI: template |c003399FF"..name.."|r not found")
     return false
   end
 
   glob[name] = nil
-  print("Roth_UI: template |c003399FF"..name.."|r deleted")
   if type(glob.TEMPLATE_LIST) == "table" then
     for i = 1, #glob.TEMPLATE_LIST do
       local entry = glob.TEMPLATE_LIST[i]
@@ -594,7 +644,8 @@ function orbPersistence.DeleteTemplate(name)
       end
     end
   end
-  SetGlobalStore(glob)
+  if SetGlobalStore(glob) ~= true then return false end
+  print("Roth_UI: template |c003399FF"..name.."|r deleted")
   orbPersistence.RunPipeline()
   if type(ns.RefreshOrbsVisual) == "function" then
     ns.RefreshOrbsVisual()
@@ -613,10 +664,9 @@ orbBootstrap:SetScript("OnEvent", function(self, event, arg1)
   local hadCharStore = type(GetCharStore()) == "table"
   local glob = GetGlobalStore()
   if type(glob) == "table" and glob.reset then
-    glob.reset = nil
     glob = db:GetTemplateDefaults()
     glob.TEMPLATE_LIST = db:GetTemplateListDefaults()
-    SetGlobalStore(glob)
+    if SetGlobalStore(glob) ~= true then return end
   end
 
   orbPersistence.LoadGlobalData()

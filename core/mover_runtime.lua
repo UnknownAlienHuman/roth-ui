@@ -524,9 +524,7 @@ local function HandleMoverMouseUp(df, button)
   local parent = df and df:GetParent()
   if not (parent and parent.SetScale) then return end
 
-  local defaultScale = NormalizeMoverScale(parent.defaultScale) or 1
-  parent:SetScale(defaultScale)
-  ClearMoverScale(parent)
+  func.ResetMoverScale(parent)
   if df.IsMouseOver and df:IsMouseOver() then
     ShowMoverTooltip(df, parent)
   end
@@ -688,7 +686,7 @@ func.applyDragFunctionality = function(f, special)
   label:SetTextColor(1, 0.82, 0.48)
   local title = GetMoverFrameName(f) or "Roth UI"
   label:SetText(title:gsub("^Roth_UI", ""):gsub("Frame$", ""):gsub("(%l)(%u)", "%1 %2"))
-  if type(func.RegisterFontString) == "function" then func.RegisterFontString(label, 12, "OUTLINE") end
+  if type(func.RegisterFontString) == "function" then func.RegisterFontString(label) end
   f.dragframe = df
   f.dragFrame = df
   f.dragframe:Hide()

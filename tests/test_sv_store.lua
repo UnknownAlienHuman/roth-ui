@@ -20,6 +20,7 @@ local ns = {
     IsForbiddenTable = function() return false end,
     IsSerializablePrimitive = function(value)
       local kind = type(value)
+      if kind == "number" and (value ~= value or value == math.huge or value == -math.huge) then return false end
       return kind == "string" or kind == "number" or kind == "boolean"
     end,
     CopySerializable = function(value)
@@ -61,7 +62,10 @@ local ns = {
   store = {},
   GetRuntimePersistenceState = function() return {} end,
 }
-ns.store.GetDomainRoot = function(domain) return roots[domain] end
+ns.store.GetDomainRoot = function(domain, ensure)
+  if ensure and roots[domain] == nil then roots[domain] = {} end
+  return roots[domain]
+end
 ns.store.SetDomainRoot = function(domain, root) roots[domain] = root return true end
 ns.store.GetConfigRoot = function() return roots.config end
 ns.db = {
@@ -118,6 +122,21 @@ expect(ns.SVSet({ "nested" }, tooDeep) == false, "depth-overflow table write was
 expect(roots.config.nested == oldValue, "depth-overflow write damaged the persisted value")
 expect(ns.SVSet({ function() end }, 2) == false, "function path key was accepted")
 expect(ns.SVSet({ MarkSecret("hidden") }, 2) == false, "secret path key was accepted")
+expect(ns.SVSet({ [1] = "nested", [3] = "ignored" }, 2) == false,
+  "sparse path was accepted")
+expect(ns.SVSet({ nested = "ignored", [1] = "nested" }, 2) == false,
+  "path with a non-array key was accepted")
+expect(ns.SVSet({ math.huge }, 2) == false, "non-finite numeric path key was accepted")
 expect(roots.config.nested == oldValue, "invalid path write damaged the persisted value")
+expect(ns.SVSet({ "" }, 2) == true, "ordinary empty string path segment was rejected")
+expect(roots.config[""] == 2, "empty string path segment was not written")
+expect(ns.SVSet({ string.rep("x", 129) }, 2) == true, "ordinary long path segment was rejected")
+local deepPath = {}
+for index = 1, 65 do deepPath[index] = "child" end
+expect(ns.SVSet(deepPath, 2) == true, "ordinary dense path was arbitrarily depth-limited")
+roots.orbGlobal = nil
+expect(ns.store.SetOrbGlobalValue({ "invalid" }, function() end) == false,
+  "invalid domain value was accepted")
+expect(roots.orbGlobal == nil, "invalid domain write initialized a missing store")
 
 print("SavedVariables read isolation test: OK")

@@ -39,7 +39,7 @@ local function QueueFontPolicyRefresh(key, afterRefresh)
     end
 
     if defer and type(defer.RunNextFrame) == "function" then
-      defer.RunNextFrame("settings_general:" .. key, Refresh, false)
+      defer.RunNextFrame("settings_general:" .. key, Refresh)
     else
       Refresh()
     end
@@ -165,14 +165,6 @@ local function BuildHealthValueModeOptions()
   }
 end
 
-local function FormatTenths(value)
-  return string.format("%.2f", tonumber(value) or 0)
-end
-
-local function FormatAlpha(value)
-  return string.format("%.2f", tonumber(value) or 0)
-end
-
 local function ApplyGlobalHealthValueMode()
   if not (ns and type(ns.RefreshAllHealthValueText) == "function") then
     return
@@ -187,9 +179,10 @@ local function ApplyGlobalHealthValueMode()
   end
 
   ui:RunOutOfCombat("settings_health_value_mode_global", function()
-    Refresh()
     if defer and type(defer.RunNextFrame) == "function" then
-      defer.RunNextFrame("settings_general:health_value_mode", Refresh, false)
+      defer.RunNextFrame("settings_general:health_value_mode", Refresh)
+    else
+      Refresh()
     end
   end)
 end

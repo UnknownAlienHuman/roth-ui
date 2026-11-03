@@ -1,8 +1,8 @@
 --get the addon namespace
 local addon, ns = ...
 
---object container
-local bars = CreateFrame("Frame")
+-- Constructor namespace; it has no visual or event behavior of its own.
+local bars = {}
 ns.bars = bars
 
 --get the functions
@@ -10,10 +10,11 @@ local func = ns.func
 local cfg = ns.cfg
 local mediapath = ns.mediapath or "Interface\\AddOns\\Roth_UI\\media\\"
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by bars.lua")
-local IsSecretValue = (func and func.IsSecretValue) or
-assert(safety.IsSecret, "Roth_UI: safety.IsSecret is required by bars.lua")
+local IsSecret = assert(safety.IsSecret, "Roth_UI: safety.IsSecret is required by bars.lua")
+assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by bars.lua")
 local function CoerceNumber(v)
-  if IsSecretValue(v) then return nil end
+  if not safety.CanAccess(v) then return nil end
+  if IsSecret(v) then return nil end
   if type(v) == "number" then return v end
   if type(v) == "string" then
     local n = tonumber(v)
@@ -24,16 +25,20 @@ end
 local function PlayerHasVehicleUI()
   if type(UnitHasVehicleUI) ~= "function" then return false end
   local value = UnitHasVehicleUI("player")
-  return not IsSecretValue(value) and value == true
+  if not safety.CanAccess(value) then return false end
+  if IsSecret(value) then return false end
+  return value == true
 end
 
 local function SafeNumber(v)
-  if IsSecretValue(v) then return nil end
+  if not safety.CanAccess(v) then return nil end
+  if IsSecret(v) then return nil end
   if type(v) ~= "number" then return nil end
   return v
 end
 
 local function ResolveBarDimension(value, fallback)
+  if not safety.CanAccess(value) then return fallback end
   local n = tonumber(value)
   if type(n) ~= "number" or n <= 0 then
     return fallback
@@ -79,6 +84,7 @@ local function AttachClassPower(self, bar, orbs)
   if #element < 1 then return end
 
   element.__bar = bar
+  local displayedMax
 
   element.PostVisibility = function(elem, isVisible)
     local owner = elem.__bar
@@ -98,13 +104,17 @@ local function AttachClassPower(self, bar, orbs)
     if not maxNum or maxNum < 1 then maxNum = owner.maxOrbs or total end
     if maxNum > total then maxNum = total end
 
-    if owner.orbSize and owner.edgeOrbs and hasMaxChanged then
-      owner:SetWidth(owner.orbSize * (maxNum + owner.edgeOrbs))
-    end
+    if displayedMax ~= maxNum then
+      local maxChanged = safety.CanAccess(hasMaxChanged) and hasMaxChanged == true
+      if owner.orbSize and owner.edgeOrbs and maxChanged then
+        owner:SetWidth(owner.orbSize * (maxNum + owner.edgeOrbs))
+      end
 
-    for i = 1, total do
-      local orb = elem[i] and elem[i].__rothOrb
-      if orb then orb:SetShown(i <= maxNum) end
+      for i = 1, total do
+        local orb = elem[i] and elem[i].__rothOrb
+        if orb then orb:SetShown(i <= maxNum) end
+      end
+      displayedMax = maxNum
     end
   end
 
@@ -130,7 +140,12 @@ local function AttachRunes(self, bar, orbs)
   element.colorSpec = true
   element.PostUpdate = function(elem)
     local owner = elem.__bar
-    if owner and owner.SetShown then owner:SetShown(not PlayerHasVehicleUI()) end
+    if not (owner and owner.SetShown) then return end
+    local shouldShow = not PlayerHasVehicleUI()
+    if elem.__rothVisible ~= shouldShow then
+      elem.__rothVisible = shouldShow
+      owner:SetShown(shouldShow)
+    end
   end
 
   self.Runes = element
@@ -306,608 +321,170 @@ bars.createRepBar = function(self)
 end
 
 
---create harmony power bar
-bars.createHarmonyPowerBar = function(self)
-  self.Harmony = {}
+-- Resource bars share the same frame and pip construction. Each spec below
+-- records only the visual differences, while the oUF attachment remains
+-- explicit at the end of the constructor.
+local COMMON_RESOURCE_TEXTURES
 
-  local t
-  local bar = CreateFrame("Frame", "Roth_UIHarmonyPower", self)
-  bar.maxOrbs = 6
-  local w = 64 * (bar.maxOrbs + 2) --create the bar for
-  local h = 64
-  --bar:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-  bar:SetPoint(self.cfg.harmony.pos.a1, self.cfg.harmony.pos.af, self.cfg.harmony.pos.a2, self.cfg.harmony.pos.x,
-    self.cfg.harmony.pos.y)
-  bar:SetWidth(w)
-  bar:SetHeight(h)
+local function CreatePipTexture(parent, layer, sublevel, size, texturePath)
+  local texture = parent:CreateTexture(nil, layer, nil, sublevel)
+  texture:SetSize(size, size)
+  texture:SetPoint("CENTER")
+  texture:SetTexture(texturePath)
+  return texture
+end
 
-  --color
-  bar.color = self.cfg.harmony.color
+local function CreatePipFill(orb, spec, color)
+  local size = 64 * spec.pipScale
+  local fill = CreateFrame("StatusBar", nil, orb)
+  fill:SetSize(size, size)
+  fill:SetPoint("CENTER")
+  local texture = fill:CreateTexture(nil, "BACKGROUND", nil, -6)
+  texture:SetTexture(spec.fillTexture or COMMON_RESOURCE_TEXTURES.fillTexture)
+  if spec.fillAlpha then texture:SetAlpha(spec.fillAlpha) end
+  if spec.fillTexCoord then texture:SetTexCoord(unpack(spec.fillTexCoord)) end
+  fill:SetStatusBarTexture(texture)
+  if spec.fillAlpha then fill:SetAlpha(spec.fillAlpha) end
+  if spec.orientation then fill:SetOrientation(spec.orientation) end
+  fill:SetMinMaxValues(0, 1)
+  fill:SetValue(0)
+  if spec.fillUsesColor ~= false then fill:SetStatusBarColor(color.r, color.g, color.b) end
+  orb.fill = fill
+end
 
-  --left edge
-  t = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetSize(64, 64)
-  t:SetPoint("LEFT", 0, 0)
-  t:SetTexture(mediapath .. "combo_left")
-  bar.leftEdge = t
-
-  --right edge
-  t = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetSize(64, 64)
-  t:SetPoint("RIGHT", 0, 0)
-  t:SetTexture(mediapath .. "combo_right")
-  bar.rightEdge = t
-
-  for i = 1, bar.maxOrbs do
-    local orb = CreateFrame("Frame", nil, bar)
-    self.Harmony[i] = orb
-
-    orb:SetSize(64, 64)
-    orb:SetPoint("LEFT", i * 64, 0)
-
-    local orbSizeMultiplier = 0.85
-
-    --bar background
-    orb.barBg = orb:CreateTexture(nil, "BACKGROUND", nil, -8)
-    orb.barBg:SetSize(64, 64)
-    orb.barBg:SetPoint("CENTER")
-    orb.barBg:SetTexture(mediapath .. "combo_bar_bg")
-
-    --orb background
-    orb.bg = orb:CreateTexture(nil, "BACKGROUND", nil, -7)
-    orb.bg:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.bg:SetPoint("CENTER")
-    orb.bg:SetTexture(mediapath .. "combo_orb_bg")
-
-    --orb filling
-    orb.fill = CreateFrame("StatusBar", nil, orb)
-    orb.fill:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.fill:SetPoint("CENTER")
-    local fill = orb.fill:CreateTexture(nil, "BACKGROUND", nil, -6)
-    fill:SetTexture(mediapath .. "combo_orb_fill1")
-    orb.fill:SetStatusBarTexture(fill)
-    orb.fill:SetMinMaxValues(0, 1)
-    orb.fill:SetValue(0)
-    orb.fill:SetStatusBarColor(self.cfg.harmony.color.r, self.cfg.harmony.color.g, self.cfg.harmony.color.b)
-    --orb.fill:SetBlendMode("ADD")
-
-    --orb border
-    orb.border = orb:CreateTexture(nil, "BACKGROUND", nil, -5)
-    orb.border:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.border:SetPoint("CENTER")
-    orb.border:SetTexture(mediapath .. "combo_orb_border")
-
-    --orb glow
-    orb.glow = orb:CreateTexture(nil, "BACKGROUND", nil, -4)
-    orb.glow:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.glow:SetPoint("CENTER")
-    orb.glow:SetTexture(mediapath .. "combo_orb_glow")
-    orb.glow:SetVertexColor(self.cfg.harmony.color.r, self.cfg.harmony.color.g, self.cfg.harmony.color.b)
+local function CreatePipDecorations(orb, spec, color)
+  local parent = orb
+  if spec.decorationOnFill then
+    parent = CreateFrame("Frame", nil, orb.fill)
+    parent:SetAllPoints(orb)
+  end
+  local size = (spec.decorationSize or 64) * spec.pipScale
+  orb.border = CreatePipTexture(parent, "BACKGROUND", -5, size,
+    spec.borderTexture or COMMON_RESOURCE_TEXTURES.borderTexture)
+  local glowTexture = spec.glowTexture
+  if glowTexture == nil then glowTexture = COMMON_RESOURCE_TEXTURES.glowTexture end
+  if glowTexture then
+    orb.glow = CreatePipTexture(parent, "BACKGROUND", -4, size, glowTexture)
+    if spec.glowUsesColor ~= false then orb.glow:SetVertexColor(color.r, color.g, color.b) end
     orb.glow:SetBlendMode("BLEND")
-
-    --orb highlight
-    orb.highlight = orb:CreateTexture(nil, "BACKGROUND", nil, -3)
-    orb.highlight:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.highlight:SetPoint("CENTER")
-    orb.highlight:SetTexture(mediapath .. "combo_orb_highlight")
   end
-
-  bar:SetScale(self.cfg.harmony.scale)
-  func.applyDragFunctionality(bar)
-  --combat fading
-  if self.cfg.harmony.combat.enable then
-    rCombatFrameFader(bar, self.cfg.harmony.combat.fadeIn, self.cfg.harmony.combat.fadeOut)   --frame, buttonList, fadeIn, fadeOut
+  local highlightTexture = spec.highlightTexture or COMMON_RESOURCE_TEXTURES.highlightTexture
+  if highlightTexture then
+    orb.highlight = CreatePipTexture(parent, "BACKGROUND", -3, size, highlightTexture)
   end
-
-  bar.orbSize = 64
-  bar.edgeOrbs = 2
-  bar.colorize = true
-  bar.fullColor = { r = 1, g = 0, b = 0 }
-  AttachClassPower(self, bar, self.Harmony)
-
-  self.HarmonyPowerBar = bar
 end
 
---create holy power bar
-bars.createHolyPowerBar = function(self)
-  self.HolyPower = {}
+local function CreateResourcePip(bar, index, orbs, spec, color)
+  local orb = CreateFrame("Frame", nil, bar)
+  orbs[index] = orb
+  orb:SetSize(64, 64)
+  orb:SetPoint("LEFT", index * 64, 0)
 
-  local t
-  local bar = CreateFrame("Frame", "Roth_UIHolyPower", self)
-  bar.maxOrbs = 5
-  local w = 64 * (bar.maxOrbs + 2) --create the bar for
-  local h = 64
-  --bar:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-  bar:SetPoint(self.cfg.holypower.pos.a1, self.cfg.holypower.pos.af, self.cfg.holypower.pos.a2, self.cfg.holypower.pos.x,
-    self.cfg.holypower.pos.y)
-  bar:SetWidth(w)
-  bar:SetHeight(h)
-  bar:Hide()   -- show via oUF/fallback update
-
-  --color
-  bar.color = self.cfg.holypower.color
-
-  --left edge
-  t = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetSize(64, 64)
-  t:SetPoint("LEFT", 0, 0)
-  t:SetTexture(mediapath .. "combo_left")
-  bar.leftEdge = t
-
-  --right edge
-  t = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetSize(64, 64)
-  t:SetPoint("RIGHT", 0, 0)
-  t:SetTexture(mediapath .. "combo_right")
-  bar.rightEdge = t
-
-  for i = 1, bar.maxOrbs do
-    local orb = CreateFrame("Frame", nil, bar)
-    self.HolyPower[i] = orb
-
-    orb:SetSize(64, 64)
-    orb:SetPoint("LEFT", i * 64, 0)
-
-    local orbSizeMultiplier = 0.85
-
-    --bar background
-    orb.barBg = orb:CreateTexture(nil, "BACKGROUND", nil, -8)
-    orb.barBg:SetSize(64, 64)
-    orb.barBg:SetPoint("CENTER")
-    orb.barBg:SetTexture(mediapath .. "combo_bar_bg")
-
-    --orb background
-    orb.bg = orb:CreateTexture(nil, "BACKGROUND", nil, -7)
-    orb.bg:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.bg:SetPoint("CENTER")
-    orb.bg:SetTexture(mediapath .. "combo_orb_bg")
-
-    --orb filling
-    orb.fill = CreateFrame("StatusBar", nil, orb)
-    orb.fill:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.fill:SetPoint("CENTER")
-    local fill = orb.fill:CreateTexture(nil, "BACKGROUND", nil, -6)
-    fill:SetTexture(mediapath .. "combo_orb_fill1")
-    orb.fill:SetStatusBarTexture(fill)
-    orb.fill:SetMinMaxValues(0, 1)
-    orb.fill:SetValue(0)
-    orb.fill:SetStatusBarColor(self.cfg.holypower.color.r, self.cfg.holypower.color.g, self.cfg.holypower.color.b)
-    --orb.fill:SetBlendMode("ADD")
-
-    --orb border
-    orb.border = orb:CreateTexture(nil, "BACKGROUND", nil, -5)
-    orb.border:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.border:SetPoint("CENTER")
-    orb.border:SetTexture(mediapath .. "combo_orb_border")
-
-    --orb glow
-    orb.glow = orb:CreateTexture(nil, "BACKGROUND", nil, -4)
-    orb.glow:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.glow:SetPoint("CENTER")
-    orb.glow:SetTexture(mediapath .. "combo_orb_glow")
-    orb.glow:SetVertexColor(self.cfg.holypower.color.r, self.cfg.holypower.color.g, self.cfg.holypower.color.b)
-    orb.glow:SetBlendMode("BLEND")
-
-    --orb highlight
-    orb.highlight = orb:CreateTexture(nil, "BACKGROUND", nil, -3)
-    orb.highlight:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.highlight:SetPoint("CENTER")
-    orb.highlight:SetTexture(mediapath .. "combo_orb_highlight")
-  end
-
-  bar:SetScale(self.cfg.holypower.scale)
-  func.applyDragFunctionality(bar)
-  --combat fading
-  if self.cfg.holypower.combat.enable then
-    rCombatFrameFader(bar, self.cfg.holypower.combat.fadeIn, self.cfg.holypower.combat.fadeOut)   --frame, buttonList, fadeIn, fadeOut
-  end
-
-  bar.orbSize = 64
-  bar.edgeOrbs = 2
-  bar.colorize = true
-  bar.fullColor = { r = 1, g = 0, b = 0 }
-  AttachClassPower(self, bar, self.HolyPower)
-
-  self.HolyPowerBar = bar
+  orb.barBg = CreatePipTexture(orb, "BACKGROUND", -8, 64,
+    spec.barBgTexture or COMMON_RESOURCE_TEXTURES.barBgTexture)
+  orb.bg = CreatePipTexture(orb, "BACKGROUND", -7,
+    (spec.backgroundSize or 64) * spec.pipScale,
+    spec.backgroundTexture or (mediapath .. "combo_orb_bg"))
+  CreatePipFill(orb, spec, color)
+  CreatePipDecorations(orb, spec, color)
 end
 
---create soulshard power bar
-bars.createSoulShardPowerBar = function(self)
-  self.SoulShards = {}
+local function CreateResourceEdges(bar, spec)
+  bar.leftEdge = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
+  bar.leftEdge:SetSize(64, 64)
+  bar.leftEdge:SetPoint("LEFT", 0, 0)
+  bar.leftEdge:SetTexture(mediapath .. "combo_left")
 
-  local t
-  local bar = CreateFrame("Frame", "Roth_UISoulShardPower", self)
-  bar.maxOrbs = 5
-  local w = 64 * (bar.maxOrbs + 2) --create the bar for
-  local h = 64
-  --bar:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-  bar:SetPoint(self.cfg.soulshards.pos.a1, self.cfg.soulshards.pos.af, self.cfg.soulshards.pos.a2,
-    self.cfg.soulshards.pos.x, self.cfg.soulshards.pos.y)
-  bar:SetWidth(w)
-  bar:SetHeight(h)
-  bar:Hide()   --hide bar (it will become available if the spec matches)
-
-  --color
-  bar.color = self.cfg.soulshards.color
-
-  --left edge
-  t = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetSize(64, 64)
-  t:SetPoint("LEFT", 0, 0)
-  t:SetTexture(mediapath .. "combo_left")
-  bar.leftEdge = t
-
-  --right edge
-  t = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetSize(64, 64)
-  t:SetPoint("RIGHT", 64, 0)
-  t:SetTexture(mediapath .. "combo_right")
-  bar.rightEdge = t
-
-  for i = 1, bar.maxOrbs do
-    local orb = CreateFrame("Frame", nil, bar)
-    self.SoulShards[i] = orb
-    orb:SetSize(64, 64)
-    orb:SetPoint("LEFT", i * 64, 0)
-
-    local orbSizeMultiplier = 0.95
-
-    --bar background
-    orb.barBg = orb:CreateTexture(nil, "BACKGROUND", nil, -8)
-    orb.barBg:SetSize(64, 64)
-    orb.barBg:SetPoint("CENTER")
-    orb.barBg:SetTexture(mediapath .. "combo_bar_bg")
-
-    --orb background
-    orb.bg = orb:CreateTexture(nil, "BACKGROUND", nil, -7)
-    orb.bg:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.bg:SetPoint("CENTER")
-    orb.bg:SetTexture(mediapath .. "combo_gem_bg")
-
-    --orb filling
-    orb.fill = CreateFrame("StatusBar", nil, orb)
-    orb.fill:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.fill:SetPoint("CENTER")
-    local fill = orb.fill:CreateTexture(nil, "BACKGROUND", nil, -6)
-    fill:SetTexture(mediapath .. "combo_gem_fill1")
-    orb.fill:SetStatusBarTexture(fill)
-    orb.fill:SetMinMaxValues(0, 1)
-    orb.fill:SetValue(0)
-    orb.fill:SetStatusBarColor(self.cfg.soulshards.color.r, self.cfg.soulshards.color.g, self.cfg.soulshards.color.b)
-    --orb.fill:SetBlendMode("ADD")
-
-    --orb border
-    orb.border = orb:CreateTexture(nil, "BACKGROUND", nil, -5)
-    orb.border:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.border:SetPoint("CENTER")
-    orb.border:SetTexture(mediapath .. "combo_gem_border")
-
-    --orb glow
-    orb.glow = orb:CreateTexture(nil, "BACKGROUND", nil, -4)
-    orb.glow:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.glow:SetPoint("CENTER")
-    orb.glow:SetTexture(mediapath .. "combo_gem_glow")
-    orb.glow:SetVertexColor(self.cfg.soulshards.color.r, self.cfg.soulshards.color.g, self.cfg.soulshards.color.b)
-    orb.glow:SetBlendMode("BLEND")
-
-    --orb highlight
-    orb.highlight = orb:CreateTexture(nil, "BACKGROUND", nil, -3)
-    orb.highlight:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.highlight:SetPoint("CENTER")
-    orb.highlight:SetTexture(mediapath .. "combo_gem_highlight")
-  end
-
-  bar:SetScale(self.cfg.soulshards.scale)
-  func.applyDragFunctionality(bar)
-  --combat fading
-  if self.cfg.soulshards.combat.enable then
-    rCombatFrameFader(bar, self.cfg.soulshards.combat.fadeIn, self.cfg.soulshards.combat.fadeOut)   --frame, buttonList, fadeIn, fadeOut
-  end
-
-  bar.orbSize = 64
-  bar.edgeOrbs = 1
-  bar.colorize = true
-  bar.fullColor = { r = 1, g = 0, b = 0 }
-  AttachClassPower(self, bar, self.SoulShards)
-
-  self.SoulShardPowerBar = bar
+  bar.rightEdge = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
+  bar.rightEdge:SetSize(64, 64)
+  bar.rightEdge:SetPoint("RIGHT", spec.rightEdgeX or 0, 0)
+  bar.rightEdge:SetTexture(mediapath .. "combo_right")
 end
 
+COMMON_RESOURCE_TEXTURES = {
+  barBgTexture = mediapath .. "combo_bar_bg",
+  borderTexture = mediapath .. "combo_orb_border",
+  glowTexture = mediapath .. "combo_orb_glow",
+  highlightTexture = mediapath .. "combo_orb_highlight",
+  fillTexture = mediapath .. "combo_orb_fill1",
+}
 
---create rune orbs bar
-bars.createRuneBar = function(self)
-  self.RuneOrbs = {}
+local RESOURCE_BAR_SPECS = {
+  harmony = {
+    frameName = "Roth_UIHarmonyPower", orbsField = "Harmony", barField = "HarmonyPowerBar",
+    maxOrbs = 6, pipScale = 0.85, classPower = true,
+  },
+  holypower = {
+    frameName = "Roth_UIHolyPower", orbsField = "HolyPower", barField = "HolyPowerBar",
+    maxOrbs = 5, pipScale = 0.85, hide = true, classPower = true,
+  },
+  soulshards = {
+    frameName = "Roth_UISoulShardPower", orbsField = "SoulShards", barField = "SoulShardPowerBar",
+    maxOrbs = 5, pipScale = 0.95, hide = true, rightEdgeX = 64, edgeOrbs = 1,
+    backgroundTexture = mediapath .. "combo_gem_bg", fillTexture = mediapath .. "combo_gem_fill1",
+    borderTexture = mediapath .. "combo_gem_border", glowTexture = mediapath .. "combo_gem_glow",
+    highlightTexture = mediapath .. "combo_gem_highlight", classPower = true,
+  },
+  runes = {
+    frameName = "Roth_UIRuneBar", orbsField = "RuneOrbs", barField = "RuneBar",
+    maxOrbs = 6, pipScale = 0.85, hide = true, backgroundSize = 128, decorationSize = 128,
+    fillTexture = mediapath .. "combo_orb_fill64_1", fillAlpha = 1, orientation = "VERTICAL",
+    decorationOnFill = true, runes = true, noBarColor = true,
+  },
+  combobar = {
+    frameName = "Roth_UIComboPoints", orbsField = "ComboPoints", barField = "ComboBar",
+    maxOrbs = 10, pipScale = 0.85, classPower = true, scaleBeforePips = true,
+  },
+  arcbar = {
+    frameName = "Roth_UIArcanePower", orbsField = "ACharges", barField = "ArcBar",
+    maxOrbs = 4, pipScale = 0.95, hide = true, rightEdgeX = 65, edgeOrbs = 1,
+    fillTexture = [[Interface\PLAYERFRAME\MageArcaneCharges]],
+    fillTexCoord = { 0.25, 0.375, 0.5, 0.75 },
+    glowTexture = false, fillUsesColor = false, classPower = true, colorize = false,
+  },
+}
 
-  local t
-  local bar = CreateFrame("Frame", "Roth_UIRuneBar", self)
-  bar.maxOrbs = 6
-  local w = 64 * (bar.maxOrbs + 2) --create the bar for
-  local h = 64
-  bar:SetPoint(self.cfg.runes.pos.a1, self.cfg.runes.pos.af, self.cfg.runes.pos.a2, self.cfg.runes.pos.x,
-    self.cfg.runes.pos.y)
-  bar:SetWidth(w)
-  bar:SetHeight(h)
-  bar:Hide()   --hide bar (it will become available if the spec matches)
+local function CreateResourceBar(self, key)
+  local spec = RESOURCE_BAR_SPECS[key]
+  local config = self.cfg[key]
+  local orbs = {}
+  self[spec.orbsField] = orbs
 
-  --left edge
-  t = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetSize(64, 64)
-  t:SetPoint("LEFT", 0, 0)
-  t:SetTexture(mediapath .. "combo_left")
-  bar.leftEdge = t
+  local bar = CreateFrame("Frame", spec.frameName, self)
+  bar.maxOrbs = spec.maxOrbs
+  bar:SetPoint(config.pos.a1, config.pos.af, config.pos.a2, config.pos.x, config.pos.y)
+  bar:SetWidth(64 * (bar.maxOrbs + 2))
+  bar:SetHeight(64)
+  if spec.hide then bar:Hide() end
+  if not spec.noBarColor then bar.color = config.color end
+  if spec.scaleBeforePips then bar:SetScale(config.scale) end
+  CreateResourceEdges(bar, spec)
 
-  --right edge
-  t = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetSize(64, 64)
-  t:SetPoint("RIGHT", 0, 0)
-  t:SetTexture(mediapath .. "combo_right")
-  bar.rightEdge = t
-
-  for i = 1, bar.maxOrbs do
-    local orb = CreateFrame("Frame", nil, bar)
-    self.RuneOrbs[i] = orb
-    orb:SetSize(64, 64)
-    orb:SetPoint("LEFT", i * 64, 0)
-
-    local orbSizeMultiplier = 0.85
-
-    --bar background
-    orb.barBg = orb:CreateTexture(nil, "BACKGROUND", nil, -8)
-    orb.barBg:SetSize(64, 64)
-    orb.barBg:SetPoint("CENTER")
-    orb.barBg:SetTexture(mediapath .. "combo_bar_bg")
-
-    --orb background
-    orb.bg = orb:CreateTexture(nil, "BACKGROUND", nil, -7)
-    orb.bg:SetSize(128 * orbSizeMultiplier, 128 * orbSizeMultiplier)
-    orb.bg:SetPoint("CENTER")
-    orb.bg:SetTexture(mediapath .. "combo_orb_bg")
-
-    --orb filling
-    orb.fill = CreateFrame("StatusBar", nil, orb)
-    orb.fill:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.fill:SetPoint("CENTER")
-    local fill = orb.fill:CreateTexture(nil, "BACKGROUND", nil, -6)
-    fill:SetTexture(mediapath .. "combo_orb_fill64_1")
-    fill:SetAlpha(1)
-    orb.fill:SetStatusBarTexture(fill)
-    orb.fill:SetAlpha(1)
-    orb.fill:SetOrientation("VERTICAL")
-    orb.fill:SetMinMaxValues(0, 1)
-    orb.fill:SetValue(0)
-
-    --stack another frame to correct the texture stacking
-    local helper = CreateFrame("Frame", nil, orb.fill)
-    helper:SetAllPoints(orb)
-
-    --orb border
-    orb.border = helper:CreateTexture(nil, "BACKGROUND", nil, -5)
-    orb.border:SetSize(128 * orbSizeMultiplier, 128 * orbSizeMultiplier)
-    orb.border:SetPoint("CENTER")
-    orb.border:SetTexture(mediapath .. "combo_orb_border")
-
-    --orb glow
-    orb.glow = helper:CreateTexture(nil, "BACKGROUND", nil, -4)
-    orb.glow:SetSize(128 * orbSizeMultiplier, 128 * orbSizeMultiplier)
-    orb.glow:SetPoint("CENTER")
-    orb.glow:SetTexture(mediapath .. "combo_orb_glow")
-    orb.glow:SetBlendMode("BLEND")
-    orb.glow:Hide()
-
-    --orb highlight
-    orb.highlight = helper:CreateTexture(nil, "BACKGROUND", nil, -3)
-    orb.highlight:SetSize(128 * orbSizeMultiplier, 128 * orbSizeMultiplier)
-    orb.highlight:SetPoint("CENTER")
-    orb.highlight:SetTexture(mediapath .. "combo_orb_highlight")
+  for index = 1, bar.maxOrbs do
+    CreateResourcePip(bar, index, orbs, spec, config.color or {})
   end
 
-  bar:SetScale(self.cfg.runes.scale)
+  if not spec.scaleBeforePips then bar:SetScale(config.scale) end
   func.applyDragFunctionality(bar)
-  --combat fading
-  if self.cfg.runes.combat.enable then
-    rCombatFrameFader(bar, self.cfg.runes.combat.fadeIn, self.cfg.runes.combat.fadeOut)   --frame, buttonList, fadeIn, fadeOut
+  if config.combat.enable then
+    rCombatFrameFader(bar, config.combat.fadeIn, config.combat.fadeOut)
   end
 
-  -- Let native oUF Runes own updates; Roth only reacts with visuals.
-  AttachRunes(self, bar, self.RuneOrbs)
-
-  self.RuneBar = bar
+  if spec.classPower then
+    bar.orbSize = 64
+    bar.edgeOrbs = spec.edgeOrbs or 2
+    bar.colorize = spec.colorize ~= false
+    if bar.colorize then bar.fullColor = { r = 1, g = 0, b = 0 } end
+    AttachClassPower(self, bar, orbs)
+  elseif spec.runes then
+    AttachRunes(self, bar, orbs)
+  end
+  self[spec.barField] = bar
 end
 
---create combo
-bars.createComboBar = function(self)
-  self.ComboPoints = {}
-  local t
-  local max = 10   -- Allocate 10 orbs safely; unused ones are hidden dynamically by AttachClassPower
-  local bar = CreateFrame("Frame", "Roth_UIComboPoints", self)
-  local h = 64
-  bar.maxOrbs = max
-  local w = 64 * (max + 2)
-  --bar:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-  bar:SetPoint(self.cfg.combobar.pos.a1, self.cfg.combobar.pos.af, self.cfg.combobar.pos.a2, self.cfg.combobar.pos.x,
-    self.cfg.combobar.pos.y)
-  bar:SetWidth(w)
-  bar:SetHeight(h)
-  bar:SetScale(self.cfg.combobar.scale)
-
-  --color
-  bar.color = self.cfg.combobar.color
-
-  --left edge
-  t = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetSize(64, 64)
-  t:SetPoint("LEFT", 0, 0)
-  t:SetTexture(mediapath .. "combo_left")
-  bar.leftEdge = t
-
-  --right edge
-  t = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetSize(64, 64)
-  t:SetPoint("RIGHT", 0, 0)
-  t:SetTexture(mediapath .. "combo_right")
-  bar.rightEdge = t
-
-  for i = 1, max do
-    local orb = CreateFrame("Frame", nil, bar)
-    self.ComboPoints[i] = orb
-
-    orb:SetSize(64, 64)
-    orb:SetPoint("LEFT", i * 64, 0)
-
-    local orbSizeMultiplier = 0.85
-
-    --bar background
-    orb.barBg = orb:CreateTexture(nil, "BACKGROUND", nil, -8)
-    orb.barBg:SetSize(64, 64)
-    orb.barBg:SetPoint("CENTER")
-    orb.barBg:SetTexture(mediapath .. "combo_bar_bg")
-
-    --orb background
-    orb.bg = orb:CreateTexture(nil, "BACKGROUND", nil, -7)
-    orb.bg:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.bg:SetPoint("CENTER")
-    orb.bg:SetTexture(mediapath .. "combo_orb_bg")
-
-    --orb filling
-    orb.fill = CreateFrame("StatusBar", nil, orb)
-    orb.fill:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.fill:SetPoint("CENTER")
-    local fill = orb.fill:CreateTexture(nil, "BACKGROUND", nil, -6)
-    fill:SetTexture(mediapath .. "combo_orb_fill1")
-    orb.fill:SetStatusBarTexture(fill)
-    orb.fill:SetMinMaxValues(0, 1)
-    orb.fill:SetValue(0)
-    orb.fill:SetStatusBarColor(self.cfg.combobar.color.r, self.cfg.combobar.color.g, self.cfg.combobar.color.b)
-    --orb.fill:SetBlendMode("ADD")
-
-    --orb border
-    orb.border = orb:CreateTexture(nil, "BACKGROUND", nil, -5)
-    orb.border:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.border:SetPoint("CENTER")
-    orb.border:SetTexture(mediapath .. "combo_orb_border")
-
-    --orb glow
-    orb.glow = orb:CreateTexture(nil, "BACKGROUND", nil, -4)
-    orb.glow:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.glow:SetPoint("CENTER")
-    orb.glow:SetTexture(mediapath .. "combo_orb_glow")
-    orb.glow:SetVertexColor(self.cfg.combobar.color.r, self.cfg.combobar.color.g, self.cfg.combobar.color.b)
-    orb.glow:SetBlendMode("BLEND")
-
-    --orb highlight
-    orb.highlight = orb:CreateTexture(nil, "BACKGROUND", nil, -3)
-    orb.highlight:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.highlight:SetPoint("CENTER")
-    orb.highlight:SetTexture(mediapath .. "combo_orb_highlight")
-  end
-
-
-
-  func.applyDragFunctionality(bar)
-  --combat fading
-  if self.cfg.combobar.combat.enable then
-    rCombatFrameFader(bar, self.cfg.combobar.combat.fadeIn, self.cfg.combobar.combat.fadeOut)   --frame, buttonList, fadeIn, fadeOut
-  end
-  bar.orbSize = 64
-  bar.edgeOrbs = 2
-  bar.colorize = true
-  bar.fullColor = { r = 1, g = 0, b = 0 }
-  AttachClassPower(self, bar, self.ComboPoints)
-  self.ComboBar = bar
-end
-
-
---Arcane Charges
-bars.createArcBar = function(self)
-  self.ACharges = {}
-
-  local t
-  local bar = CreateFrame("Frame", "Roth_UIArcanePower", self)
-  bar.maxOrbs = 4
-  local w = 64 * (bar.maxOrbs + 2) --create the bar for
-  local h = 64
-  --bar:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-  bar:SetPoint(self.cfg.arcbar.pos.a1, self.cfg.arcbar.pos.af, self.cfg.arcbar.pos.a2, self.cfg.arcbar.pos.x,
-    self.cfg.arcbar.pos.y)
-  bar:SetWidth(w)
-  bar:SetHeight(h)
-  bar:Hide()   --hide bar (it will become available if the spec matches)
-
-  --color
-  bar.color = self.cfg.arcbar.color
-
-  --left edge
-  t = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetSize(64, 64)
-  t:SetPoint("LEFT", 0, 0)
-  t:SetTexture(mediapath .. "combo_left")
-  bar.leftEdge = t
-
-  --right edge
-  t = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
-  t:SetSize(64, 64)
-  t:SetPoint("RIGHT", 65, 0)
-  t:SetTexture(mediapath .. "combo_right")
-  bar.rightEdge = t
-
-  for i = 1, bar.maxOrbs do
-    local orb = CreateFrame("Frame", nil, bar)
-    self.ACharges[i] = orb
-
-    orb:SetSize(64, 64)
-    orb:SetPoint("LEFT", i * 64, 0)
-
-    local orbSizeMultiplier = 0.95
-
-    --bar background
-    orb.barBg = orb:CreateTexture(nil, "BACKGROUND", nil, -8)
-    orb.barBg:SetSize(64, 64)
-    orb.barBg:SetPoint("CENTER")
-    orb.barBg:SetTexture(mediapath .. "combo_bar_bg")
-
-    --orb background
-    orb.bg = orb:CreateTexture(nil, "BACKGROUND", nil, -7)
-    orb.bg:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.bg:SetPoint("CENTER")
-    orb.bg:SetTexture(mediapath .. "combo_orb_bg")
-
-    --orb filling
-    orb.fill = CreateFrame("StatusBar", nil, orb)
-    orb.fill:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.fill:SetPoint("CENTER")
-    local fill = orb.fill:CreateTexture(nil, "BACKGROUND", nil, -6)
-    fill:SetTexture [[Interface\PLAYERFRAME\MageArcaneCharges]]
-    fill:SetTexCoord(0.25, 0.375, 0.5, 0.75)
-    orb.fill:SetStatusBarTexture(fill)
-    orb.fill:SetMinMaxValues(0, 1)
-    orb.fill:SetValue(0)
-    --orb.fill:SetBlendMode("ADD")
-
-    --orb border
-    orb.border = orb:CreateTexture(nil, "BACKGROUND", nil, -5)
-    orb.border:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.border:SetPoint("CENTER")
-    orb.border:SetTexture(mediapath .. "combo_orb_border")
-
-
-    --orb highlight
-    orb.highlight = orb:CreateTexture(nil, "BACKGROUND", nil, -3)
-    orb.highlight:SetSize(64 * orbSizeMultiplier, 64 * orbSizeMultiplier)
-    orb.highlight:SetPoint("CENTER")
-    orb.highlight:SetTexture(mediapath .. "combo_orb_highlight")
-  end
-
-  bar:SetScale(self.cfg.arcbar.scale)
-  func.applyDragFunctionality(bar)
-  --combat fading
-  if self.cfg.arcbar.combat.enable then
-    rCombatFrameFader(bar, self.cfg.arcbar.combat.fadeIn, self.cfg.arcbar.combat.fadeOut)   --frame, buttonList, fadeIn, fadeOut
-  end
-
-  bar.orbSize = 64
-  bar.edgeOrbs = 1
-  bar.colorize = false
-  AttachClassPower(self, bar, self.ACharges)
-
-  self.ArcBar = bar
-end
+bars.createHarmonyPowerBar = function(self) CreateResourceBar(self, "harmony") end
+bars.createHolyPowerBar = function(self) CreateResourceBar(self, "holypower") end
+bars.createSoulShardPowerBar = function(self) CreateResourceBar(self, "soulshards") end
+bars.createRuneBar = function(self) CreateResourceBar(self, "runes") end
+bars.createComboBar = function(self) CreateResourceBar(self, "combobar") end
+bars.createArcBar = function(self) CreateResourceBar(self, "arcbar") end

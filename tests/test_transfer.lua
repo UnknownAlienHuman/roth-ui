@@ -46,6 +46,7 @@ local ns = {
       local seen = {}
       local function copyStrict(source, depth)
         local kind = type(source)
+        if kind == "number" and (source ~= source or source == math.huge or source == -math.huge) then return nil end
         if kind == "string" or kind == "number" or kind == "boolean" then return source end
         if kind ~= "table" or depth > 64 or seen[source] then return nil end
         seen[source] = true
@@ -117,6 +118,17 @@ ok, message = transfer.Import("full", "RUI1:small")
 expect(ok == false and message:find("Account payload", 1, true),
   "import accepted a root containing a nonserializable descendant")
 expect(appliedPayload == previousPayload, "invalid import replaced persisted roots")
+decodedEnvelope = {
+  kind = "Roth_UI_Settings_Export",
+  version = 1,
+  mode = "full",
+  account = { account = { settings = { invalidNumber = math.huge }, templates = {} } },
+  char = { orbs = {} },
+}
+ok, message = transfer.Import("full", "RUI1:small")
+expect(ok == false and message:find("Account payload", 1, true),
+  "import accepted a non-finite persisted number")
+expect(appliedPayload == previousPayload, "non-finite number import replaced persisted roots")
 decodedEnvelope = nil
 
 serializeOutput = string.rep("x", 4 * 1024 * 1024 + 1)

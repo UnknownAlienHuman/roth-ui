@@ -22,6 +22,13 @@ local UnitLevel = UnitLevel
 local IsXPUserDisabled = IsXPUserDisabled
 local GetMaxLevelForPlayerExpansion = GetMaxLevelForPlayerExpansion
 
+local function AccessibleNumber(value, fallback)
+  if not CanAccess(value) or type(value) ~= "number" then
+    return fallback
+  end
+  return value
+end
+
 local function IsEnabledInConfig(self)
   local frameCfg = self and self.cfg
   local expCfg = frameCfg and frameCfg.expbar
@@ -39,20 +46,24 @@ local function IsEnabledInConfig(self)
 end
 
 local function IsPlayerAtMaxLevel()
-  if type(IsXPUserDisabled) == "function" and IsXPUserDisabled() then
-    return true
+  if type(IsXPUserDisabled) == "function" then
+    local disabled = IsXPUserDisabled()
+    if CanAccess(disabled) and disabled == true then return true end
   end
 
   local level = type(UnitLevel) == "function" and UnitLevel("player") or nil
-  if type(level) ~= "number" then
+  level = AccessibleNumber(level)
+  if level == nil then
     return false
   end
 
   local maxLevel = type(GetMaxLevelForPlayerExpansion) == "function" and GetMaxLevelForPlayerExpansion() or nil
-  if type(maxLevel) ~= "number" then
+  maxLevel = AccessibleNumber(maxLevel)
+  if maxLevel == nil then
     maxLevel = _G.MAX_PLAYER_LEVEL
   end
-  if type(maxLevel) ~= "number" then
+  maxLevel = AccessibleNumber(maxLevel)
+  if maxLevel == nil then
     return false
   end
 
@@ -123,10 +134,9 @@ local function Update(self, event, unit)
 
   local current = type(UnitXP) == "function" and UnitXP(self.__unit) or 0
   local maximum = type(UnitXPMax) == "function" and UnitXPMax(self.__unit) or 0
-  if type(current) ~= "number" then
-    current = 0
-  end
-  if type(maximum) ~= "number" or maximum <= 0 then
+  current = AccessibleNumber(current, 0)
+  maximum = AccessibleNumber(maximum, 0)
+  if maximum <= 0 then
     maximum = 1
   end
 
@@ -134,6 +144,7 @@ local function Update(self, event, unit)
   experience:SetValue(current)
 
   local restedExhaustion = type(GetXPExhaustion) == "function" and GetXPExhaustion() or nil
+  restedExhaustion = AccessibleNumber(restedExhaustion)
   if experience.Rested then
     if type(restedExhaustion) == "number" and restedExhaustion > 0 then
       experience.Rested:SetMinMaxValues(0, maximum)

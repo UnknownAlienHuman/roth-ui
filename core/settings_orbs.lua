@@ -19,6 +19,8 @@ local GetOrbGlobalValue = assert(storeApi.GetOrbGlobalValue, "Roth_UI: store.Get
 local SetOrbGlobalValue = assert(storeApi.SetOrbGlobalValue, "Roth_UI: store.SetOrbGlobalValue is required by settings_orbs.lua")
 local GetOrbConfigValue = assert(storeApi.GetOrbConfigValue, "Roth_UI: store.GetOrbConfigValue is required by settings_orbs.lua")
 local SetOrbConfigValue = assert(storeApi.SetOrbConfigValue, "Roth_UI: store.SetOrbConfigValue is required by settings_orbs.lua")
+local GetOrbDefaults = assert(storeApi.GetOrbDefaults, "Roth_UI: store.GetOrbDefaults is required by settings_orbs.lua")
+local ReadPath = assert(storeApi.ReadPath, "Roth_UI: store.ReadPath is required by settings_orbs.lua")
 
 local function NormalizeTemplateSelection(value)
   if type(value) ~= "string" then
@@ -55,6 +57,12 @@ end
 
 local function GetOrbValue(orbType, path, fallback)
   return GetOrbConfigValue(orbType, path, fallback)
+end
+
+local function GetOrbDefault(orbType, path, fallback)
+  local value = ReadPath(GetOrbDefaults(orbType), path)
+  if value == nil then return fallback end
+  return value
 end
 
 local function SetOrbValue(orbType, path, value)
@@ -148,26 +156,10 @@ local function SetSelectedTemplate(orbType, value)
   SetStoredTemplateSelection(orbType, value)
 end
 
-local function NormalizeTemplateName(name)
-  if type(name) ~= "string" then
-    return nil
-  end
-  name = name:gsub("^%s+", ""):gsub("%s+$", "")
-  if name == "" then
-    return nil
-  end
-  if name == "TEMPLATE_LIST" then
-    return nil
-  end
-  return name
-end
-
 local function ShowConfirmation(text, acceptText, callback)
   if type(StaticPopup_Show) ~= "function" then
-    if type(callback) == "function" then
-      callback()
-    end
-    return
+    print("Roth_UI: confirmation is unavailable. No changes were made.")
+    return false
   end
 
   StaticPopup_Show("GENERIC_CONFIRMATION", nil, nil, {
@@ -179,20 +171,18 @@ local function ShowConfirmation(text, acceptText, callback)
 end
 
 local function SaveTemplateAs(orbType, name)
-  name = NormalizeTemplateName(name)
-  if not name then
-    print("Roth_UI: template name is required.")
-    return
-  end
-
   local orbPersistence = GetOrbPersistence()
   if not (orbPersistence and type(orbPersistence.SaveTemplate) == "function") then
     print("Roth_UI: template save is not available.")
     return
   end
 
-  orbPersistence.SaveTemplate(name, orbType)
-  SetSelectedTemplate(orbType, name)
+  local saved, savedName = orbPersistence.SaveTemplate(name, orbType)
+  if saved then
+    SetSelectedTemplate(orbType, savedName)
+  else
+    print("Roth_UI: template could not be saved. Choose a non-reserved name of 1-24 characters.")
+  end
 end
 
 local function OpenTemplateSaveDialog(orbType)
@@ -256,8 +246,9 @@ local function DeleteSelectedTemplate(orbType)
     format("Delete orb template '%s'?", name),
     CONFIRM_DELETE,
     function()
-      orbPersistence.DeleteTemplate(name)
-      SetSelectedTemplate(orbType, "")
+      if orbPersistence.DeleteTemplate(name) then
+        SetSelectedTemplate(orbType, "")
+      end
     end
   )
 end
@@ -295,93 +286,57 @@ local function ResetOrbDefaults(orbType)
 end
 
 local function RegisterOrbPage(categoryKey, orbType, prefix)
-  local function AddCheckbox(variable, label, tooltip, path, applyMode, defaultValue)
-    ui:AddCheckbox({
+  local function OrbSetting(variable, label, tooltip, path, applyMode, fallback)
+    return {
       category = categoryKey,
       variable = variable,
       label = label,
       tooltip = tooltip,
       path = path,
-      defaultValue = GetOrbValue(orbType, path, defaultValue),
-      get = function()
-        return GetOrbValue(orbType, path, defaultValue)
-      end,
-      set = function(nextValue)
-        if SetOrbValue(orbType, path, nextValue) then
+      defaultValue = GetOrbDefault(orbType, path, fallback),
+      get = function() return GetOrbValue(orbType, path, fallback) end,
+      set = function(value)
+        if SetOrbValue(orbType, path, value) then
           ApplyOrbSetting(orbType, applyMode)
         end
       end,
-    })
+    }
+  end
+
+  local function AddCheckbox(variable, label, tooltip, path, applyMode, defaultValue)
+    ui:AddCheckbox(OrbSetting(variable, label, tooltip, path, applyMode, defaultValue))
   end
 
   local function AddSlider(variable, label, tooltip, path, minValue, maxValue, step, applyMode, labelFormatter)
-    ui:AddSlider({
-      category = categoryKey,
-      variable = variable,
-      label = label,
-      tooltip = tooltip,
-      path = path,
-      minValue = minValue,
-      maxValue = maxValue,
-      step = step,
-      labelFormatter = labelFormatter,
-      defaultValue = tonumber(GetOrbValue(orbType, path, minValue)) or minValue,
-      get = function()
-        return tonumber(GetOrbValue(orbType, path, minValue)) or minValue
-      end,
-      set = function(nextValue)
-        if SetOrbValue(orbType, path, nextValue) then
-          ApplyOrbSetting(orbType, applyMode)
-        end
-      end,
-    })
+    local spec = OrbSetting(variable, label, tooltip, path, applyMode, minValue)
+    spec.minValue, spec.maxValue, spec.step = minValue, maxValue, step
+    spec.labelFormatter = labelFormatter
+    spec.defaultValue = tonumber(spec.defaultValue) or minValue
+    spec.get = function() return tonumber(GetOrbValue(orbType, path, minValue)) or minValue end
+    ui:AddSlider(spec)
   end
 
   local function AddDropdown(variable, label, tooltip, path, optionsProvider, applyMode, defaultValue)
-    ui:AddDropdown({
-      category = categoryKey,
-      variable = variable,
-      label = label,
-      tooltip = tooltip,
-      path = path,
-      defaultValue = GetOrbValue(orbType, path, defaultValue),
-      options = function()
-        local db = GetOrbDb()
-        return type(optionsProvider) == "function" and optionsProvider(db) or {}
-      end,
-      get = function()
-        return GetOrbValue(orbType, path, defaultValue)
-      end,
-      set = function(nextValue)
-        if SetOrbValue(orbType, path, nextValue) then
-          ApplyOrbSetting(orbType, applyMode)
-        end
-      end,
-    })
+    local spec = OrbSetting(variable, label, tooltip, path, applyMode, defaultValue)
+    spec.options = function() return optionsProvider(GetOrbDb()) end
+    ui:AddDropdown(spec)
   end
 
   local function AddColor(variable, label, tooltip, path, applyMode)
-    ui:AddColorSwatch({
-      category = categoryKey,
-      variable = variable,
-      label = label,
-      tooltip = tooltip,
-      path = path,
-      varType = Settings.VarType.String,
-      defaultValue = ui:ColorToHex(GetOrbValue(orbType, path)),
-      get = function()
-        return ui:ColorToHex(GetOrbValue(orbType, path))
-      end,
-      set = function(hexColor)
-        local current = GetOrbValue(orbType, path)
-        if SetOrbValue(orbType, path, ui:HexToColor(hexColor, current)) then
-          ApplyOrbSetting(orbType, applyMode)
-        end
-      end,
-    })
+    local spec = OrbSetting(variable, label, tooltip, path, applyMode)
+    spec.varType = Settings.VarType.String
+    spec.defaultValue = ui:ColorToHex(spec.defaultValue)
+    spec.get = function() return ui:ColorToHex(GetOrbValue(orbType, path)) end
+    spec.set = function(hexColor)
+      local current = GetOrbValue(orbType, path)
+      if SetOrbValue(orbType, path, ui:HexToColor(hexColor, current)) then
+        ApplyOrbSetting(orbType, applyMode)
+      end
+    end
+    ui:AddColorSwatch(spec)
   end
 
-  local function AddActionButton(variable, label, buttonText, tooltip, onClick)
+  local function AddActionButton(label, buttonText, tooltip, onClick)
     ui:AddButton({
       category = categoryKey,
       label = label,
@@ -434,7 +389,7 @@ local function RegisterOrbPage(categoryKey, orbType, prefix)
     { "model", "displayInfo" },
     BuildModelOptions,
     "visual",
-    tonumber(GetOrbValue(orbType, { "model", "displayInfo" }, 32368)) or 32368
+    32368
   )
 
   AddSlider(
@@ -646,7 +601,6 @@ local function RegisterOrbPage(categoryKey, orbType, prefix)
   })
 
   AddActionButton(
-    prefix .. "_TEMPLATE_SAVE",
     "Templates",
     "Save Current As...",
     "Prompts for a shared template name and stores the current orb settings in Roth_UI_DB.account.templates.",
@@ -656,7 +610,6 @@ local function RegisterOrbPage(categoryKey, orbType, prefix)
   )
 
   AddActionButton(
-    prefix .. "_TEMPLATE_LOAD",
     "",
     "Load Selected",
     "Loads the selected shared template into the current orb and refreshes the live orb immediately.",
@@ -666,7 +619,6 @@ local function RegisterOrbPage(categoryKey, orbType, prefix)
   )
 
   AddActionButton(
-    prefix .. "_TEMPLATE_DELETE",
     "",
     "Delete Selected",
     "Deletes the selected shared template after confirmation.",
@@ -676,7 +628,6 @@ local function RegisterOrbPage(categoryKey, orbType, prefix)
   )
 
   AddActionButton(
-    prefix .. "_TEMPLATE_RESET",
     "",
     "Reset Template Library",
     "Clears the shared template library and reloads the UI after confirmation.",
@@ -686,7 +637,6 @@ local function RegisterOrbPage(categoryKey, orbType, prefix)
   )
 
   AddActionButton(
-    prefix .. "_RESET_DEFAULTS",
     "Current Orb",
     "Reset Orb To Defaults",
     "Resets the current orb to addon defaults and refreshes the live orb immediately.",

@@ -89,12 +89,6 @@
 
     --threat
     self:RegisterEvent("UNIT_THREAT_SITUATION_UPDATE", func.checkThreat)
-    self:HookScript("OnHide", function(s)
-      s:UnregisterEvent("UNIT_THREAT_SITUATION_UPDATE")
-    end)
-    self:HookScript("OnShow", function(s)
-      s:RegisterEvent("UNIT_THREAT_SITUATION_UPDATE", func.checkThreat)
-    end)
 
     --icons
     self.RaidTargetIndicator = func.createIcon(self,"BACKGROUND",18,self.Name,"BOTTOM","TOP",0,0,-1)

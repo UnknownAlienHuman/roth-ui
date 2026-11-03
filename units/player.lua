@@ -125,67 +125,17 @@ end
 -- when both numbers are NOT secret; otherwise we pass the raw Secret Value to
 -- FontString:SetText.
 assert(
-  func and func.IsSecretValue and func.GetScaleTo100Curve and func.SafeUnitHealthPercent and func.SafeUnitPowerPercent,
+  func and func.IsSecretValue and func.GetScaleTo100Curve and func.SafeUnitHealthPercent and func.SafeUnitPowerPercent
+    and func.CoerceAccessibleNumber and func.SafeSetText and func.SetPercentText
+    and ns.safety and ns.safety.CanAccess,
   "Roth_UI: units/player.lua requires core/lib helpers")
 local IsSecretValue = func.IsSecretValue
+local CanAccess = ns.safety.CanAccess
 local SafeUnitHealthPercent = func.SafeUnitHealthPercent
 local SafeUnitPowerPercent = func.SafeUnitPowerPercent
 local CoerceVisibleNumber = func.CoerceAccessibleNumber
-if type(CoerceVisibleNumber) ~= "function" then
-  local CanAccessValue = _G.canaccessvalue
-  CoerceVisibleNumber = function(v)
-    if IsSecretValue(v) then
-      if type(CanAccessValue) == "function" and CanAccessValue(v) then
-        local n = tonumber(v)
-        if type(n) == "number" then
-          return n
-        end
-      end
-      return nil
-    end
-    if v == nil then return nil end
-    if type(v) == "number" then
-      return v
-    end
-    if type(v) == "string" then
-      local n = tonumber(v)
-      if type(n) == "number" then
-        return n
-      end
-    end
-    return nil
-  end
-end
-
-local SafeSetText = func.SafeSetText or function(fs, v)
-  if not fs then return end
-  if IsSecretValue(v) then
-    fs:SetText(v)
-    return
-  end
-  if v == nil then
-    fs:SetText("")
-    return
-  end
-  fs:SetText(v)
-end
-local SafeSetPercentText = func.SetPercentText or function(fs, v)
-  if not fs then return end
-  if IsSecretValue(v) then
-    fs:SetFormattedText("%.0f%%", v)
-    return
-  end
-  if v == nil then
-    SafeSetText(fs, "")
-    return
-  end
-  local n = tonumber(v)
-  if type(n) == "number" then
-    SafeSetText(fs, floor(n) .. "%")
-    return
-  end
-  SafeSetText(fs, v)
-end
+local SafeSetText = func.SafeSetText
+local SafeSetPercentText = func.SetPercentText
 
 local function FormatRawNumber(v)
   if type(v) ~= "number" then
@@ -224,6 +174,7 @@ end
 -- Helper: coerce a potentially-secret value to a plain number for formatting.
 -- Returns the number on success, nil on failure (value stays secret/unusable).
 local function CoerceNum(v)
+  if not CanAccess(v) then return nil end
   if IsSecretValue(v) then
     return CoerceVisibleNumber(v)
   end
@@ -244,6 +195,7 @@ local function FmtPercent(d, withSign)
 end
 
 local function FormatAccessibleNumber(v)
+  if not CanAccess(v) then return nil end
   if IsSecretValue(v) then
     return v
   end
@@ -256,6 +208,7 @@ local function FormatAccessibleNumber(v)
 end
 
 local function ResolveNumericOrbText(rawValue)
+  if not CanAccess(rawValue) then return nil, false end
   local useShort = ns and ns.cfg and ns.cfg.shortNumbers == true
   if useShort then
     return FormatAccessibleNumber(rawValue), true
@@ -272,7 +225,9 @@ local function ResolveNumericOrbText(rawValue)
 end
 
 local function EvalOrbMode(mode, d, value, maxv)
+  if not CanAccess(mode) then return nil, false end
   if mode == "percent" then
+    if not CanAccess(d) then return nil, false end
     if IsSecretValue(d) then
       return d, true, "%.0f%%"
     end
@@ -295,7 +250,7 @@ local updateValue = function(bar, unit, cur, min, max)
   -- Normalize signature (bar, unit, cur, max) vs (bar, unit, cur, min, max)
   local value = cur
   local maxv = max
-  if (not IsSecretValue(maxv)) and maxv == nil then
+  if CanAccess(maxv) and not IsSecretValue(maxv) and maxv == nil then
     maxv = min
   end
   local coercedValue = CoerceVisibleNumber(value)
@@ -307,23 +262,28 @@ local updateValue = function(bar, unit, cur, min, max)
     maxv = coercedMax
   end
 
-  -- Player orbs: consume PostUpdate arguments from oUF directly.
-  -- Secret/unavailable values are handled via CoerceVisibleNumber and guards below.
-  local isPlayerUnit = unit and UnitIsUnit and UnitIsUnit(unit, 'player')
   local valueNum = CoerceVisibleNumber(value)
   local maxNum = CoerceVisibleNumber(maxv)
   if type(valueNum) == "number" then value = valueNum end
   if type(maxNum) == "number" then maxv = maxNum end
 
-  local dead = unit and UnitIsDeadOrGhost(unit)
-  if IsSecretValue(dead) then dead = false end
-  local connected = unit and UnitIsConnected(unit)
-  if IsSecretValue(connected) then connected = true end
+  local unitAccessible = CanAccess(unit) and type(unit) == "string"
+  local dead, connected
+  if unitAccessible then
+    local deadValue = UnitIsDeadOrGhost(unit)
+    if CanAccess(deadValue) and not IsSecretValue(deadValue) and type(deadValue) == "boolean" then
+      dead = deadValue
+    end
+    local connectedValue = UnitIsConnected(unit)
+    if CanAccess(connectedValue) and not IsSecretValue(connectedValue) and type(connectedValue) == "boolean" then
+      connected = connectedValue
+    end
+  end
 
   local powerToken
-  if orb.type == "POWER" and unit then
-    powerToken = select(2, UnitPowerType(unit))
-    if IsSecretValue(powerToken) then powerToken = nil end
+  if orb.type == "POWER" and unitAccessible then
+    local token = select(2, UnitPowerType(unit))
+    if CanAccess(token) and not IsSecretValue(token) and type(token) == "string" then powerToken = token end
   end
 
   -- keep power color in sync even if oUF stops updating it dynamically
@@ -340,23 +300,17 @@ local updateValue = function(bar, unit, cur, min, max)
 
   -- Percent: prefer Unit*Percent (Midnight-safe) because max values can be secret.
   local d
-  if unit then
+  if unitAccessible then
     if orb.type == "HEALTH" then
       d = SafeUnitHealthPercent(unit)
     else
       d = SafeUnitPowerPercent(unit)
     end
   end
-  local dIsNumber = (not IsSecretValue(d)) and type(d) == "number"
+  local dIsNumber = CanAccess(d) and not IsSecretValue(d) and type(d) == "number"
 
-  -- For player unit, compute percent from the non-secret values above.
-  if (not dIsNumber) and isPlayerUnit and type(valueNum) == "number" and type(maxNum) == "number" and maxNum > 0 then
-    d = math.floor(valueNum / maxNum * 100)
-    dIsNumber = true
-  end
-
-  -- Fallback only if both inputs are not secret.
-  if (d == nil) and type(valueNum) == "number" and type(maxNum) == "number" and maxNum > 0 then
+  -- Use the oUF arguments only when the safe percent API returned accessible nil.
+  if CanAccess(d) and not IsSecretValue(d) and d == nil and type(valueNum) == "number" and type(maxNum) == "number" and maxNum > 0 then
     d = floor(valueNum / maxNum * 100)
     dIsNumber = true
   end
@@ -452,7 +406,7 @@ local updateValue = function(bar, unit, cur, min, max)
     else
       local topText, topResolved, topFormat = EvalOrbMode(topMode, d, value, maxv)
       if topResolved then
-        if topFormat and IsSecretValue(topText) then
+        if topFormat and CanAccess(topText) and IsSecretValue(topText) then
           bar.valueText._rothLastText = nil
           bar.valueText:SetFormattedText(topFormat, topText)
         else
@@ -475,7 +429,7 @@ local updateValue = function(bar, unit, cur, min, max)
     else
       local bottomText, bottomResolved, bottomFormat = EvalOrbMode(bottomMode, d, value, maxv)
       if bottomResolved then
-        if bottomFormat and IsSecretValue(bottomText) then
+        if bottomFormat and CanAccess(bottomText) and IsSecretValue(bottomText) then
           bar.perText._rothLastText = nil
           bar.perText:SetFormattedText(bottomFormat, bottomText)
         else
@@ -484,7 +438,7 @@ local updateValue = function(bar, unit, cur, min, max)
       else
         if dead then
           SafeSetText(bar.perText, "")
-        elseif d ~= nil then
+        elseif CanAccess(d) and d ~= nil then
           SafeSetPercentText(bar.perText, d)
         else
           SafeSetText(bar.perText, "")
@@ -837,8 +791,7 @@ local createOrb = function(self, orbType)
     absorbBar.bg = bg
 
     fill.DamageAbsorb = absorbBar
-    self.TotalAbsorb = absorbBar
-    self.TotalAbsorb.smoothing = func.ResolveStatusBarSmoothing(self.cfg.absorb and self.cfg.absorb.smooth)
+    absorbBar.smoothing = func.ResolveStatusBarSmoothing(self.cfg.absorb and self.cfg.absorb.smooth)
   end
 
   if orb.type == "POWER" then

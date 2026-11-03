@@ -177,12 +177,6 @@
     --health update
     self.Health.PostUpdate = updateHealth
     self:RegisterEvent("UNIT_THREAT_SITUATION_UPDATE", checkThreat)
-    self:HookScript("OnHide", function(s)
-      s:UnregisterEvent("UNIT_THREAT_SITUATION_UPDATE")
-    end)
-    self:HookScript("OnShow", function(s)
-      s:RegisterEvent("UNIT_THREAT_SITUATION_UPDATE", checkThreat)
-    end)
     self.Power.PostUpdate = func.updatePower
 
     --debuffglow

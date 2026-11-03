@@ -28,17 +28,25 @@ local SetDomainRoot = assert(storeApi.SetDomainRoot, "Roth_UI: store.SetDomainRo
 local GetConfigRoot = assert(storeApi.GetConfigRoot, "Roth_UI: store.GetConfigRoot is required by sv_store.lua")
 
 local function IsValidPath(path, allowEmpty)
-  if not CanAccess(path) or type(path) ~= "table" then return false end
-  local count = #path
-  if not allowEmpty and count == 0 then return false end
-  for index = 1, count do
-    local key = path[index]
+  if not CanAccess(path) or IsSecret(path) or type(path) ~= "table" or IsForbiddenTable(path) then
+    return false
+  end
+
+  local count, maxIndex = 0, 0
+  for index, key in pairs(path) do
+    if not CanAccess(index) or IsSecret(index) or type(index) ~= "number"
+        or index < 1 or index % 1 ~= 0 then
+      return false
+    end
     if not CanAccess(key) or IsSecret(key) then return false end
     local keyType = type(key)
     if keyType ~= "string" and keyType ~= "number" then return false end
-    if keyType == "number" and key ~= key then return false end
+    if keyType == "number" and not IsSerializablePrimitive(key) then return false end
+    count = count + 1
+    if index > maxIndex then maxIndex = index end
   end
-  return true
+
+  return (allowEmpty or count > 0) and count == maxIndex
 end
 
 local function EnsurePath(root, path)
@@ -179,13 +187,13 @@ local function SetDomainValue(domain, path, value)
     return false
   end
 
-  local root = GetDomainRoot(domain, true)
-  if type(root) ~= "table" then
+  local serial, ok = NormalizeSerializableValue(value)
+  if not ok then
     return false
   end
 
-  local serial, ok = NormalizeSerializableValue(value)
-  if not ok then
+  local root = GetDomainRoot(domain, true)
+  if type(root) ~= "table" then
     return false
   end
 

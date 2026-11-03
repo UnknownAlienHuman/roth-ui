@@ -5,7 +5,7 @@ A Diablo-inspired World of Warcraft Retail interface built around Blizzard's nat
 ## Compatibility
 
 - Target client: Retail `12.1.5`, Interface `120105`, target source build `12.1.5.70688`.
-- Addon version: `3.4.0`.
+- Addon version: `3.4.1`.
 - Required dependency: oUF `14.1.1` or newer. Install oUF separately; Roth UI includes the library files required by its own package but not oUF.
 - Source pins used for review: [Blizzard UI source `d07eb002`](https://github.com/Gethe/wow-ui-source/tree/d07eb00237d8891f153215db98a5df880a26cfe5) and [oUF `8f37c36`](https://github.com/oUF-wow/oUF/tree/8f37c36e3ed37d2fcfca2f3690f5e37e52b758c7), checked `2026-11-02`.
 - Author: Neomorph.
@@ -45,7 +45,7 @@ Run the isolated Lua tests with:
 python3 tools/run_lua_tests.py
 ```
 
-The runner discovers every `tests/test_*.lua` file. The current suite has 22 tests, with Lua 5.1 syntax validation covering 97 Lua files. Repository and addon validators are available under `tools/`; static checks do not establish in-client safety or performance.
+The runner discovers every `tests/test_*.lua` file. The current tree contains 75 addon Lua source files and 31 isolated regression scripts (106 Lua files total). The available Lua 5.1.1 interpreter supports native `loadfile` syntax checks; the `luac5.1` compiler is unavailable in this environment. Repository and addon validators are available under `tools/`; static checks do not establish in-client safety or performance.
 
 See [release notes](RELEASE_NOTES.md), [current status](CURRENT_STATUS.md), and [12.1.5 migration notes](MIGRATION_12_1_5.md) for implementation detail and validation status.
 

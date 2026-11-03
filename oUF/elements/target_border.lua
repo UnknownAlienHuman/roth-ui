@@ -9,8 +9,14 @@ local IsSecretValue = (ns and ns.safety and ns.safety.IsSecret) or function(v)
   local fn = _G.issecretvalue or _G.IsSecretValue
   return type(fn) == "function" and fn(v) or false
 end
+local CanAccess = (ns and ns.safety and ns.safety.CanAccess) or function(v)
+  local fn = _G.canaccessvalue
+  if type(fn) == "function" then return fn(v) == true end
+  return not IsSecretValue(v)
+end
 
 local function Update(self, event, unit)
+  if not CanAccess(unit) then return end
   if unit ~= self.__unit then return end
   local qicon = self.RareIcon
   if not qicon then return end
@@ -20,9 +26,9 @@ local function Update(self, event, unit)
   end
 
   local class = UnitClassification(unit)
-  if IsSecretValue(class) then class = nil end
+  if not CanAccess(class) or IsSecretValue(class) then class = nil end
   local level = UnitLevel(unit)
-  local isBossLevel = (not IsSecretValue(level) and level == -1)
+  local isBossLevel = CanAccess(level) and not IsSecretValue(level) and level == -1
 
   if class == "worldboss" or class == "rare" or class == "rareelite" or isBossLevel then
     qicon:SetTexture("Interface\\AddOns\\Roth_UI\\media\\target_boss")

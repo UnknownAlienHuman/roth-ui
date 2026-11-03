@@ -28,7 +28,6 @@ local VERTICAL_AXIS = AnchorUtil.FlowLayoutAxis.Vertical
 local SORT_METHODS = assert(AuraContainerSortMethod, "Roth_UI: AuraContainerSortMethod is required")
 local SORT_DIRECTIONS = assert(AuraContainerSortDirection, "Roth_UI: AuraContainerSortDirection is required")
 local mediapath = ns.mediapath or "Interface\\AddOns\\Roth_UI\\media\\"
-
 local SPELL_IDS_BY_CLASS = {
   PRIEST = { 139, 17, 77489, 41635 },
   PALADIN = { 223306, 53563, 6940, 287280, 156910, 200025 },
@@ -104,7 +103,8 @@ local function StyleManagedAuraButton(element, button)
     ApplyFont(button.Time, max(7, floor(size * 0.28)))
   end
 
-  -- One static skin layer per button. Native oUF regions remain the state sinks.
+  -- The static border is created during oUF's button initializer, before
+  -- Blizzard adopts the managed AuraButton and applies its restrictions.
   local border = button:CreateTexture(nil, "ARTWORK", nil, 1)
   border:SetAllPoints(button)
   border:SetTexture(mediapath .. "icon_border")
@@ -113,7 +113,7 @@ local function StyleManagedAuraButton(element, button)
 end
 
 local function CopySpellIDMap(list)
-  if type(list) ~= "table" then
+  if not safety.CanAccess(list) or func.IsSecretValue(list) or type(list) ~= "table" then
     return nil, "none"
   end
 
@@ -121,9 +121,10 @@ local function CopySpellIDMap(list)
   local fingerprint = {}
   local count = 0
   for i = 1, #list do
-    local spellID = tonumber(list[i])
+    local candidate = list[i]
+    local spellID = safety.CanAccess(candidate) and not func.IsSecretValue(candidate) and tonumber(candidate) or nil
     local exists = spellID and spellID > 0 and type(DoesSpellExist) == "function" and DoesSpellExist(spellID)
-    if exists and not func.IsSecretValue(exists) and exists == true and not result[spellID] then
+    if safety.CanAccess(exists) and not func.IsSecretValue(exists) and exists == true and not result[spellID] then
       result[spellID] = true
       count = count + 1
       fingerprint[count] = tostring(spellID)
@@ -148,12 +149,12 @@ end
 
 local function ResolvePlayerClassToken()
   local configured = cfg.playerclass
-  if not func.IsSecretValue(configured) and type(configured) == "string" and configured ~= "" then
+  if safety.CanAccess(configured) and not func.IsSecretValue(configured) and type(configured) == "string" and configured ~= "" then
     return configured
   end
 
   local _, classToken = UnitClass("player")
-  if not func.IsSecretValue(classToken) and type(classToken) == "string" and classToken ~= "" then
+  if safety.CanAccess(classToken) and not func.IsSecretValue(classToken) and type(classToken) == "string" and classToken ~= "" then
     return classToken
   end
   return nil

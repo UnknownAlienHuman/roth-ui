@@ -19,8 +19,10 @@ local addon, ns = ...
 ns = ns or {}
 
 local gridFrame
+local eventFrame
 local vLines = {}
 local hLines = {}
+local gridGeneration = 0
 
 local GRID_STEP = 32
 local GRID_MAJOR_STEP = 128
@@ -101,6 +103,23 @@ local function BuildGrid()
   HideExtra(hLines, hCount + 1)
 end
 
+local function RefreshGrid(generation)
+  if generation == gridGeneration and gridFrame and gridFrame:IsShown() then
+    BuildGrid()
+  end
+end
+
+local function QueueGridRefresh()
+  if not (gridFrame and gridFrame:IsShown()) then return end
+  local generation = gridGeneration
+  local scheduler = ns and ns.defer
+  if scheduler and type(scheduler.RunNextFrame) == "function" then
+    scheduler.RunNextFrame("movegrid:layout", function() RefreshGrid(generation) end)
+  else
+    RefreshGrid(generation)
+  end
+end
+
 local function EnsureGrid()
   if gridFrame then return end
 
@@ -109,25 +128,26 @@ local function EnsureGrid()
   gridFrame:SetAllPoints(UIParent)
   gridFrame:Hide()
 
-  local ev = CreateFrame("Frame")
-  ev:RegisterEvent("DISPLAY_SIZE_CHANGED")
-  ev:RegisterEvent("UI_SCALE_CHANGED")
-  ev:SetScript("OnEvent", function()
-    if gridFrame and gridFrame:IsShown() then
-      BuildGrid()
-    end
-  end)
+  eventFrame = CreateFrame("Frame")
+  eventFrame:SetScript("OnEvent", QueueGridRefresh)
 
-  BuildGrid()
 end
 
 function ns.ShowMoveGrid()
   if InCombatLockdown and InCombatLockdown() then return end
   EnsureGrid()
+  if gridFrame:IsShown() then return end
   BuildGrid()
-  if gridFrame then gridFrame:Show() end
+  gridFrame:Show()
+  eventFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
+  eventFrame:RegisterEvent("UI_SCALE_CHANGED")
 end
 
 function ns.HideMoveGrid()
+  gridGeneration = gridGeneration + 1
   if gridFrame then gridFrame:Hide() end
+  if eventFrame then
+    eventFrame:UnregisterEvent("DISPLAY_SIZE_CHANGED")
+    eventFrame:UnregisterEvent("UI_SCALE_CHANGED")
+  end
 end

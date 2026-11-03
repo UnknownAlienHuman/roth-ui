@@ -1,4 +1,4 @@
-# Roth UI dependency and event graph — 3.4.0
+# Roth UI dependency and event graph — 3.4.1
 
 ## Critical load dependencies
 

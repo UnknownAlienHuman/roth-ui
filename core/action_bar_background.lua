@@ -116,7 +116,7 @@ local function QueueArtworkRefresh()
 
   local scheduler = ns and ns.defer
   if type(scheduler) == "table" and type(scheduler.RunNextFrame) == "function" then
-    scheduler.RunNextFrame("action-bar-background", RunQueuedRefresh, false)
+    scheduler.RunNextFrame("action-bar-background", RunQueuedRefresh)
   elseif C_Timer and type(C_Timer.After) == "function" then
     C_Timer.After(0, RunQueuedRefresh)
   else

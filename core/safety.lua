@@ -121,61 +121,71 @@ function safety.IsSerializablePrimitive(value)
     return false
   end
   local valueType = type(value)
-  return valueType == "nil"
-    or valueType == "string"
-    or valueType == "number"
-    or valueType == "boolean"
+  if valueType == "number" then
+    return value == value and value ~= math.huge and value ~= -math.huge
+  end
+  return valueType == "nil" or valueType == "string" or valueType == "boolean"
 end
 
-function safety.SanitizeSerializableInPlace(value, opts, depth, seen)
-  if not safety.CanAccess(value) or type(value) ~= "table" then
-    return false
-  end
-  if safety.IsSecret(value) or safety.IsForbiddenTable(value) then
-    return false
-  end
-
+function safety.SanitizeSerializableInPlace(value, opts)
   opts = opts or {}
-  depth = depth or 0
-  if depth > (opts.maxDepth or 20) then
-    return false
-  end
+  local maxDepth = opts.maxDepth or 20
+  local states = {}
+  local removals = {}
 
-  seen = seen or {}
-  if seen[value] then
-    return true
-  end
-  seen[value] = true
-
-  local kill = {}
-  for key, child in pairs(value) do
-    if not safety.CanAccess(key) then
-      -- An inaccessible key cannot safely be used for a second lookup/removal.
-      -- Abort the entire sanitization rather than turning iteration into an
-      -- oracle for restricted table state.
+  local function Scan(tableValue, depth)
+    if not safety.CanAccess(tableValue) or type(tableValue) ~= "table"
+        or safety.IsSecret(tableValue) or safety.IsForbiddenTable(tableValue)
+        or depth > maxDepth then
       return false
     end
 
-    local keyType = type(key)
-    if safety.IsSecret(key) or (keyType ~= "string" and keyType ~= "number") then
-      kill[#kill + 1] = key
-    elseif not safety.CanAccess(child) or safety.IsSecret(child) then
-      kill[#kill + 1] = key
-    else
-      local childType = type(child)
-      if childType == "table" then
-        local ok = safety.SanitizeSerializableInPlace(child, opts, depth + 1, seen)
-        if not ok then
-          kill[#kill + 1] = key
+    local state = states[tableValue]
+    if state == "visiting" or state == "failed" then
+      return false
+    end
+    if state == "complete" then
+      return true
+    end
+
+    states[tableValue] = "visiting"
+    for key, child in pairs(tableValue) do
+      if not safety.CanAccess(key) or safety.IsSecret(key) then
+        -- An inaccessible key cannot safely be used for a second lookup or
+        -- deletion. The parent may drop this subtree; already scanned children
+        -- can also be reachable through another valid branch, so retain their
+        -- queued cleanup. Nothing is changed if the root scan fails.
+        states[tableValue] = "failed"
+        return false
+      end
+
+      local keyType = type(key)
+      if keyType ~= "string" and keyType ~= "number" then
+        removals[#removals + 1] = { owner = tableValue, key = key }
+      elseif keyType == "number" and not safety.IsSerializablePrimitive(key) then
+        removals[#removals + 1] = { owner = tableValue, key = key }
+      elseif not safety.CanAccess(child) or safety.IsSecret(child) then
+        removals[#removals + 1] = { owner = tableValue, key = key }
+      elseif type(child) == "table" then
+        if not Scan(child, depth + 1) then
+          removals[#removals + 1] = { owner = tableValue, key = key }
         end
       elseif not safety.IsSerializablePrimitive(child) then
-        kill[#kill + 1] = key
+        removals[#removals + 1] = { owner = tableValue, key = key }
       end
     end
+
+    states[tableValue] = "complete"
+    return true
   end
 
-  for index = 1, #kill do
-    value[kill[index]] = nil
+  if not Scan(value, 0) then
+    return false
+  end
+
+  for index = 1, #removals do
+    local removal = removals[index]
+    removal.owner[removal.key] = nil
   end
   return true
 end
@@ -293,20 +303,29 @@ local function CopySerializable(source, stack, memo, depth, strict)
       return nil
     end
 
-    local keyType = type(key)
-    if (keyType == "string" or keyType == "number") and not safety.IsSecret(key) then
-      local copy = CopySerializable(child, stack, memo, depth + 1, strict)
-      if copy ~= nil then
-        destination[key] = copy
+    if safety.IsSecret(key) then
+      if strict then
+        stack[source] = nil
+        memo[source] = nil
+        return nil
+      end
+    else
+      local keyType = type(key)
+      if (keyType == "string" or keyType == "number")
+          and (not strict or safety.IsSerializablePrimitive(key)) then
+        local copy = CopySerializable(child, stack, memo, depth + 1, strict)
+        if copy ~= nil then
+          destination[key] = copy
+        elseif strict then
+          stack[source] = nil
+          memo[source] = nil
+          return nil
+        end
       elseif strict then
         stack[source] = nil
         memo[source] = nil
         return nil
       end
-    elseif strict then
-      stack[source] = nil
-      memo[source] = nil
-      return nil
     end
   end
 

@@ -5,12 +5,11 @@ ns.defer = scheduler
 
 local pending = {}
 
-function scheduler.RunNextFrame(key, callback, immediate)
+function scheduler.RunNextFrame(key, callback)
   if type(key) ~= "string" or key == "" or type(callback) ~= "function" then
     return false
   end
 
-  if immediate == true then callback() end
   local queued = pending[key] ~= nil
   pending[key] = callback
   if queued then return true end

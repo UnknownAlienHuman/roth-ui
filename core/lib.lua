@@ -12,50 +12,26 @@ local mediapath = ns.mediapath or "Interface\\AddOns\\Roth_UI\\media\\"
 local type = type
 local pairs = pairs
 local ipairs = ipairs
-local next = next
-local select = select
 local tostring = tostring
 local tonumber = tonumber
-
-local format = format
-local floor = floor
-local mod = mod
-local wipe = wipe
-local tinsert = table.insert or tinsert
-local tremove = table.remove or tremove
 local InCombatLockdown = InCombatLockdown
 local CreateFrame = CreateFrame
 local UnitHealth = UnitHealth
 local UnitHealthMax = UnitHealthMax
-local UnitPower = UnitPower
-local UnitPowerMax = UnitPowerMax
-local UnitPowerType = UnitPowerType
-local UnitIsDeadOrGhost = UnitIsDeadOrGhost
-local UnitIsConnected = UnitIsConnected
-local UnitInRange = UnitInRange
-local UnitClass = UnitClass
-local UnitIsPlayer = UnitIsPlayer
-local UnitReaction = UnitReaction
 
---object container
-local func = CreateFrame("Frame")
+-- Shared helpers do not need a native frame or an event lifecycle.
+local func = {}
 ns.func = func
 
 ---------------------------------------------
 -- MAINLINE HELPERS
 ---------------------------------------------
 
-local safety = ns and ns.safety
-
--- Centralized Secret Value handling (WoW 12.x/Midnight).
--- Hot paths should call the native predicate directly; safety.IsSecret keeps
--- pcall guards for non-hot serialization/sanitization code.
-local _nativeIsSecret = _G["issecretvalue"] or _G["IsSecretValue"]
-local _issecretvalue = (type(_nativeIsSecret) == "function" and _nativeIsSecret) or (safety and safety.IsSecret)
-func.IsSecretValue = function(v)
-  return _issecretvalue and _issecretvalue(v) or false
-end
-local IsSecretValue = func.IsSecretValue
+local safety = assert(ns.safety, "Roth_UI: safety is required by lib.lua")
+local CanAccess = assert(safety.CanAccess)
+local CanAccessAll = assert(safety.CanAccessAll)
+local IsSecretValue = assert(safety.IsSecret)
+func.IsSecretValue = IsSecretValue
 
 func.ResolveStatusBarSmoothing = function(enabled)
   local interpolation = Enum and Enum.StatusBarInterpolation
@@ -67,44 +43,6 @@ func.ResolveStatusBarSmoothing = function(enabled)
   end
   return interpolation.ExponentialEaseOut or interpolation.Immediate
 end
-
-func.SafeUnitHealth = function(unit)
-  local v = UnitHealth(unit)
-  if func.IsSecretValue(v) then return nil end
-  return v
-end
-
-func.SafeUnitHealthMax = function(unit)
-  local v = UnitHealthMax(unit)
-  if func.IsSecretValue(v) then return nil end
-  return v
-end
-
-func.SafeUnitPower = function(unit, powerType)
-  local pType = powerType or UnitPowerType(unit)
-  if func.IsSecretValue(pType) then return nil end
-  local v = UnitPower(unit, pType)
-  if func.IsSecretValue(v) then return nil end
-  return v
-end
-
-func.SafeUnitPowerMax = function(unit, powerType)
-  local pType = powerType or UnitPowerType(unit)
-  if func.IsSecretValue(pType) then return nil end
-  local v = UnitPowerMax(unit, pType)
-  if func.IsSecretValue(v) then return nil end
-  return v
-end
-
----------------------------------------------
--- VARIABLES
----------------------------------------------
-
----------------------------------------------
--- FUNCTIONS
----------------------------------------------
-
--- Numeric formatting runtime moved to core/unit_misc_runtime.lua.
 
 local VALID_HEALTH_VALUE_MODES = {
   cur = true,
@@ -133,9 +71,7 @@ local function ResolveUnitStyle(frame)
   return nil
 end
 
-func.GetUnitStyle = ResolveUnitStyle
-
-func.GetUnitRenderWidth = function(frame)
+local function GetUnitRenderWidth(frame)
   local width = tonumber(frame and frame.__renderWidth)
   if width and width > 0 then
     return width
@@ -145,21 +81,6 @@ func.GetUnitRenderWidth = function(frame)
   width = tonumber(unitCfg and unitCfg.width)
   if width and width > 0 then
     return width
-  end
-
-  return 0
-end
-
-func.GetUnitRenderHeight = function(frame)
-  local height = tonumber(frame and frame.__renderHeight)
-  if height and height > 0 then
-    return height
-  end
-
-  local unitCfg = frame and frame.cfg
-  height = tonumber(unitCfg and unitCfg.height)
-  if height and height > 0 then
-    return height
   end
 
   return 0
@@ -267,18 +188,6 @@ end
 -- AuraContainer objects. No AuraData, duration polling, or legacy Buffs/Debuffs
 -- element callbacks are kept in this general utility module.
 
---backdrop func
-func.createBackdrop = function(f)
-  if not f then return end
-  if not f.SetBackdrop and BackdropTemplateMixin and Mixin then
-    Mixin(f, BackdropTemplateMixin)
-  end
-  if not f.SetBackdrop then return end
-  f:SetBackdrop(cfg.backdrop)
-  f:SetBackdropColor(0, 0, 0, 0.7)
-  f:SetBackdropBorderColor(0, 0, 0, 1)
-end
-
 --create AlternativePower
 func.createAlternativePowerBar = function(self, name)
   local t, f
@@ -293,8 +202,6 @@ func.createAlternativePowerBar = function(self, name)
   bar:SetStatusBarTexture(self.cfg.altpower.texture)
   bar:SetStatusBarColor(self.cfg.altpower.color.r, self.cfg.altpower.color.g, self.cfg.altpower.color.b)
   bar.colorTexture = true --color the altpower bar
-  --bar:SetMinMaxValues(0,100)
-  --bar:SetValue(70)
 
   t = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
   t:SetSize(64, 64)
@@ -329,12 +236,12 @@ func.createAlternativePowerBar = function(self, name)
   f:SetTextColor(0.8, 0.8, 0.8)
   bar.ValueText = f
   bar.PostUpdate = function(element, unit, current, minimum, maximum)
-    local IsSecretValue = func.IsSecretValue
     if IsSecretValue(current) or IsSecretValue(maximum) then
       element.ValueText:SetFormattedText("%.0f / %.0f", current, maximum)
       return
     end
-    if type(current) == "number" and type(maximum) == "number" and maximum > 0 then
+    if CanAccessAll(current, maximum)
+        and type(current) == "number" and type(maximum) == "number" and maximum > 0 then
       element.ValueText:SetFormattedText("%.0f / %.0f", current, maximum)
     else
       element.ValueText:SetText("")
@@ -348,9 +255,6 @@ func.createAlternativePowerBar = function(self, name)
   func.applyDragFunctionality(bar)
   self.AlternativePower = bar
 end
-
--- Runtime hot-path helpers moved to core/unit_value_runtime.lua.
--- Standard unit auras are framework-owned through native oUF Buffs/Debuffs.
 
 --debuffglow
 func.createDebuffGlow = function(self)
@@ -390,24 +294,15 @@ end
 
 --check threat
 func.checkThreat = function(self, event, unit)
-  if unit then
-    if self.__unit ~= unit then return end
-    local threat = UnitThreatSituation(unit)
-    if IsSecretValue(threat) then
-      threat = nil
-    end
-    if (threat and threat > 0) then
-      local r, g, b = GetThreatStatusColor(threat)
-      if self.Border then
-        self.Border:SetVertexColor(r, g, b)
-        self.PortraitBack:SetVertexColor(r, g, b, 1)
-      end
-    else
-      if self.Border then
-        self.Border:SetVertexColor(0.6, 0.5, 0.5)
-        self.PortraitBack:SetVertexColor(0.1, 0.1, 0.1, 0.9)
-      end
-    end
+  if not CanAccess(unit) or IsSecretValue(unit) or unit == nil or self.__unit ~= unit or not self.Border then return end
+  local threat = UnitThreatSituation(unit)
+  if CanAccess(threat) and not IsSecretValue(threat) and type(threat) == "number" and threat > 0 then
+    local r, g, b = GetThreatStatusColor(threat)
+    self.Border:SetVertexColor(r, g, b)
+    self.PortraitBack:SetVertexColor(r, g, b, 1)
+  else
+    self.Border:SetVertexColor(0.6, 0.5, 0.5)
+    self.PortraitBack:SetVertexColor(0.1, 0.1, 0.1, 0.9)
   end
 end
 
@@ -419,6 +314,8 @@ end
 local function EnsureLazyPortrait(frame)
   local factory = frame and frame.__rothPortraitFactory
   if type(factory) ~= "function" or frame.Portrait then return end
+  local visible = frame:IsVisible()
+  if not CanAccess(visible) or visible ~= true then return end
 
   if InCombatLockdown and InCombatLockdown() then
     if not frame.__rothPortraitDeferred then
@@ -453,9 +350,7 @@ local function AttachLazyPortraitLifecycle(frame)
   end
   frame.__rothPortraitLifecycleReady = true
   frame:HookScript("OnShow", EnsureLazyPortrait)
-  if frame:IsVisible() then
-    EnsureLazyPortrait(frame)
-  end
+  EnsureLazyPortrait(frame)
 end
 
 oUF:RegisterInitCallback(AttachLazyPortraitLifecycle)
@@ -480,7 +375,7 @@ end
 --create portrait func
 func.createPortrait = function(self)
   local back = CreateFrame("Frame", nil, self)
-  local portraitWidth = func.GetUnitRenderWidth(self)
+  local portraitWidth = GetUnitRenderWidth(self)
   back:SetSize(portraitWidth, portraitWidth)
 
   local style = ResolveUnitStyle(self)
@@ -580,6 +475,20 @@ local function ResolveAnchorFrame(af, ownerFrame)
     return _G[af]
   end
   return af
+end
+
+local function PostUpdateStage(self, stage)
+  if CanAccess(stage) and not IsSecretValue(stage) then
+    if stage == 1 then
+      self:SetStatusBarColor(1, 0, 0)
+      return
+    elseif stage == 2 then
+      self:SetStatusBarColor(0, 0, 1)
+      return
+    end
+  end
+  local color = self.castbarCfg.color.bar
+  self:SetStatusBarColor(color.r, color.g, color.b, color.a)
 end
 
 func.createCastbar = function(f)
@@ -706,8 +615,7 @@ func.createCastbar = function(f)
   end
 
   if style == "player" then
-    c.PostUpdateStage = func.PostUpdateStage
-    c.cfg = f.cfg
+    c.PostUpdateStage = PostUpdateStage
   end
 
   func.applyDragFunctionality(frame)
@@ -719,18 +627,6 @@ end
 -- Eventless *target unit tokens do not receive an addon polling fallback.
 -- Polling UnitCastingInfo/UnitChannelInfo would create a permanent hot path and
 -- duplicate oUF cast state; targettarget castbars are therefore unsupported.
-
-func.PostUpdateStage =
-    function(self, stage)
-      if (stage == 1) then
-        self:SetStatusBarColor(1, 0, 0)
-      elseif (stage == 2) then
-        self:SetStatusBarColor(0, 0, 1)
-      elseif (stage == 3) then
-        self:SetStatusBarColor(self.cfg.castbar.color.bar.r, self.cfg.castbar.color.bar.g, self.cfg.castbar.color.bar.b,
-          self.cfg.castbar.color.bar.a)
-      end
-    end
 
 --fontstring func
 local function ResolveFontPath(fontPath)
@@ -751,14 +647,14 @@ local function ResolveFontPath(fontPath)
 end
 func.ResolveFontPath = ResolveFontPath
 
-local function RegisterFontString(fs, size, flags)
+local function RegisterFontString(fs)
   if not fs then return end
   local reg = ns and ns._fontStrings
   if type(reg) ~= "table" then
     reg = setmetatable({}, { __mode = "k" })
     if ns then ns._fontStrings = reg end
   end
-  reg[fs] = { size = size or 12, flags = flags or "" }
+  reg[fs] = true
 end
 
 func.RegisterFontString = RegisterFontString
@@ -768,7 +664,7 @@ func.createFontString = function(f, font, size, outline, layer)
   local fontPath = ResolveFontPath(font)
   fs:SetFont(fontPath, size or 12, outline)
   fs:SetShadowColor(0, 0, 0, 1)
-  RegisterFontString(fs, size or 12, outline)
+  RegisterFontString(fs)
   return fs
 end
 
@@ -903,19 +799,6 @@ func.totalAbsorb = function(self)
   absorbBar:SetReverseFill(true)
   -- Register on the Health element using the current oUF sub-widget contract.
   self.Health.DamageAbsorb = absorbBar
-  -- Alias for smooth module and legacy call sites
-  self.TotalAbsorb = absorbBar
-end
-
---reset all settings
-func.ResetAllSettings = function()
-  local actions = ns and ns.settingsActions
-  if type(actions) == "table" and type(actions.ResetAll) == "function" then
-    return actions.ResetAll()
-  end
-
-  print("Roth_UI: settings reset is not available.")
-  return false
 end
 
 --Register LSM media

@@ -59,7 +59,7 @@ function bar:IsShown() return self.shown == true end
 local nextFrame
 local ns = {
   defer = {
-    RunNextFrame = function(key, callback, replace)
+    RunNextFrame = function(key, callback)
       nextFrame = callback
     end,
   },

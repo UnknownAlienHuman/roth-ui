@@ -200,7 +200,7 @@ end
 function runtime.ScheduleActiveRefresh()
   local defer = ns and ns.defer
   if defer and type(defer.RunNextFrame) == "function" then
-    defer.RunNextFrame("target_castbar:refresh", runtime.RefreshActive, false)
+    defer.RunNextFrame("target_castbar:refresh", runtime.RefreshActive)
   else
     runtime.RefreshActive()
   end

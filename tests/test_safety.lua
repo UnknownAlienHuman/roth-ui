@@ -7,6 +7,7 @@ local function expect(condition, message)
 end
 
 local secretValues = setmetatable({}, { __mode = "k" })
+local inaccessibleValues = {}
 local function MarkSecret(value)
   secretValues[value] = true
   return value
@@ -16,7 +17,7 @@ _G.issecretvalue = function(value)
   return secretValues[value] == true
 end
 _G.canaccessvalue = function(value)
-  return secretValues[value] ~= true
+  return secretValues[value] ~= true and inaccessibleValues[value] ~= true
 end
 _G.canaccessallvalues = function(...)
   for index = 1, select("#", ...) do
@@ -58,6 +59,14 @@ expect(strictCopy ~= source and strictCopy.nested ~= source.nested,
   "strict copy retained an input table reference")
 expect(safety.CopySerializableStrict({ callback = function() end }) == nil,
   "strict copy accepted a function descendant")
+expect(safety.CopySerializableStrict({ value = 0 / 0 }) == nil,
+  "strict copy accepted NaN")
+expect(safety.CopySerializableStrict({ value = math.huge }) == nil,
+  "strict copy accepted positive infinity")
+expect(safety.CopySerializableStrict({ value = -math.huge }) == nil,
+  "strict copy accepted negative infinity")
+expect(safety.CopySerializableStrict({ [math.huge] = "invalid key" }) == nil,
+  "strict copy accepted an infinite numeric key")
 local deep = {}
 local cursor = deep
 for _ = 1, 66 do cursor.child = {}; cursor = cursor.child end
@@ -72,6 +81,62 @@ local dirty = {
 expect(safety.SanitizeSerializableInPlace(dirty) == true, "in-place sanitization failed")
 expect(dirty.keep == 1 and dirty.nested.value == 2, "sanitization removed ordinary data")
 expect(dirty.hidden == nil and dirty.callback == nil, "sanitization retained unsafe data")
+
+local inaccessibleKey = "inaccessible-root-key"
+inaccessibleValues[inaccessibleKey] = true
+local atomicChild = { unsupported = function() end }
+local atomicRoot = { child = atomicChild, [inaccessibleKey] = true }
+expect(safety.SanitizeSerializableInPlace(atomicRoot) == false,
+  "sanitizer accepted an inaccessible direct key")
+expect(atomicRoot.child == atomicChild and atomicChild.unsupported ~= nil,
+  "failed root scan partially applied queued removals")
+inaccessibleValues[inaccessibleKey] = nil
+
+local badNestedKey = "inaccessible-nested-key"
+inaccessibleValues[badNestedKey] = true
+local nestedRoot = { safe = 7, unsafeBranch = { [badNestedKey] = true } }
+expect(safety.SanitizeSerializableInPlace(nestedRoot) == true,
+  "unsafe child branch incorrectly failed the whole root scan")
+expect(nestedRoot.safe == 7 and nestedRoot.unsafeBranch == nil,
+  "unsafe child branch was not removed atomically")
+local sharedDirty = { keep = true, unsupported = function() end }
+local aliasedRoot = { { sharedDirty, [badNestedKey] = true }, sharedDirty }
+expect(safety.SanitizeSerializableInPlace(aliasedRoot) == true,
+  "rejected parent branch prevented sanitation of a valid shared child")
+expect(aliasedRoot[1] == nil and aliasedRoot[2] == sharedDirty
+    and sharedDirty.keep == true and sharedDirty.unsupported == nil,
+  "discarded branch lost cleanup needed by a retained shared child")
+inaccessibleValues[badNestedKey] = nil
+
+local numericKeys = { [1] = "keep", [math.huge] = "drop", [-math.huge] = "drop" }
+expect(safety.SanitizeSerializableInPlace(numericKeys) == true,
+  "sanitizer rejected finite root data with non-finite numeric keys")
+expect(numericKeys[1] == "keep" and numericKeys[math.huge] == nil and numericKeys[-math.huge] == nil,
+  "sanitizer retained non-finite numeric keys")
+
+local selfCycle = { value = true }
+selfCycle.self = selfCycle
+local mutualLeft, mutualRight = {}, {}
+mutualLeft.right = mutualRight
+mutualRight.left = mutualLeft
+local shared = { value = 9 }
+local graph = { self = selfCycle, left = mutualLeft, right = mutualRight, first = shared, second = shared }
+expect(safety.SanitizeSerializableInPlace(graph) == true,
+  "sanitizer rejected cyclic branches instead of cutting their edges")
+expect(selfCycle.self == nil, "self-cycle edge survived sanitation")
+expect(not (mutualLeft.right and mutualLeft.right.left == mutualLeft),
+  "mutual cycle retained a back edge")
+expect(graph.first == shared and graph.second == shared,
+  "sanitizer broke valid shared child identity")
+
+local depthRoot, depthCursor = {}, nil
+depthCursor = depthRoot
+for _ = 1, 21 do depthCursor.child = {}; depthCursor = depthCursor.child end
+expect(safety.SanitizeSerializableInPlace(depthRoot) == true,
+  "depth overflow in a child branch failed the root scan")
+depthCursor = depthRoot
+for _ = 1, 20 do depthCursor = depthCursor.child end
+expect(depthCursor.child == nil, "depth-overflow child branch was retained")
 
 local ordinaryRegion = {
   HasAccessConstraints = function() return false end,

@@ -4,6 +4,7 @@ local _, ns = ...
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by persistence_root_store.lua")
 local CopySerializable = assert(safety.CopySerializable, "Roth_UI: safety.CopySerializable is required by persistence_root_store.lua")
 local SanitizeSerializableInPlace = assert(safety.SanitizeSerializableInPlace, "Roth_UI: safety.SanitizeSerializableInPlace is required by persistence_root_store.lua")
+local CanAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by persistence_root_store.lua")
 local configOwner = assert(ns and ns.configPersistence, "Roth_UI: ns.configPersistence is required by persistence_root_store.lua")
 local runtimeApi = assert(ns and ns.persistenceRuntime, "Roth_UI: ns.persistenceRuntime is required by persistence_root_store.lua")
 local storeApi = ns.store or {}
@@ -66,9 +67,15 @@ local function EnsureOrbTemplateList(store)
 end
 
 local function NormalizeAccountRoot(store)
+  if not CanAccess(store) or safety.IsSecret(store) or type(store) ~= "table" then
+    return nil
+  end
   local root = CopySerializable(store)
   if type(root) ~= "table" then
-    root = {}
+    return nil
+  end
+  if SanitizeSerializableInPlace(root) ~= true then
+    return nil
   end
 
   if type(root.schema) ~= "table" then
@@ -86,15 +93,20 @@ local function NormalizeAccountRoot(store)
 
   root.schema.version = tonumber(root.schema.version) or 1
   PurgeLegacyRuntimeKeys(root.account.settings)
-  SanitizeSerializableInPlace(root)
   EnsureOrbTemplateList(root.account.templates)
   return root
 end
 
 local function NormalizeCharRoot(store)
+  if not CanAccess(store) or safety.IsSecret(store) or type(store) ~= "table" then
+    return nil
+  end
   local root = CopySerializable(store)
   if type(root) ~= "table" then
-    root = {}
+    return nil
+  end
+  if SanitizeSerializableInPlace(root) ~= true then
+    return nil
   end
 
   if type(root.schema) ~= "table" then
@@ -105,7 +117,6 @@ local function NormalizeCharRoot(store)
   end
 
   root.schema.version = tonumber(root.schema.version) or 1
-  SanitizeSerializableInPlace(root)
   return root
 end
 
@@ -176,15 +187,17 @@ local function GetPersistenceDomainRoot(domain, ensure)
 end
 
 local function SetPersistenceDomainRoot(domain, store)
-  if type(store) ~= "table" then
+  if not CanAccess(domain) or safety.IsSecret(domain)
+      or (domain ~= "config" and domain ~= "orbChar" and domain ~= "orbGlobal") then
+    return false
+  end
+  if SanitizeSerializableInPlace(store) ~= true then
     return false
   end
 
   if domain == "config" then
     PurgeLegacyRuntimeKeys(store)
   end
-
-  SanitizeSerializableInPlace(store)
 
   if domain == "orbGlobal" then
     EnsureOrbTemplateList(store)
@@ -194,10 +207,8 @@ local function SetPersistenceDomainRoot(domain, store)
     store = SetCanonicalConfigRoot(store)
   elseif domain == "orbChar" then
     store = SetCanonicalOrbCharRoot(store)
-  elseif domain == "orbGlobal" then
-    store = SetCanonicalTemplateRoot(store)
   else
-    return false
+    store = SetCanonicalTemplateRoot(store)
   end
 
   SyncDomainCaches(domain, store)
@@ -205,13 +216,22 @@ local function SetPersistenceDomainRoot(domain, store)
 end
 
 function ns.ReplacePersistenceRoots(opts)
+  if not CanAccess(opts) or safety.IsSecret(opts) then return false end
   local payload = type(opts) == "table" and opts or {}
-  local normalized = {}
-  if payload.accountRoot ~= nil then
-    normalized.accountRoot = NormalizeAccountRoot(payload.accountRoot)
+  local accountRoot = payload.accountRoot
+  local charRoot = payload.charRoot
+  if not CanAccess(accountRoot) or safety.IsSecret(accountRoot)
+      or not CanAccess(charRoot) or safety.IsSecret(charRoot) then
+    return false
   end
-  if payload.charRoot ~= nil then
-    normalized.charRoot = NormalizeCharRoot(payload.charRoot)
+  local normalized = {}
+  if accountRoot ~= nil then
+    normalized.accountRoot = NormalizeAccountRoot(accountRoot)
+    if type(normalized.accountRoot) ~= "table" then return false end
+  end
+  if charRoot ~= nil then
+    normalized.charRoot = NormalizeCharRoot(charRoot)
+    if type(normalized.charRoot) ~= "table" then return false end
   end
   if not ReplaceCanonicalRoots(normalized) then
     return false
