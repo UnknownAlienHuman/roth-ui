@@ -1,5 +1,7 @@
 # Midnight 12.1 migration record — B4.3.4
 
+Historical record. Current development and source evidence are documented in [MIGRATION_12_1_5.md](MIGRATION_12_1_5.md) and [CURRENT_STATUS.md](CURRENT_STATUS.md).
+
 - Interface: `120100`
 - Addon: `3.3.8-v57.8-B4.3.4`
 - Verified live Blizzard source: `Gethe/wow-ui-source@09b9db7948abc9b9648dedaab51eb0cf3ee67b31` (`12.1.0.69933`)

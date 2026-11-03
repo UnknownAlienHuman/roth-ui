@@ -10,6 +10,10 @@
 
   --get the functions
   local func = ns.func
+  local buildMiniTargetScaffold = assert(
+    func.buildMiniTargetScaffold,
+    "Roth_UI: buildMiniTargetScaffold is required by units/pet.lua"
+  )
 
   --get the unit container
   local unit = ns.unit
@@ -31,97 +35,6 @@
     func.applyDragFunctionality(self)
   end
 
-  --actionbar background
-  local createArtwork = function(self)
-    local t = self:CreateTexture(nil,"BACKGROUND",nil,-8)
-    t:SetAllPoints(self)
-    t:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget")
-  end
-
-  --create health frames
-  local createHealthFrame = function(self)
-
-    local cfg = self.cfg.health
-
-    --health
-    local h = CreateFrame("StatusBar", nil, self)
-    h:SetPoint("TOP",0,-27.9)
-    h:SetPoint("LEFT",24.5,0)
-    h:SetPoint("RIGHT",-24.5,0)
-    h:SetPoint("BOTTOM",0,28.7)
-	h:SetFrameStrata("LOW")
-
-    h:SetStatusBarTexture(cfg.texture)
-    h.bg = h:CreateTexture(nil,"BACKGROUND",nil,-6)
-    h.bg:SetTexture(cfg.texture)
-    h.bg:SetAllPoints(h)
-
-    h.glow = h:CreateTexture(nil,"OVERLAY",nil,-5)
-    h.glow:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget_hpglow")
-    h.glow:SetPoint("TOP",0,17)
-    h.glow:SetPoint("LEFT",-24,0)
-    h.glow:SetPoint("RIGHT",24,0)
-    h.glow:SetPoint("BOTTOM",0,-20)
-    h.glow:SetVertexColor(0,0,0,1)
-
-    h.highlight = h:CreateTexture(nil,"OVERLAY",nil,-4)
-    h.highlight:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget_highlight")
-    h.highlight:SetAllPoints(self)
-
-    self.Health = h
-    self.Health.smoothing = func.ResolveStatusBarSmoothing(self.cfg.health and self.cfg.health.smooth)
-  end
-
-  --create power frames
-  local createPowerFrame = function(self)
-    local cfg = self.cfg.power
-
-    --power
-    local h = CreateFrame("StatusBar", nil, self.Health)
-     h:SetPoint("TOP",0,-13)
-     h:SetPoint("LEFT",5,0)
-     h:SetPoint("RIGHT",-5,0)
-     h:SetPoint("BOTTOM",0,-10)
-
-    h:SetStatusBarTexture(cfg.texture)
-
-    h.bg = h:CreateTexture(nil,"BACKGROUND",nil,-6)
-    h.bg:SetTexture(cfg.texture)
-    h.bg:SetAllPoints(h)
-
-    h.glow = h:CreateTexture(nil,"OVERLAY",nil,-5)
-    h.glow:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget_ppglow")
-    h.glow:SetAllPoints(self)
-    h.glow:SetVertexColor(0,0,0,1)
-
-    self.Power = h
-    self.Power.smoothing = func.ResolveStatusBarSmoothing(self.cfg.power and self.cfg.power.smooth)
-
-  end
-
-  --create health power strings
-  local createHealthPowerStrings = function(self)
-
-    local name = func.createFontString(self, cfg.font, 14, "THINOUTLINE")
-    name:SetPoint("BOTTOM", self, "TOP", 0, -13)
-    name:SetPoint("LEFT", self.Health, 0, 0)
-    name:SetPoint("RIGHT", self.Health, 0, 0)
-    self.Name = name
-
-    local hpval = func.createFontString(self.Health, cfg.font, 11, "THINOUTLINE")
-    hpval:SetPoint("RIGHT", -2,0)
-
-    local perphp = func.createFontString(self.Health, cfg.font, 11, "THINOUTLINE")
-    perphp:SetPoint("CENTER", self.Health, "CENTER", 0, 0)
-    perphp:SetJustifyH("CENTER")
-
-    self:Tag(name, "[roth:namecolor][name<$|r]")
-
-    self.Health.valueText = hpval
-    self.Health.valueTextMode = func.ResolveHealthValueMode()
-    self.Health.perText = perphp
-  end
-
   ---------------------------------------------
   -- PET STYLE FUNC
   ---------------------------------------------
@@ -136,31 +49,26 @@
     --init
     initUnitParameters(self)
 
-    --create the art
-    createArtwork(self)
-
-    --createhealthPower
-    createHealthFrame(self)
-    createPowerFrame(self)
-
-    --health power strings
-    createHealthPowerStrings(self)
+    buildMiniTargetScaffold(self, {
+      healthStrata = "LOW",
+      smoothPower = true,
+      beforeCastbar = function(frame)
+        if func.ShouldShowPortrait(frame) then
+          func.createPortrait(frame)
+          frame:SetHitRectInsets(0, 0, -100, 0)
+        end
+      end,
+      castbarPredicate = function(frame)
+        return frame.cfg.castbar.show
+      end,
+    })
 
     --health power update
     self.Health.PostUpdate = func.updateHealth
     self.Power.PostUpdate = func.updatePower
 
-    --create portrait
-    if func.ShouldShowPortrait(self) then
-      func.createPortrait(self)
-      self:SetHitRectInsets(0, 0, -100, 0);
-    end
-
-    --castbar
-    if self.cfg.castbar.show then
-      func.createCastbar(self)
-    elseif self.cfg.castbar.hideDefault then
-      --do not show the default castbar
+    -- Preserve Blizzard's default pet castbar toggle when Roth's castbar is disabled.
+    if not self.cfg.castbar.show and self.cfg.castbar.hideDefault then
       if PetCastingBarFrame and type(PetCastingBarFrame.SetAndUpdateShowCastbar) == "function" then
         PetCastingBarFrame:SetAndUpdateShowCastbar(false)
       elseif PetCastingBarFrame then

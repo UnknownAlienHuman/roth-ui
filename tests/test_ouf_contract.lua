@@ -60,7 +60,8 @@ local current = Run("14.1.1", NewOUF())
 expect(type(current.oUFContract) == "table", "oUF contract was not published")
 expect(current.oUFContract.minimumVersion == "14.1.1", "minimum oUF version changed")
 expect(current.oUFContract.detectedVersion == "14.1.1", "detected version was lost")
-expect(current.oUFContract.managedAuras == true, "managed-aura capability was not declared")
+expect(current.oUFContract.managedAuras == "validated-on-create",
+  "managed-aura capability was not marked for runtime contract validation")
 expect(current.oUFContract.sessionOwnedSecureHeaders == true,
   "secure-header lifecycle capability was not declared")
 

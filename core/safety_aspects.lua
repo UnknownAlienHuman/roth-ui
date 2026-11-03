@@ -19,8 +19,10 @@ function safety.HasForbiddenAspect(region, aspect)
   end
 
   local got, method = TryGet(region, "HasAnyForbiddenAspects")
-  if got ~= true or type(method) ~= "function" then
-    return false
+  if got ~= true or not CanAccess(method) or type(method) ~= "function" then
+    -- Retail 12.1 exposes this on ScriptObject. A missing or inaccessible
+    -- operation query cannot establish that the requested mutation is allowed.
+    return true
   end
 
   local ok, value = pcall(method, region, aspect)
@@ -28,7 +30,7 @@ function safety.HasForbiddenAspect(region, aspect)
     ReportGuardFailure("HasAnyForbiddenAspects", value)
     return true
   end
-  if not CanAccess(value) then
+  if not CanAccess(value) or type(value) ~= "boolean" then
     return true
   end
   return value == true

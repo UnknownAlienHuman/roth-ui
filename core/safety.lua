@@ -232,33 +232,27 @@ function safety.CanUseRegion(region)
   end
 
   local ok, constrained = safety.TryMethod(region, "HasAccessConstraints")
-  if ok == true then
-    -- A restricted access-state result cannot be used as a branch condition.
-    -- Fail closed rather than treating an unreadable region as ordinary.
-    if not safety.CanAccess(constrained) then
+  -- These script-object queries are part of the Retail contract. If a lookup
+  -- or call fails, permission is unknown and the object must not be used.
+  if ok ~= true or not safety.CanAccess(constrained) or type(constrained) ~= "boolean" then
+    return false
+  end
+  if constrained == true then
+    local accessible, allowed = safety.TryMethod(region, "CanBeAccessedInContext")
+    if accessible ~= true or not safety.CanAccess(allowed) or type(allowed) ~= "boolean" or allowed ~= true then
       return false
-    end
-    if constrained == true then
-      local accessible, allowed = safety.TryMethod(region, "CanBeAccessedInContext")
-      if accessible ~= true or not safety.CanAccess(allowed) or allowed ~= true then
-        return false
-      end
     end
   end
 
   local hasForbidden, forbidden = safety.TryMethod(region, "IsForbidden")
-  if hasForbidden == true then
-    if not safety.CanAccess(forbidden) then
-      return false
-    end
-    if forbidden == true then
-      return false
-    end
+  if hasForbidden ~= true or not safety.CanAccess(forbidden)
+      or type(forbidden) ~= "boolean" or forbidden == true then
+    return false
   end
   return true
 end
 
-function safety.CopySerializable(source, stack, memo, depth)
+local function CopySerializable(source, stack, memo, depth, strict)
   if not safety.CanAccess(source) or safety.IsSecret(source) then
     return nil
   end
@@ -301,13 +295,32 @@ function safety.CopySerializable(source, stack, memo, depth)
 
     local keyType = type(key)
     if (keyType == "string" or keyType == "number") and not safety.IsSecret(key) then
-      local copy = safety.CopySerializable(child, stack, memo, depth + 1)
+      local copy = CopySerializable(child, stack, memo, depth + 1, strict)
       if copy ~= nil then
         destination[key] = copy
+      elseif strict then
+        stack[source] = nil
+        memo[source] = nil
+        return nil
       end
+    elseif strict then
+      stack[source] = nil
+      memo[source] = nil
+      return nil
     end
   end
 
   stack[source] = nil
   return destination
+end
+
+function safety.CopySerializable(source, stack, memo, depth)
+  return CopySerializable(source, stack, memo, depth, false)
+end
+
+-- Validate and copy a complete serializable tree. Unlike CopySerializable's
+-- migration-oriented sanitizer, this rejects the entire input when any nested
+-- value is secret, inaccessible, unsupported, cyclic, or beyond the depth cap.
+function safety.CopySerializableStrict(source)
+  return CopySerializable(source, nil, nil, 0, true)
 end

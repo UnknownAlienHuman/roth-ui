@@ -8,14 +8,12 @@ end
 local type = type
 local math_min = math.min
 local UnitHasVehicleUI = UnitHasVehicleUI
-local IsSecretValue = (ns and ns.safety and ns.safety.IsSecret) or function(value)
-  return type(_G.issecretvalue) == "function" and _G.issecretvalue(value) or false
-end
+local CanAccess = assert(ns.safety and ns.safety.CanAccess, "Roth_UI: value access guard is required")
 
 local function PlayerHasVehicleUI()
   if type(UnitHasVehicleUI) ~= "function" then return false end
   local value = UnitHasVehicleUI("player")
-  return not IsSecretValue(value) and value == true
+  return CanAccess(value) and value == true
 end
 local C_Reputation = C_Reputation
 local C_MajorFactions = C_MajorFactions
@@ -38,6 +36,10 @@ local function IsEnabledInConfig(self)
 end
 
 local function RefreshActionBarArtwork(self)
+  if ns and type(ns.QueueActionBarArtworkRefresh) == "function" then
+    ns.QueueActionBarArtworkRefresh()
+    return
+  end
   if ns and type(ns.RefreshActionBarArtwork) == "function" then
     ns.RefreshActionBarArtwork()
     return
@@ -191,8 +193,10 @@ end
 ns.GetWatchedFactionProgressInfo = GetWatchedFactionProgressInfo
 
 local function Update(self, event, unit)
-  if unit and unit ~= self.__unit then
-    return
+  -- Unitless events carry booleans (world entry) or numbers (level-up),
+  -- not unit tokens. Only unit-event payloads participate in this filter.
+  if event == "PLAYER_XP_UPDATE" or event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE" then
+    if not CanAccess(unit) or unit ~= self.__unit then return end
   end
 
   local reputation = self.Reputation
@@ -211,7 +215,7 @@ local function Update(self, event, unit)
 
   local visibilityChanged = SetVisibility(self, reputation, shouldShow)
   if not shouldShow then
-    RefreshActionBarArtwork(self)
+    if visibilityChanged then RefreshActionBarArtwork(self) end
     return
   end
 
@@ -238,7 +242,7 @@ local function Update(self, event, unit)
     )
   end
 
-  if visibilityChanged or event ~= "ForceUpdate" then
+  if visibilityChanged then
     RefreshActionBarArtwork(self)
   end
 end

@@ -1,4 +1,5 @@
 local addon, ns = ...
+local InCombatLockdown = InCombatLockdown
 
 -- Keep the public persistence facade and lifecycle bootstrap out of sv_store.lua.
 local storeApi = assert(ns and ns.store, "Roth_UI: ns.store is required by persistence_control_plane.lua")
@@ -126,6 +127,13 @@ persistenceApi.GetTransferRoots = function(mode)
 end
 
 persistenceApi.ApplyTransferRoots = function(payload)
+  -- Root replacement can rebuild live runtime configuration. Reject at the
+  -- persistence boundary so non-dialog callers cannot bypass the import UI's
+  -- combat guard; destructive imports are never queued for later execution.
+  if InCombatLockdown and InCombatLockdown() then
+    return false
+  end
+
   if type(payload) ~= "table" then
     return false
   end

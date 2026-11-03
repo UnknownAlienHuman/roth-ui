@@ -344,7 +344,8 @@ func.createAlternativePowerBar = function(self, name)
 
   bar:SetScale(self.cfg.altpower.scale)
   bar:Hide()
-  func.simpleDragFunc(bar)
+  func.RegisterMoverFrame(bar, "bars")
+  func.applyDragFunctionality(bar)
   self.AlternativePower = bar
 end
 

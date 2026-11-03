@@ -21,6 +21,8 @@ local safety = assert(ns and ns.safety, "Roth_UI action_bar_background: safety i
 local CanUseRegion = assert(safety.CanUseRegion, "Roth_UI action_bar_background: CanUseRegion is required")
 local TryGet = assert(safety.TryGet, "Roth_UI action_bar_background: TryGet is required")
 local TryMethod = assert(safety.TryMethod, "Roth_UI action_bar_background: TryMethod is required")
+local DeferUntilOutOfCombat = assert(ns.framePolicy and ns.framePolicy.DeferUntilOutOfCombat,
+  "Roth_UI action_bar_background: shared frame policy is required")
 local MAIN_BAR_SYSTEM_INDEX = type(Enum) == "table"
   and type(Enum.EditModeActionBarSystemIndices) == "table"
   and Enum.EditModeActionBarSystemIndices.MainBar
@@ -122,6 +124,8 @@ local function QueueArtworkRefresh()
   end
 end
 
+ns.QueueActionBarArtworkRefresh = QueueArtworkRefresh
+
 local function InstallAuxiliaryBarHooks()
   if type(hooksecurefunc) ~= "function" then return end
   for index = 1, #AUXILIARY_BARS do
@@ -181,7 +185,6 @@ local function HideActionButtonBarArt(button)
   local _, slotBackground = TryGet(button, "SlotBackground")
   HideRegion(slotArt or (IsAccessible(buttonName) and buttonName and _G[buttonName .. "SlotArt"]) or nil)
   HideRegion(slotBackground or (IsAccessible(buttonName) and buttonName and _G[buttonName .. "SlotBackground"]) or nil)
-  HideRegion(IsAccessible(buttonName) and buttonName and _G[buttonName .. "FloatingBG"] or nil)
 end
 
 local function ApplyMainBarVisualState()
@@ -259,6 +262,9 @@ local function ApplyArtworkLayout(frame, artCfg, playerFrame)
   frame:ClearAllPoints()
   frame:SetPoint(point, relativeTo, relativePoint, x, y)
   frame:SetScale(scale)
+  frame.defaultPosition = { a1 = point, af = relativeTo, a2 = relativePoint, x = x, y = y }
+  frame.defaultScale = scale
+  frame.defaultSize = { w = 788, h = 220 }
   backgroundConfig = artCfg
   backgroundPlayerFrame = playerFrame
   backgroundLayoutReady = true
@@ -290,13 +296,17 @@ local function EnsureArtworkFrame()
     backgroundFrame.texture = backgroundFrame:CreateTexture(nil, "BACKGROUND", nil, -8)
     backgroundFrame.texture:SetAllPoints(backgroundFrame)
 
-    if func and type(func.applyDragFunctionality) == "function" then
-      func.applyDragFunctionality(backgroundFrame)
-    end
     backgroundFrame.RefreshActionBarArtwork = function() ns.RefreshActionBarArtwork() end
   end
 
   ApplyArtworkLayout(backgroundFrame, artCfg, playerFrame)
+  if not backgroundFrame.dragframe and func and type(func.applyDragFunctionality) == "function" then
+    -- Capture defaults only after the artwork has its configured geometry.
+    func.applyDragFunctionality(backgroundFrame)
+  elseif type(ns.ApplySavedMoverLayout) == "function" then
+    -- Config supplies defaults; the mover owns saved layout overrides.
+    ns.ApplySavedMoverLayout(backgroundFrame)
+  end
   return backgroundFrame
 end
 
@@ -322,6 +332,7 @@ end
 RefreshArtwork = function()
   if InCombatLockdown and InCombatLockdown() then
     ApplyArtworkVisibility(backgroundFrame)
+    DeferUntilOutOfCombat("action-bar-background", RefreshArtwork)
     return
   end
 
@@ -373,6 +384,20 @@ RefreshArtwork = function()
       targetFrame:ClearAllPoints()
       targetFrame:SetPoint("BOTTOM", UIParent, "BOTTOM", 0, y * artScale)
       targetFrame:SetSize(w * artScale, h * artScale)
+      -- Action-bar artwork owns the bars' tier-dependent default geometry;
+      -- the mover owns any persisted user override. Refresh both defaults
+      -- before reapplying that override so reset always returns to the current
+      -- artwork alignment without erasing a user's saved layout.
+      targetFrame.defaultPosition = {
+        a1 = "BOTTOM", af = UIParent, a2 = "BOTTOM", x = 0, y = y * artScale,
+      }
+      targetFrame.defaultSize = { w = w * artScale, h = h * artScale }
+      if targetFrame.defaultScale == nil then
+        targetFrame.defaultScale = type(targetFrame.GetScale) == "function" and targetFrame:GetScale() or 1
+      end
+      if type(ns.ApplySavedMoverLayout) == "function" then
+        ns.ApplySavedMoverLayout(targetFrame)
+      end
       targetFrame:Show()
     else
       targetFrame:Hide()
@@ -465,7 +490,6 @@ local function InstallMainBarHooks()
 end
 
 controller:RegisterEvent("PLAYER_REGEN_DISABLED")
-controller:RegisterEvent("PLAYER_REGEN_ENABLED")
 controller:RegisterEvent("PLAYER_ENTERING_WORLD")
 controller:RegisterEvent("UNIT_ENTERED_VEHICLE")
 controller:RegisterEvent("UNIT_EXITED_VEHICLE")
@@ -473,7 +497,7 @@ controller:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
 controller:RegisterEvent("UPDATE_OVERRIDE_ACTIONBAR")
 controller:SetScript("OnEvent", function(_, event, unit)
   if event == "PLAYER_REGEN_DISABLED" then
-    ApplyArtworkVisibility(backgroundFrame)
+    RefreshArtwork()
     return
   end
 

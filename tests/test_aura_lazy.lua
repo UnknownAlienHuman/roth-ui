@@ -36,6 +36,19 @@ local ns = {
       return true
     end,
   },
+  safety = {
+    CanAccess = function() return true end,
+    TryGet = function(object, key)
+      local ok, value = pcall(function() return object[key] end)
+      return ok, value
+    end,
+    TryMethod = function(object, name, ...)
+      local method = object[name]
+      if type(method) ~= "function" then return false end
+      local ok, value = pcall(method, object, ...)
+      return ok, value
+    end,
+  },
 }
 
 assert(loadfile("core/aura_runtime.lua"))("Roth_UI", ns)

@@ -31,10 +31,25 @@ local legacy = {
   HasAccessConstraints = function() return false end,
   IsForbidden = function() return false end,
 }
+local missingQuery = {
+  HasAccessConstraints = function() return false end,
+  IsForbidden = function() return false end,
+  HasAnyForbiddenAspects = false,
+}
 local broken = {
   HasAccessConstraints = function() return false end,
   IsForbidden = function() return false end,
   HasAnyForbiddenAspects = function() error("expected") end,
+}
+local nilResult = {
+  HasAccessConstraints = function() return false end,
+  IsForbidden = function() return false end,
+  HasAnyForbiddenAspects = function() return nil end,
+}
+local numericResult = {
+  HasAccessConstraints = function() return false end,
+  IsForbidden = function() return false end,
+  HasAnyForbiddenAspects = function() return 0 end,
 }
 
 expect(safety.HasForbiddenAspect(ordinary, aspect) == false,
@@ -45,10 +60,16 @@ expect(safety.HasForbiddenAspect(restricted, aspect) == true,
   "operation-specific forbidden aspect was not detected")
 expect(safety.CanUseRegionFor(restricted, aspect) == false,
   "operation-specific forbidden region was accepted")
-expect(safety.HasForbiddenAspect(legacy, aspect) == false,
-  "legacy region without the query API was rejected")
+expect(safety.HasForbiddenAspect(legacy, aspect) == true,
+  "region without the query API did not fail closed")
+expect(safety.HasForbiddenAspect(missingQuery, aspect) == true,
+  "non-callable query did not fail closed")
 expect(safety.HasForbiddenAspect(broken, aspect) == true,
   "failed forbidden-aspect query did not fail closed")
+expect(safety.HasForbiddenAspect(nilResult, aspect) == true,
+  "nil forbidden-aspect result did not fail closed")
+expect(safety.HasForbiddenAspect(numericResult, aspect) == true,
+  "non-boolean forbidden-aspect result did not fail closed")
 expect(safety.HasForbiddenAspect(nil, aspect) == true,
   "nil region did not fail closed")
 expect(safety.HasForbiddenAspect(ordinary, nil) == true,

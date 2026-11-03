@@ -60,6 +60,21 @@ expect(policy.SetSuppressed(region, false) == true, "second restore failed")
 expect(region.alpha == 0.45 and region.mouse == false,
   "second restore replayed a stale suppression snapshot")
 
+local partial = NewRegion()
+local mouseSetter = partial.EnableMouse
+partial.EnableMouse = function() error("temporary setter failure") end
+expect(policy.SetSuppressed(partial, true) == false, "partial failure was reported as success")
+expect(partial.alpha == 0, "partial setter setup did not exercise alpha mutation")
+partial.EnableMouse = mouseSetter
+expect(policy.SetSuppressed(partial, true) == true, "later explicit suppression failed")
+expect(policy.SetSuppressed(partial, false) == true, "partial cycle did not restore")
+expect(partial.alpha == 0.75 and partial.mouse == true, "partial retry lost the original snapshot")
+
+local unreadable = NewRegion()
+unreadable.GetAlpha = function() error("alpha unavailable") end
+expect(policy.SetSuppressed(unreadable, true) == false, "unknown original state was guessed")
+expect(unreadable.mutations == 0, "suppression mutated a frame without a restorable snapshot")
+
 inCombat = true
 expect(policy.SetSuppressed(region, true) == false, "combat suppression was not deferred")
 expect(policy.SetSuppressed(region, false) == false, "latest combat state was not coalesced")

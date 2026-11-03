@@ -50,6 +50,18 @@ expect(copy.ordinary == 1 and copy.nested.value == 2, "ordinary values were lost
 expect(copy.hidden == nil, "secret value crossed serialization boundary")
 expect(copy.callback == nil, "function crossed serialization boundary")
 expect(copy.cyclic.value == 3 and copy.cyclic.self == nil, "cycle was not cut safely")
+expect(safety.CopySerializableStrict(source) == nil,
+  "strict copy accepted a table with secret/unsupported/cyclic descendants")
+local strictCopy = safety.CopySerializableStrict({ nested = { value = 2 } })
+expect(strictCopy.nested.value == 2, "strict copy rejected a complete serializable tree")
+expect(strictCopy ~= source and strictCopy.nested ~= source.nested,
+  "strict copy retained an input table reference")
+expect(safety.CopySerializableStrict({ callback = function() end }) == nil,
+  "strict copy accepted a function descendant")
+local deep = {}
+local cursor = deep
+for _ = 1, 66 do cursor.child = {}; cursor = cursor.child end
+expect(safety.CopySerializableStrict(deep) == nil, "strict copy accepted depth overflow")
 
 local dirty = {
   keep = 1,
@@ -79,11 +91,39 @@ local forbiddenRegion = {
   HasAccessConstraints = function() return false end,
   IsForbidden = function() return true end,
 }
+local missingQuery = { IsForbidden = function() return false end }
+local throwingQuery = {
+  HasAccessConstraints = function() error("expected") end,
+  IsForbidden = function() return false end,
+}
+local inaccessibleResult = {
+  HasAccessConstraints = function() return secret end,
+  IsForbidden = function() return false end,
+}
+local nonBooleanConstraint = {
+  HasAccessConstraints = function() return 1 end,
+  IsForbidden = function() return false end,
+}
+local nilForbidden = {
+  HasAccessConstraints = function() return false end,
+  IsForbidden = function() return nil end,
+}
+local nonBooleanAccess = {
+  HasAccessConstraints = function() return true end,
+  CanBeAccessedInContext = function() return 1 end,
+  IsForbidden = function() return false end,
+}
 
 expect(safety.CanUseRegion(ordinaryRegion) == true, "ordinary region was rejected")
 expect(safety.CanUseRegion(allowedRegion) == true, "accessible constrained region was rejected")
 expect(safety.CanUseRegion(deniedRegion) == false, "inaccessible constrained region was accepted")
 expect(safety.CanUseRegion(forbiddenRegion) == false, "forbidden region was accepted")
+expect(safety.CanUseRegion(missingQuery) == false, "missing access query did not fail closed")
+expect(safety.CanUseRegion(throwingQuery) == false, "failed access query did not fail closed")
+expect(safety.CanUseRegion(inaccessibleResult) == false, "inaccessible access result did not fail closed")
+expect(safety.CanUseRegion(nonBooleanConstraint) == false, "non-boolean constraint result did not fail closed")
+expect(safety.CanUseRegion(nilForbidden) == false, "nil forbidden result did not fail closed")
+expect(safety.CanUseRegion(nonBooleanAccess) == false, "non-boolean access result did not fail closed")
 
 local ok, value = safety.TryCall(function() return 7 end)
 expect(ok == true and value == 7, "TryCall lost ordinary result")

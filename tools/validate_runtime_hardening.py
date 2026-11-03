@@ -48,7 +48,7 @@ def main() -> int:
         "RegisterWhenBlizzardSettingsLoads",
         'ContinueOnAddOnLoaded("Blizzard_Settings"',
         "ui.registering",
-        'self:UnregisterEvent("PLAYER_REGEN_ENABLED")',
+        'DeferUntilOutOfCombat',
         'C_AddOns.LoadAddOn("Blizzard_Settings")',
     ):
         assert_contains(settings, token, "lazy Settings lifecycle")
@@ -72,7 +72,7 @@ def main() -> int:
         "CanUseRegionFor",
         "SET_TEXTURE_ASPECT",
         '__mode = "k"',
-        "PLAYER_REGEN_ENABLED",
+        "DeferUntilOutOfCombat",
         "backgroundAttempted",
         "borderAttempted",
         "TryMethod",

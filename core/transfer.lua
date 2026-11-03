@@ -1,8 +1,10 @@
 local addonName = ...
-local ns = assert(_G.Roth_UI, "Roth_UI_Options: main Roth_UI namespace is required")
+local ns = assert(_G.Roth_UI, "Roth_UI: main namespace is required")
 
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by transfer.lua")
 local CopySerializable = assert(safety.CopySerializable, "Roth_UI: safety.CopySerializable is required by transfer.lua")
+local CopySerializableStrict = assert(safety.CopySerializableStrict,
+  "Roth_UI: safety.CopySerializableStrict is required by transfer.lua")
 local TryCall = assert(safety.TryCall, "Roth_UI: safety.TryCall is required by transfer.lua")
 local persistence = assert(ns and ns.persistence, "Roth_UI: persistence service is required by transfer.lua")
 local GetTransferRoots = assert(persistence.GetTransferRoots, "Roth_UI: persistence.GetTransferRoots is required by transfer.lua")
@@ -15,7 +17,10 @@ ns.transfer = transfer
 local EXPORT_PREFIX = "RUI1:"
 local EXPORT_KIND = "Roth_UI_Settings_Export"
 local EXPORT_VERSION = 1
+local MAX_IMPORT_TEXT_CHARS = 2 * 1024 * 1024
+local MAX_SERIALIZED_BYTES = 4 * 1024 * 1024
 local COMPRESSION_METHOD = Enum and Enum.CompressionMethod and Enum.CompressionMethod.Deflate or 0
+local InCombatLockdown = InCombatLockdown
 
 local MODE_ALIASES = {
   full = "full",
@@ -93,15 +98,24 @@ local function SerializeEnvelope(envelope)
   if okSerialize ~= true or type(serialized) ~= "string" or serialized == "" then
     return nil, "Failed to serialize the export payload."
   end
+  if #serialized > MAX_SERIALIZED_BYTES then
+    return nil, "Export is too large. Reduce the number of saved templates or settings and try again."
+  end
 
   local okCompress, compressed = TryCall(C_EncodingUtil.CompressString, serialized, COMPRESSION_METHOD)
   if okCompress ~= true or type(compressed) ~= "string" or compressed == "" then
     return nil, "Failed to compress the export payload."
   end
+  if #compressed > MAX_SERIALIZED_BYTES then
+    return nil, "Compressed export is too large to encode."
+  end
 
   local okEncode, encoded = TryCall(C_EncodingUtil.EncodeBase64, compressed)
   if okEncode ~= true or type(encoded) ~= "string" or encoded == "" then
     return nil, "Failed to encode the export payload."
+  end
+  if #encoded + #EXPORT_PREFIX > MAX_IMPORT_TEXT_CHARS then
+    return nil, "Export is too large to fit in the transfer dialog."
   end
 
   return EXPORT_PREFIX .. encoded
@@ -111,6 +125,13 @@ local function DeserializeEnvelope(text)
   local ok, err = EnsureEncodingApi()
   if not ok then
     return nil, err
+  end
+
+  if type(text) ~= "string" then
+    return nil, "Import text must be a string."
+  end
+  if #text > MAX_IMPORT_TEXT_CHARS then
+    return nil, ("Import text exceeds the %d character limit."):format(MAX_IMPORT_TEXT_CHARS)
   end
 
   local cleaned = StripWhitespace(text)
@@ -131,10 +152,19 @@ local function DeserializeEnvelope(text)
   if okDecode ~= true or type(compressed) ~= "string" or compressed == "" then
     return nil, "Import text is not valid base64 data."
   end
+  if #compressed > MAX_SERIALIZED_BYTES then
+    return nil, "Decoded import data exceeds the supported size limit."
+  end
 
   local okDecompress, serialized = TryCall(C_EncodingUtil.DecompressString, compressed, COMPRESSION_METHOD)
   if okDecompress ~= true or type(serialized) ~= "string" or serialized == "" then
     return nil, "Import text could not be decompressed."
+  end
+  -- The native API allocates this string before Lua can inspect its size. This
+  -- limit bounds deserialization and copying but cannot cap peak decompressor
+  -- allocation.
+  if #serialized > MAX_SERIALIZED_BYTES then
+    return nil, "Decompressed import data exceeds the supported size limit."
   end
 
   local okDeserialize, envelope = TryCall(C_EncodingUtil.DeserializeCBOR, serialized)
@@ -154,7 +184,7 @@ local function DeserializeEnvelope(text)
 end
 
 local function ValidateAccountRoot(root)
-  local copy = CopySerializable(root)
+  local copy = CopySerializableStrict(root)
   if type(copy) ~= "table" then
     return nil, "Account payload is missing or invalid."
   end
@@ -171,7 +201,7 @@ local function ValidateAccountRoot(root)
 end
 
 local function ValidateCharRoot(root)
-  local copy = CopySerializable(root)
+  local copy = CopySerializableStrict(root)
   if type(copy) ~= "table" then
     return nil, "Character payload is missing or invalid."
   end
@@ -190,6 +220,10 @@ function transfer.Export(mode)
 end
 
 function transfer.Import(mode, text)
+  if InCombatLockdown and InCombatLockdown() then
+    return false, "Import is blocked in combat. Leave combat and try again."
+  end
+
   local normalizedMode = NormalizeMode(mode)
   if not normalizedMode then
     return false, ("Unknown import mode '%s'."):format(tostring(mode))

@@ -121,11 +121,12 @@ local createHealthFrame = function(self)
 
   h:SetStatusBarTexture(cfg.texture)
   h.bg = h:CreateTexture(nil, "BACKGROUND", nil, -6)
-  h.bg:SetTexture()
+  h.bg:SetTexture(cfg.texture)
   h.bg:SetAllPoints(h)
 
   h.glow = h:CreateTexture(nil, "OVERLAY", nil, -5)
   h.glow:SetTexture("Interface\\AddOns\\Roth_UI\\media\\target_hpglow")
+  h.glow:SetAllPoints(self)
   h.glow:SetVertexColor(0, 0, 0, 1)
 
   h.highlight = h:CreateTexture(nil, "OVERLAY", nil, -4)

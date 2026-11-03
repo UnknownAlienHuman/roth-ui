@@ -20,6 +20,7 @@ local max = math.max
 local next = next
 local UnitClass = UnitClass
 local DoesSpellExist = C_Spell and C_Spell.DoesSpellExist
+local safety = assert(ns.safety, "Roth_UI: safety is required by aura_runtime.lua")
 
 local HORIZONTAL_AXIS = assert(AnchorUtil and AnchorUtil.FlowLayoutAxis and AnchorUtil.FlowLayoutAxis.Horizontal,
   "Roth_UI: AnchorUtil.FlowLayoutAxis.Horizontal is required")
@@ -43,6 +44,11 @@ local function WarnOnce(key, message)
   end
   ns.__rothAuraWarnings[key] = true
   print("|cffff8000Roth_UI:|r " .. message)
+end
+
+local function IsFrameVisible(frame)
+  local ok, visible = safety.TryMethod(frame, "IsVisible")
+  return ok == true and safety.CanAccess(visible) and visible == true
 end
 
 local function ResolveFontPath()
@@ -180,8 +186,9 @@ local function CreateAuraRegion(frame, spec)
   if spec.element then
     return spec.element
   end
-  if type(frame.CreateAuras) ~= "function" then
-    WarnOnce("missingCreateAuras", "oUF 14.0.2 or newer is required; managed unit auras were disabled.")
+  local canCreate, createAuras = safety.TryGet(frame, "CreateAuras")
+  if canCreate ~= true or not safety.CanAccess(createAuras) or type(createAuras) ~= "function" then
+    WarnOnce("missingCreateAuras", "The loaded oUF build does not expose managed auras; unit auras were disabled.")
     return nil
   end
 
@@ -202,16 +209,31 @@ local function CreateAuraRegion(frame, spec)
     layoutLimit = layout == VERTICAL_AXIS and height or width
   end
 
-  local element = frame:CreateAuras({
+  local created, element = safety.TryMethod(frame, "CreateAuras", {
     layout = layout,
     layoutLimit = layoutLimit,
     initialAnchor = spec.initialAnchor or "TOPLEFT",
     growthX = spec.growthX or "RIGHT",
     growthY = spec.growthY or "DOWN",
   })
-  if not element then
+  if created ~= true or not safety.CanAccess(element) or element == nil then
     WarnOnce("createAurasFailed", "oUF failed to create a managed aura container.")
     return nil
+  end
+
+  -- Validate only the public AuraContainer methods Roth uses. This also
+  -- protects development builds with an unexpanded oUF version token.
+  local required = { "SetSize", "SetPoint", type(spec.spellSlots) == "table" and "AddSlot" or "AddGroup" }
+  if spec.alpha then required[#required + 1] = "SetAlpha" end
+  if type(spec.candidateFilters) == "function" then
+    required[#required + 1] = "SetAuraGroupCandidateFilters"
+  end
+  for index = 1, #required do
+    local got, method = safety.TryGet(element, required[index])
+    if got ~= true or not safety.CanAccess(method) or type(method) ~= "function" then
+      WarnOnce("invalidAuraContainer", "The loaded oUF AuraContainer contract is incomplete; unit auras were disabled.")
+      return nil
+    end
   end
 
   element:SetSize(width, height)
@@ -309,8 +331,11 @@ function func.EnsureAuraRegions(frame)
   frame.__rothAuraRegionsCreating = nil
   frame.__rothAuraRegionsCreated = created and complete
 
-  if created and type(frame.EnableElement) == "function" and not frame:IsElementEnabled("Auras") then
-    frame:EnableElement("Auras")
+  if created then
+    local enabledOK, enabled = safety.TryMethod(frame, "IsElementEnabled", "Auras")
+    if enabledOK == true and safety.CanAccess(enabled) and enabled ~= true then
+      safety.TryMethod(frame, "EnableElement", "Auras")
+    end
   end
   return created
 end
@@ -335,7 +360,7 @@ function func.QueueAuraRegion(frame, spec)
   end
   frame.__rothAuraSpecs[#frame.__rothAuraSpecs + 1] = spec
 
-  if frame.__rothAuraLifecycleReady and frame:IsVisible() then
+  if frame.__rothAuraLifecycleReady and IsFrameVisible(frame) then
     func.EnsureAuraRegions(frame)
   end
   return true
@@ -354,7 +379,11 @@ function func.RefreshAuraFilters(frame)
     if element and spec.groupKey then
       local filters, fingerprint = BuildCandidateFilters(frame, spec)
       if fingerprint ~= spec.candidateFingerprint then
-        element:SetAuraGroupCandidateFilters(spec.groupKey, filters)
+        local updated = safety.TryMethod(element, "SetAuraGroupCandidateFilters", spec.groupKey, filters)
+        if updated ~= true then
+          WarnOnce("auraFilterUpdateFailed", "The loaded oUF AuraContainer could not update candidate filters.")
+          return false
+        end
         spec.candidateFingerprint = fingerprint
         changed = true
       end
@@ -645,7 +674,7 @@ local function AttachAuraLifecycle(frame)
 
   frame.__rothAuraLifecycleReady = true
   frame:HookScript("OnShow", EnsureAuraRegionsOnShow)
-  if frame:IsVisible() then
+  if IsFrameVisible(frame) then
     func.EnsureAuraRegions(frame)
   end
 end
@@ -653,7 +682,7 @@ end
 oUF:RegisterInitCallback(AttachAuraLifecycle)
 
 ns.auraRuntime = {
-  requiredOUFVersion = "14.0.2",
+  requiredOUFVersion = "14.1.1",
   usesManagedContainers = true,
   lazyGroupRegistration = true,
   rawAuraScanning = false,

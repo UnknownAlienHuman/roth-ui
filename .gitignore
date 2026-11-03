@@ -8,3 +8,8 @@
 # Python tool cache
 __pycache__/
 *.pyc
+
+# Reproducible build outputs
+dist/
+dist-a/
+dist-b/

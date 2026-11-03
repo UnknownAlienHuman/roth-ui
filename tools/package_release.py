@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import re
 import sys
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -18,6 +19,7 @@ SERVICE_NAMES = {
     ".git", ".github", "tools", "tests", "todo.md", "todo.archive.md", "audit.md",
     "history.md", "addon_map.md", "AGENT_GUIDE.md", "ARCHITECTURE.md", "CODE_GRAPH.md",
     "CODE_INDEX.md", "CURRENT_STATUS.md", "MIDNIGHT_12_1_MIGRATION.md", "README.md",
+    "MIGRATION_12_1_5.md", "RELEASE_NOTES.md",
     "STOP.txt", "_branch_marker.txt", "_probe_do_not_keep.txt", "oops.txt",
 }
 
@@ -47,6 +49,23 @@ def collect() -> dict[PurePosixPath, Path]:
             rel = PurePosixPath(source.relative_to(ROOT).as_posix())
             add(source, PurePosixPath("Roth_UI") / rel)
 
+    # A partial source checkout must not silently produce a textureless addon.
+    # Check literal asset references in the loaded graph, including texture
+    # choices stored in configuration tables. Copy the full retained media set.
+    referenced: set[str] = {"d3_head_diablo.tga"}
+    for rel in graph_paths():
+        if rel.suffix.lower() != ".lua":
+            continue
+        text = (ROOT / rel).read_text(encoding="utf-8-sig")
+        referenced.update(re.findall(r'mediapath\s*\.\.\s*["\']([^"\']+)["\']', text))
+        referenced.update(re.findall(r'Roth_UI(?:\\\\|/)+media(?:\\\\|/)+([^"\'\n]+)', text))
+    for name in referenced:
+        candidates = [ROOT / "media" / name]
+        if not Path(name).suffix:
+            candidates.extend(ROOT / "media" / (name + suffix) for suffix in (".tga", ".blp"))
+        if not any(candidate.is_file() for candidate in candidates):
+            raise RuntimeError(f"missing referenced media asset: {name}")
+
     return files
 
 
@@ -70,7 +89,8 @@ def build(output: Path) -> tuple[str, int]:
 def verify(path: Path) -> None:
     if not path.is_file():
         raise RuntimeError(f"archive does not exist: {path}")
-    expected = {str(item) for item in collect()}
+    sources = collect()
+    expected = {str(item) for item in sources}
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
         if len(names) != len(set(names)):
@@ -88,6 +108,10 @@ def verify(path: Path) -> None:
                 raise RuntimeError(f"service file leaked into package: {name}")
             if not name.startswith("Roth_UI/"):
                 raise RuntimeError(f"unexpected archive root: {name}")
+            source = sources[PurePosixPath(name)]
+            info = archive.getinfo(name)
+            if info.file_size != source.stat().st_size or archive.read(name) != source.read_bytes():
+                raise RuntimeError(f"package bytes differ from source: {name}")
         if "Roth_UI/Roth_UI.toc" not in actual:
             raise RuntimeError("Roth_UI/Roth_UI.toc is missing")
         if any(name.startswith("Roth_UI_Options/") for name in actual):

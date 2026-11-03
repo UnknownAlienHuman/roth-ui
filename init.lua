@@ -9,7 +9,6 @@ _G.Roth_UI = Roth_UI
 -- Retail 12.1 requires the current external oUF release. No compatibility path
 -- for older oUF color, element, aura or secure-header contracts is retained.
 Roth_UI.oUF = assert(_G.oUF, "Roth_UI: oUF 14.1.1 or newer is required")
-Roth_UI.rLib = Roth_UI.rLib or _G.rLib
 
 -- ---------------------------------------------------------------------------
 -- No-Ace configuration bootstrap

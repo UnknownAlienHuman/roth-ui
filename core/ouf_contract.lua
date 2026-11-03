@@ -69,7 +69,7 @@ end
 ns.oUFContract = {
   minimumVersion = "14.1.1",
   detectedVersion = version,
-  managedAuras = true, -- verified when the first oUF frame is initialized
+  managedAuras = "validated-on-create", -- public AuraContainer methods are checked when created
   nativeInterpolation = true,
   sessionOwnedSecureHeaders = true,
 }

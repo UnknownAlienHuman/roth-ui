@@ -299,17 +299,18 @@ function ns.ForceOrbValueRefresh(orbType)
   end
 
   if type(fill.ForceUpdate) == "function" then
+    -- oUF Health:ForceUpdate runs the owner update path, including PostUpdate.
+    -- Calling PostUpdate again below would duplicate both the API reads and the
+    -- orb text/render work for every settings refresh.
     fill:ForceUpdate()
-  end
-
-  if type(fill.PostUpdate) ~= "function" then
-    return
-  end
-
-  local unit = "player"
-  if orbType == "HEALTH" then
-    fill:PostUpdate(unit, UnitHealth(unit), UnitHealthMax(unit))
-  elseif orbType == "POWER" then
-    fill:PostUpdate(unit, UnitPower(unit), UnitPowerMax(unit))
+  elseif type(fill.PostUpdate) == "function" then
+    -- Compatibility fallback for an unattached StatusBar in a test or partial
+    -- initialization state. Normal oUF frames use ForceUpdate above.
+    local unit = "player"
+    if orbType == "HEALTH" then
+      fill:PostUpdate(unit, UnitHealth(unit), UnitHealthMax(unit))
+    elseif orbType == "POWER" then
+      fill:PostUpdate(unit, UnitPower(unit), UnitPowerMax(unit))
+    end
   end
 end

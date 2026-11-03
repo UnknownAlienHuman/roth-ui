@@ -4,6 +4,8 @@ local func = assert(ns and ns.func, "Roth_UI: ns.func is required by mover_runti
 local storeApi = assert(ns and ns.store, "Roth_UI: ns.store is required by mover_runtime.lua")
 local GetConfigValue = assert(storeApi.GetConfigValue, "Roth_UI: store GetConfigValue is required by mover_runtime.lua")
 local SetConfigValue = assert(storeApi.SetConfigValue, "Roth_UI: store SetConfigValue is required by mover_runtime.lua")
+local DeferUntilOutOfCombat = assert(ns.framePolicy and ns.framePolicy.DeferUntilOutOfCombat,
+  "Roth_UI: shared frame policy is required by mover_runtime.lua")
 
 local cfg = ns and ns.cfg or {}
 local floor = floor
@@ -18,8 +20,6 @@ local moverRuntime = ns.moverRuntime or {}
 ns.moverRuntime = moverRuntime
 moverRuntime._frames = moverRuntime._frames or setmetatable({}, { __mode = "k" })
 moverRuntime._categories = moverRuntime._categories or setmetatable({}, { __mode = "k" })
-moverRuntime._legacyFrameList = moverRuntime._legacyFrameList or nil
-moverRuntime._legacyPrimed = moverRuntime._legacyPrimed or false
 
 local CATEGORY_ORDER = { "art", "bars", "units", "orbs" }
 
@@ -48,39 +48,6 @@ local function GetMoverFrameName(f)
   return n
 end
 
-local function InsertUnique(list, entry)
-  if type(list) ~= "table" or entry == nil then
-    return false
-  end
-
-  for i = 1, #list do
-    if list[i] == entry then
-      return false
-    end
-  end
-
-  list[#list + 1] = entry
-  return true
-end
-
-local function EnsureCompatDragFrameList()
-  local list = moverRuntime._legacyFrameList
-  local rLib = _G.rLib
-  if type(list) ~= "table" and type(rLib) == "table" then
-    list = rLib.dragFrameList
-  end
-  if type(list) ~= "table" then
-    list = {}
-  end
-
-  moverRuntime._legacyFrameList = list
-  if type(rLib) == "table" then
-    rLib.dragFrameList = list
-  end
-
-  return list
-end
-
 local function ResolveMoverDragHandle(frame)
   if type(frame) ~= "table" then
     return nil
@@ -107,16 +74,6 @@ local function RegisterCanonicalFrame(frame, category)
 
   registerFrame(frameRegistry, category, frame)
   return true
-end
-
-local function TrackLegacyMoverFrame(frame)
-  if type(frame) ~= "table" then
-    return nil
-  end
-
-  local list = EnsureCompatDragFrameList()
-  InsertUnique(list, frame)
-  return list
 end
 
 local function ResolveMoverCategoryFromRegistry(frame, frameName)
@@ -191,11 +148,6 @@ local function RegisterMoverFrame(frame, category)
   end
 
   moverRuntime._frames[frame] = true
-  local handle = ResolveMoverDragHandle(frame)
-  if handle then
-    TrackLegacyMoverFrame(frame)
-  end
-
   category = ResolveMoverCategoryHint(frame, category)
   if type(category) == "string" and category ~= "" then
     moverRuntime._categories[frame] = category
@@ -203,18 +155,6 @@ local function RegisterMoverFrame(frame, category)
   end
 
   return frame
-end
-
-local function PrimeLegacyMoverFrames()
-  if moverRuntime._legacyPrimed == true then
-    return
-  end
-  moverRuntime._legacyPrimed = true
-
-  local dragFrameList = EnsureCompatDragFrameList()
-  for i = 1, #dragFrameList do
-    RegisterMoverFrame(dragFrameList[i])
-  end
 end
 
 local function ShouldVisitMoverSelection(selection, category)
@@ -228,44 +168,8 @@ function moverRuntime.GetDragHandle(frame)
   return ResolveMoverDragHandle(frame)
 end
 
-function moverRuntime.GetCompatDragFrameList()
-  return EnsureCompatDragFrameList()
-end
-
 function moverRuntime.RegisterFrame(frame, category)
   return RegisterMoverFrame(frame, category)
-end
-
-function moverRuntime.AttachLegacyDragFrame(frame, category, resize, inset, clamp)
-  if type(frame) ~= "table" then
-    return false
-  end
-
-  if ResolveMoverDragHandle(frame) then
-    RegisterMoverFrame(frame, category)
-    return true
-  end
-
-  local rLib = _G.rLib
-  if type(rLib) ~= "table" then
-    return false
-  end
-
-  local dragFrameList = EnsureCompatDragFrameList()
-  if resize == true then
-    if type(rLib.CreateDragResizeFrame) ~= "function" then
-      return false
-    end
-    rLib:CreateDragResizeFrame(frame, dragFrameList, inset, clamp)
-  else
-    if type(rLib.CreateDragFrame) ~= "function" then
-      return false
-    end
-    rLib:CreateDragFrame(frame, dragFrameList, inset, clamp)
-  end
-
-  RegisterMoverFrame(frame, category)
-  return true
 end
 
 function moverRuntime.ForEachFrame(selection, callback)
@@ -276,8 +180,6 @@ function moverRuntime.ForEachFrame(selection, callback)
   if type(callback) ~= "function" then
     return
   end
-
-  PrimeLegacyMoverFrames()
 
   local seen = {}
 
@@ -631,6 +533,7 @@ local function HandleMoverMouseUp(df, button)
 end
 
 func.SetMoverUnlocked = function(f, isUnlocked)
+  if InCombatLockdown and InCombatLockdown() then return false end
   if not f then return false end
   local df = ResolveMoverDragHandle(f)
   if not df then return false end
@@ -661,6 +564,7 @@ func.SetMoverUnlocked = function(f, isUnlocked)
 end
 
 func.ResetMoverScale = function(f)
+  if InCombatLockdown and InCombatLockdown() then return false end
   if not f then return end
   local defaultScale = NormalizeMoverScale(f.defaultScale) or 1
   if f.SetScale then
@@ -670,6 +574,7 @@ func.ResetMoverScale = function(f)
 end
 
 func.ResetMoverLayout = function(f)
+  if InCombatLockdown and InCombatLockdown() then return false end
   if not f then return end
 
   SetMoverUserPlaced(f, false)
@@ -717,25 +622,8 @@ function moverRuntime.ResetLayout(frame)
   return func.ResetMoverLayout(frame)
 end
 
-local function PublishLegacyMoverBridge()
-  local rLib = _G.rLib
-  if type(rLib) ~= "table" then
-    return
-  end
-
-  rLib.dragFrameList = EnsureCompatDragFrameList()
-  rLib.moverCallbacks = rLib.moverCallbacks or {}
-  local callbacks = rLib.moverCallbacks
-  callbacks.SaveLayout = SaveMoverLayout
-  callbacks.ClearLayout = ClearMoverLayout
-  callbacks.ApplySavedLayout = ApplySavedMoverLayout
-  callbacks.ResetLayout = func.ResetMoverLayout
-  callbacks.RegisterFrame = RegisterMoverFrame
-end
-
-PublishLegacyMoverBridge()
-
 func.applyDragFunctionality = function(f, special)
+  if InCombatLockdown and InCombatLockdown() then return false end
   if not f then return end
   local category = ResolveMoverCategoryHint(f, special == "orb" and "orbs" or special == "bottomline" and "art" or nil)
   if ResolveMoverDragHandle(f) then
@@ -759,18 +647,48 @@ func.applyDragFunctionality = function(f, special)
   local df = CreateFrame("Frame", nil, f)
   df:SetAllPoints(f)
   df:SetFrameStrata("HIGH")
-  df:SetScript("OnDragStart", function(self) if IsShiftKeyDown() then self:GetParent():StartMoving() end end)
-  df:SetScript("OnDragStop", function(self)
-    local parent = self:GetParent()
-    if not parent then return end
-    parent:StopMovingOrSizing()
-    SaveMoverPoint(parent)
+  local moving = false
+  local function StopDrag()
+    if not moving then return end
+    if DeferUntilOutOfCombat("mover-stop:" .. (GetMoverFrameName(f) or tostring(f)), StopDrag) then return end
+    moving = false
+    f:StopMovingOrSizing()
+    SaveMoverPoint(f)
+  end
+  df:SetScript("OnDragStart", function(self)
+    if InCombatLockdown and InCombatLockdown() then return end
+    if IsShiftKeyDown() then
+      moving = true
+      self:GetParent():StartMoving()
+    end
   end)
+  df:SetScript("OnDragStop", StopDrag)
+  df:SetScript("OnHide", StopDrag)
   local t = df:CreateTexture(nil, "OVERLAY", nil, 6)
   t:SetAllPoints(df)
-  t:SetColorTexture(0, 1, 0)
-  t:SetAlpha(0.2)
+  t:SetColorTexture(0.16, 0.09, 0.06, 0.72)
   df.texture = t
+  local edges = {
+    { "TOPLEFT", "TOPRIGHT", "height" }, { "BOTTOMLEFT", "BOTTOMRIGHT", "height" },
+    { "TOPLEFT", "BOTTOMLEFT", "width" }, { "TOPRIGHT", "BOTTOMRIGHT", "width" },
+  }
+  for index = 1, #edges do
+    local spec = edges[index]
+    local edge = df:CreateTexture(nil, "OVERLAY", nil, 7)
+    edge:SetColorTexture(0.72, 0.51, 0.24, 0.95)
+    edge:SetPoint(spec[1], df, spec[1])
+    edge:SetPoint(spec[2], df, spec[2])
+    if spec[3] == "height" then edge:SetHeight(1) else edge:SetWidth(1) end
+  end
+  local label = df:CreateFontString(nil, "OVERLAY")
+  label:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+  label:SetPoint("LEFT", df, "LEFT", 4, 0)
+  label:SetPoint("RIGHT", df, "RIGHT", -4, 0)
+  label:SetWordWrap(false)
+  label:SetTextColor(1, 0.82, 0.48)
+  local title = GetMoverFrameName(f) or "Roth UI"
+  label:SetText(title:gsub("^Roth_UI", ""):gsub("Frame$", ""):gsub("(%l)(%u)", "%1 %2"))
+  if type(func.RegisterFontString) == "function" then func.RegisterFontString(label, 12, "OUTLINE") end
   f.dragframe = df
   f.dragFrame = df
   f.dragframe:Hide()
@@ -786,33 +704,4 @@ func.applyDragFunctionality = function(f, special)
   if not cfg.framesLocked then
     func.SetMoverUnlocked(f, true)
   end
-end
-
-func.simpleDragFunc = function(f)
-  f:SetHitRectInsets(-15, -15, -15, -15)
-  f:SetClampedToScreen(true)
-  f:SetMovable(true)
-  SetMoverUserPlaced(f, false)
-
-  if not f.defaultPoint and f.GetPoint then
-    local a1, af, a2, x, y = f:GetPoint()
-    if af and af.GetName then
-      af = af:GetName()
-    end
-    f.defaultPoint = { a1 = a1, af = af, a2 = a2, x = x, y = y }
-  end
-  if not f.defaultScale and f.GetScale then
-    f.defaultScale = NormalizeMoverScale(f:GetScale()) or 1
-  end
-
-  RegisterMoverFrame(f, ResolveMoverCategoryHint(f))
-  ApplySavedMoverLayout(f, { size = false })
-
-  f:EnableMouse(true)
-  f:RegisterForDrag("LeftButton")
-  f:SetScript("OnDragStart", function(s) s:StartMoving() end)
-  f:SetScript("OnDragStop", function(s)
-    s:StopMovingOrSizing()
-    SaveMoverPoint(s)
-  end)
 end

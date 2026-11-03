@@ -1,38 +1,29 @@
-# Roth UI code graph — B4.3.4
+# Roth UI dependency and event graph — 3.4.0
 
-```text
-Roth_UI.toc
-  embeds/rLib
-    core + snapguides + temporary drag worker
-  libraries
-  init bridge
-  safety -> forbidden-aspect guards -> oUF 14.1.1 capability contract
-  config persistence owner -> defaults/config -> persistence services
-  runtime services
-    frame registry / movers / shared post-combat queue / event-driven combat fader
-    lazy Settings owner + actions/pages / diagnostics / slash aliases / minimap entry
-    unit values / tags / bars / orb controllers
-    target castbar visual adapter
-    lazy managed aura lifecycle
-    reversible Blizzard frame/group policy
-    secure group-header visibility owner
-  unit layouts -> external oUF
-  post-layout secure group-structure contract
-  forbidden-aware Blizzard action-button skin + UIParent-owned action-bar artwork
-```
+## Critical load dependencies
 
-```text
-secure party/raid structure setting
-  -> persist ordinary config
-  -> mark reload required
-  -> no live protected-header rebuild
-```
+The TOC is the executable load order. This table identifies dependencies checked by the static validator or asserted by the consuming module.
 
-```text
-Blizzard_Settings absent at login
-  -> no category/page construction
-  -> user opens Roth Settings or Blizzard loads Settings
-  -> idempotent category registration and builder execution
-```
+| Consumer | Must already be loaded | Purpose |
+| --- | --- | --- |
+| Frame policy and oUF contract | `init.lua`, safety and forbidden-aspect owners | Access gates and shared combat work |
+| Custom oUF elements | oUF dependency contract | Register Experience, Reputation and target border elements |
+| Persistence facade and value store | Defaults, configuration owner and canonical root store | One SavedVariables write boundary |
+| Settings and runtime services | Persistence, frame policy and deferred scheduler | Configuration access and coalesced refreshes |
+| Movers | Frame registry and shared helpers | One handle/layout owner |
+| Unit styles | Value/aura/cast helpers and `mini_target_scaffold.lua` | Shared construction without duplicate runtime owners |
+| Action skin and artwork | Unit styles, mover runtime and frame policy | Additive Blizzard-button presentation and retained user layouts |
 
-High-frequency state remains in oUF or Blizzard native widgets. Roth callbacks configure addon-owned regions and react to bounded framework/native events. Static tests and packaging files are not loaded by the addon and are excluded from release archives.
+## Bounded event paths
+
+| Request | Authoritative path | Completion |
+| --- | --- | --- |
+| Combat-sensitive mutation | Keyed `framePolicy.DeferUntilOutOfCombat` callback | Drain outside combat; remove the shared listener |
+| Next-frame layout refresh | Keyed `defer.RunNextFrame` callback | Latest callback runs once; pending entry is removed before invocation |
+| XP/reputation data change | Custom oUF element callback | Update values/visibility; request artwork only on visibility transition |
+| Structural party/raid setting | Persistence and group structure contract | Mark reload required; retain existing secure headers |
+| Settings entry | Lazy category/page owner | Register and build each category once |
+| Font preference change | Shared settings refresh and font policy | Update changed fonts or restore still-owned overrides |
+| Artwork refresh | Configured default geometry followed by mover overrides | Preserve artwork and XP/reputation saved point, scale and size |
+
+Blizzard retains action-button state and native widget behavior; external oUF retains unit/secure-header lifecycle and element dispatch. Roth UI owns its artwork, configuration and bounded presentation work. Tests, documentation and build tools are excluded from runtime packages.

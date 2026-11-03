@@ -94,6 +94,7 @@ local ns = {
 
 assert(loadfile("core/safety.lua"))("Roth_UI", ns)
 assert(loadfile("core/safety_aspects.lua"))("Roth_UI", ns)
+assert(loadfile("core/frame_policy.lua"))("Roth_UI", ns)
 assert(loadfile("core/action_button_skin.lua"))("Roth_UI", ns)
 
 expect(type(hookedOnLoad) == "function", "action-button OnLoad hook was not installed")
@@ -111,7 +112,8 @@ expect(primary.HotKey.alpha == 0, "hotkey visibility setting was not applied")
 expect(primary.Name.alpha == 1, "macro-name visibility setting was not applied")
 expect(primary.Count.alpha == 1, "stack-count visibility setting was not applied")
 expect(primary.cooldown.swipe[4] == 0.8, "cooldown swipe setting was not applied")
-expect(primary.FloatingBG.hidden == true, "floating background was not suppressed")
+expect(primary.FloatingBG.alpha == 0, "floating background was not suppressed")
+expect(primary.FloatingBG.hidden == nil, "skinning changed Blizzard's visibility state")
 
 ns.RefreshActionButtonSkin()
 expect(#primary.textures == 2, "refresh duplicated additive artwork")
@@ -136,7 +138,10 @@ expect(#forbiddenArtwork.textures == 2,
 local late = NewButton("ActionButton4")
 inCombat = true
 hookedOnLoad(late)
+hookedOnLoad(late)
 expect(#late.textures == 0, "late action button was skinned during combat")
+expect(ns.framePolicy.GetPendingCount() == 1, "button work was not coalesced in the shared queue")
+ns.framePolicy.DeferUntilOutOfCombat("unrelated-owner", function() end)
 expect(#createdFrames == 2, "combat queue did not create exactly one regen frame")
 local regenFrame = createdFrames[2]
 expect(regenFrame.events.PLAYER_REGEN_ENABLED == true, "regen event was not registered")
@@ -144,6 +149,7 @@ expect(regenFrame.events.PLAYER_REGEN_ENABLED == true, "regen event was not regi
 inCombat = false
 regenFrame.scripts.OnEvent(regenFrame, "PLAYER_REGEN_ENABLED")
 expect(#late.textures == 2, "queued action button was not skinned after combat")
+expect(ns.framePolicy.GetPendingCount() == 0, "shared queue did not drain")
 expect(regenFrame.events.PLAYER_REGEN_ENABLED == nil,
   "action-button regen event remained permanently registered")
 

@@ -12,7 +12,8 @@ local tonumber = tonumber
 local string_format = string.format
 local string_upper = string.upper
 local CreateFrame = CreateFrame
-local InCombatLockdown = InCombatLockdown
+local framePolicy = assert(ns and ns.framePolicy, "Roth_UI: framePolicy is required by settings_main.lua")
+local DeferUntilOutOfCombat = assert(framePolicy.DeferUntilOutOfCombat, "Roth_UI: framePolicy.DeferUntilOutOfCombat is required by settings_main.lua")
 
 local safety = ns and ns.safety
 local TryCall = safety and safety.TryCall
@@ -115,25 +116,6 @@ local function NormalizeCategoryKey(categoryOrKey)
   return nil
 end
 
-local function EnsureRegenQueue()
-  ui.pendingCombatCallbacks = ui.pendingCombatCallbacks or {}
-
-  if not ui.regenFrame then
-    ui.regenFrame = CreateFrame("Frame")
-    ui.regenFrame:SetScript("OnEvent", function(self)
-      self:UnregisterEvent("PLAYER_REGEN_ENABLED")
-      local pending = ui.pendingCombatCallbacks
-      ui.pendingCombatCallbacks = {}
-      for _, callback in pairs(pending) do
-        TryCall(callback)
-      end
-    end)
-  end
-
-  -- Register only while work is pending; repeated registrations are idempotent.
-  ui.regenFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-end
-
 function ui:RegisterBuilder(name, builder)
   if type(name) ~= "string" or name == "" or type(builder) ~= "function" then
     return false
@@ -203,14 +185,12 @@ function ui:RunOutOfCombat(key, callback)
     return false
   end
 
-  if not (InCombatLockdown and InCombatLockdown()) then
-    TryCall(callback)
-    return true
+  local deferKey = type(key) == "string" and key ~= "" and ("settings:" .. key) or ("settings:" .. tostring(callback))
+  if DeferUntilOutOfCombat(deferKey, callback) then
+    return false
   end
-
-  EnsureRegenQueue()
-  self.pendingCombatCallbacks[key or tostring(callback)] = callback
-  return false
+  TryCall(callback)
+  return true
 end
 
 function ui:CreateDropdownOptions(itemsSource)
@@ -464,9 +444,8 @@ function ui:Open(categoryKey, scrollToElementName)
   end
 
   local categoryID = category.GetID and category:GetID() or category
-  local okA = TryCall(Settings.OpenToCategory, categoryID, scrollToElementName)
-  local okB = TryCall(Settings.OpenToCategory, categoryID, scrollToElementName)
-  return (okA == true) or (okB == true)
+  local ok = TryCall(Settings.OpenToCategory, categoryID, scrollToElementName)
+  return ok == true
 end
 
 function ui:Register()

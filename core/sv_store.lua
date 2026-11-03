@@ -17,12 +17,29 @@ local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by sv_st
 local IsSecret = assert(safety.IsSecret, "Roth_UI: safety.IsSecret is required by sv_store.lua")
 local IsForbiddenTable = assert(safety.IsForbiddenTable, "Roth_UI: safety.IsForbiddenTable is required by sv_store.lua")
 local IsSerializablePrimitive = assert(safety.IsSerializablePrimitive, "Roth_UI: safety.IsSerializablePrimitive is required by sv_store.lua")
+local CanAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by sv_store.lua")
 local CopySerializable = assert(safety.CopySerializable, "Roth_UI: safety.CopySerializable is required by sv_store.lua")
+local CopySerializableStrict = assert(safety.CopySerializableStrict,
+  "Roth_UI: safety.CopySerializableStrict is required by sv_store.lua")
 local storeApi = assert(ns and ns.store, "Roth_UI: ns.store is required by sv_store.lua")
 ns.persistence = ns.persistence or {}
 local GetDomainRoot = assert(storeApi.GetDomainRoot, "Roth_UI: store.GetDomainRoot is required by sv_store.lua")
 local SetDomainRoot = assert(storeApi.SetDomainRoot, "Roth_UI: store.SetDomainRoot is required by sv_store.lua")
 local GetConfigRoot = assert(storeApi.GetConfigRoot, "Roth_UI: store.GetConfigRoot is required by sv_store.lua")
+
+local function IsValidPath(path, allowEmpty)
+  if not CanAccess(path) or type(path) ~= "table" then return false end
+  local count = #path
+  if not allowEmpty and count == 0 then return false end
+  for index = 1, count do
+    local key = path[index]
+    if not CanAccess(key) or IsSecret(key) then return false end
+    local keyType = type(key)
+    if keyType ~= "string" and keyType ~= "number" then return false end
+    if keyType == "number" and key ~= key then return false end
+  end
+  return true
+end
 
 local function EnsurePath(root, path)
   local t = root
@@ -47,6 +64,13 @@ local function GetPath(root, path)
   return t
 end
 
+local function CopyTableValue(value)
+  if type(value) ~= "table" then
+    return value
+  end
+  return CopySerializable(value)
+end
+
 local function SetPath(root, path, value)
   if #path == 0 then return end
   if #path == 1 then
@@ -60,16 +84,19 @@ local function SetPath(root, path, value)
 end
 
 local function NormalizeSerializableValue(value)
+  if not CanAccess(value) or IsSecret(value) then
+    return nil, false
+  end
   if value == nil then
     return nil, true
   end
 
-  if IsSerializablePrimitive(value) and not IsSecret(value) then
+  if IsSerializablePrimitive(value) then
     return value, true
   end
 
   if type(value) == "table" then
-    local serial = CopySerializable(value)
+    local serial = CopySerializableStrict(value)
     if serial == nil then
       return nil, false
     end
@@ -80,18 +107,21 @@ local function NormalizeSerializableValue(value)
 end
 
 function ns.SVGet(path, default)
-  if type(path) ~= "table" then
-    return default
+  if not IsValidPath(path, false) then
+    return CopyTableValue(default)
   end
   local sv = GetConfigRoot()
   local v = GetPath(sv, path)
   if v == nil then
-    return default
+    return CopyTableValue(default)
   end
-  return v
+  return CopyTableValue(v)
 end
 
-storeApi.ReadPath = GetPath
+storeApi.ReadPath = function(root, path)
+  if not IsValidPath(path, true) then return nil end
+  return CopyTableValue(GetPath(root, path))
+end
 storeApi.GetConfigValue = function(path, default)
   return ns.SVGet(path, default)
 end
@@ -132,7 +162,8 @@ storeApi.GetOrbDefaults = function(orbType)
 end
 
 local function BuildOrbPath(orbType, path)
-  if type(orbType) ~= "string" or orbType == "" or type(path) ~= "table" then
+  if not CanAccess(orbType) or type(orbType) ~= "string" or orbType == ""
+      or not IsValidPath(path, true) then
     return nil
   end
 
@@ -144,7 +175,7 @@ local function BuildOrbPath(orbType, path)
 end
 
 local function SetDomainValue(domain, path, value)
-  if type(path) ~= "table" or #path == 0 then
+  if not IsValidPath(path, false) then
     return false
   end
 
@@ -166,35 +197,40 @@ storeApi.GetOrbCharValue = function(orbType, path, default)
   local root = GetDomainRoot("orbChar", false)
   local fullPath = BuildOrbPath(orbType, path)
   if not fullPath then
-    return default
+    return CopyTableValue(default)
   end
   local value = GetPath(root, fullPath)
   if value == nil then
-    return default
+    return CopyTableValue(default)
   end
-  return value
+  return CopyTableValue(value)
 end
 
 storeApi.GetOrbConfigValue = function(orbType, path, default)
-  if type(orbType) ~= "string" or orbType == "" or type(path) ~= "table" or #path == 0 then
-    return default
+  if not CanAccess(orbType) or type(orbType) ~= "string" or orbType == ""
+      or not IsValidPath(path, false) then
+    return CopyTableValue(default)
   end
 
   local root = GetDomainRoot("orbChar", false)
-  local config = type(root) == "table" and root[orbType] or nil
-  local value = type(config) == "table" and GetPath(config, path) or nil
+  local config
+  if type(root) == "table" then config = root[orbType] end
+  local value
+  if type(config) == "table" then value = GetPath(config, path) end
   if value ~= nil then
-    return value
+    return CopyTableValue(value)
   end
 
   local defaults = GetOrbDefaultsRoot()
-  config = type(defaults) == "table" and defaults[orbType] or nil
-  value = type(config) == "table" and GetPath(config, path) or nil
+  config = nil
+  if type(defaults) == "table" then config = defaults[orbType] end
+  value = nil
+  if type(config) == "table" then value = GetPath(config, path) end
   if value ~= nil then
-    return value
+    return CopyTableValue(value)
   end
 
-  return default
+  return CopyTableValue(default)
 end
 
 storeApi.SetOrbCharValue = function(orbType, path, value)
@@ -214,12 +250,13 @@ storeApi.SetOrbConfigValue = function(orbType, path, value)
 end
 
 storeApi.GetOrbGlobalValue = function(path, default)
+  if not IsValidPath(path, false) then return CopyTableValue(default) end
   local root = GetDomainRoot("orbGlobal", false)
   local value = GetPath(root, path)
   if value == nil then
-    return default
+    return CopyTableValue(default)
   end
-  return value
+  return CopyTableValue(value)
 end
 
 storeApi.SetOrbGlobalValue = function(path, value)
@@ -259,7 +296,7 @@ function ns.SetOrbGlobalValue(path, value)
 end
 
 function ns.SVSet(path, value, opts)
-  if type(path) ~= "table" or #path == 0 then
+  if not IsValidPath(path, false) then
     return false
   end
 

@@ -15,8 +15,6 @@
   local DeferUntilOutOfCombat = assert(framePolicy.DeferUntilOutOfCombat,
     "Roth_UI: framePolicy.DeferUntilOutOfCombat is required by units/raid.lua")
 
-  local mediapath = ns.mediapath or "Interface\\AddOns\\Roth_UI\\media\\"
-
   --get the unit container
   local unit = ns.unit
   local type = type
@@ -247,10 +245,7 @@
       func.applyDragFunctionality(raidAnchor)
       raidAnchor:SetFrameStrata("DIALOG")
       raidAnchor:SetFrameLevel(10)
-      raidAnchor.texture = raidAnchor:CreateTexture(nil, "BACKGROUND")
-      raidAnchor.texture:SetAllPoints(raidAnchor)
-      raidAnchor.texture:SetTexture(mediapath.."bar_d")
-      raidAnchor.texture:SetVertexColor(0,1,0,0.2)
+      -- The shared mover supplies the unlock overlay; the anchor needs no art.
       frameRegistry.Register("units", raidAnchor)
     end
 

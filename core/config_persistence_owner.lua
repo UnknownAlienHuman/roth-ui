@@ -341,9 +341,7 @@ local function ApplyConfigSchemaPatches(store)
   end
 
   if store.__schemaPatch < 14 then
-    if store.applyGlobalFonts ~= true then
-      store.applyGlobalFonts = true
-    end
+    -- SeedMissing already supplied the default. Preserve an explicit opt-out.
     store.__schemaPatch = 14
   end
 

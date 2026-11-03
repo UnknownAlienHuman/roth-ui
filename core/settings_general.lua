@@ -1,5 +1,5 @@
 local addonName = ...
-local ns = assert(_G.Roth_UI, "Roth_UI_Options: main Roth_UI namespace is required")
+local ns = assert(_G.Roth_UI, "Roth_UI: main namespace is required")
 
 local ui = assert(ns and ns.SettingsUI, "Roth_UI: SettingsUI is required by settings_general.lua")
 local type = type
@@ -26,30 +26,24 @@ local function RefreshAuraFilters()
   end
 end
 
-local function ApplyRegisteredFontStrings()
-  local func = ns and ns.func
-  local resolver = func and func.ResolveFontPath
-  local fontPath = (ns and ns.cfg and ns.cfg.font) or STANDARD_TEXT_FONT
-  if type(resolver) == "function" then
-    fontPath = resolver(fontPath)
-  end
-  if type(fontPath) ~= "string" or fontPath == "" then
-    return
-  end
-
-  local registry = ns and ns._fontStrings
-  if type(registry) ~= "table" then
-    return
-  end
-
-  for fontString, info in pairs(registry) do
-    if fontString and fontString.SetFont and fontString.GetFont then
-      local _, size, flags = fontString:GetFont()
-      size = tonumber(size) or (info and info.size) or 12
-      flags = (type(flags) == "string") and flags or ((info and info.flags) or "")
-      fontString:SetFont(fontPath, size, flags)
+local function QueueFontPolicyRefresh(key, afterRefresh)
+  ui:RunOutOfCombat(key, function()
+    local function Refresh()
+      local fontPolicy = ns and ns.fontPolicy
+      assert(type(fontPolicy) == "table" and type(fontPolicy.Refresh) == "function",
+        "Roth_UI: fontPolicy.Refresh is required by settings_general.lua")
+      fontPolicy.Refresh()
+      if type(afterRefresh) == "function" then
+        afterRefresh()
+      end
     end
-  end
+
+    if defer and type(defer.RunNextFrame) == "function" then
+      defer.RunNextFrame("settings_general:" .. key, Refresh, false)
+    else
+      Refresh()
+    end
+  end)
 end
 
 local function BuildFontOptions()
@@ -194,9 +188,8 @@ local function ApplyGlobalHealthValueMode()
 
   ui:RunOutOfCombat("settings_health_value_mode_global", function()
     Refresh()
-    if defer and type(defer.RunWithRetry) == "function" then
-      defer.RunWithRetry("settings_general:health_value_mode", Refresh, false)
-      return
+    if defer and type(defer.RunNextFrame) == "function" then
+      defer.RunNextFrame("settings_general:health_value_mode", Refresh, false)
     end
   end)
 end
@@ -228,26 +221,12 @@ ui:RegisterBuilder("general", function()
     reloadRequired = false,
     options = BuildFontOptions,
     apply = function()
-      local function RefreshFonts()
-        ApplyRegisteredFontStrings()
-        if ns and ns.cfg and ns.cfg.applyGlobalFonts == true and ns.func and type(ns.func.ApplyGlobalFonts) == "function" then
-          ns.func.ApplyGlobalFonts(ns.func)
+      QueueFontPolicyRefresh("settings_font_policy", function()
+        if ns and type(ns.RefreshOrbsVisual) == "function" then
+          ns.RefreshOrbsVisual()
         end
-      end
-
-      RefreshFonts()
-      if ns and ns.cfg and ns.cfg.applyGlobalFonts == true and ns.func and type(ns.func.ApplyGlobalFonts) == "function" then
-        ui:RunOutOfCombat("settings_global_fonts_refresh", function()
-          RefreshFonts()
-          if defer and type(defer.RunWithRetry) == "function" then
-            defer.RunWithRetry("settings_general:font_refresh", RefreshFonts, false)
-          end
-        end)
-      end
-      if ns and type(ns.RefreshOrbsVisual) == "function" then
-        ns.RefreshOrbsVisual()
-      end
-      RefreshAuraFilters()
+        RefreshAuraFilters()
+      end)
     end,
   })
 
@@ -256,24 +235,20 @@ ui:RegisterBuilder("general", function()
     variable = "ROTH_UI_APPLY_GLOBAL_FONTS",
     label = "Apply Font Globally",
     tooltip =
-    "When enabled, Blizzard FontObjects are rewritten to the selected font immediately. Disabling the option preserves the saved state but restoring Blizzard defaults still needs /reload.",
+    "When enabled, the selected font is applied to supported Blizzard FontObjects. When disabled, their previous fonts are restored.",
     path = { "applyGlobalFonts" },
     defaultValue = ui:GetConfigDefault({ "applyGlobalFonts" }, true),
     reloadRequired = false,
     set = function(value)
       ui:SetConfigValue({ "applyGlobalFonts" }, value, {
-        reloadRequired = value ~= true,
-        apply = function(enabled)
-          if enabled and ns and ns.func and type(ns.func.ApplyGlobalFonts) == "function" then
-            ui:RunOutOfCombat("settings_global_fonts", function()
-              ns.func.ApplyGlobalFonts(ns.func)
-              if defer and type(defer.RunWithRetry) == "function" then
-                defer.RunWithRetry("settings_general:apply_global_fonts", function()
-                  ns.func.ApplyGlobalFonts(ns.func)
-                end, false)
-              end
-            end)
-          end
+        reloadRequired = false,
+        apply = function()
+          QueueFontPolicyRefresh("settings_font_policy", function()
+            if ns and type(ns.RefreshOrbsVisual) == "function" then
+              ns.RefreshOrbsVisual()
+            end
+            RefreshAuraFilters()
+          end)
         end,
       })
     end,

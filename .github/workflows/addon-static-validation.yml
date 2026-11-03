@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: Publish the B4.3.4 GitHub release after validation
+        description: Publish a GitHub release after validation
         required: false
         default: false
         type: boolean
@@ -16,12 +16,30 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Read addon version
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import pathlib
+          import re
+
+          toc = pathlib.Path("Roth_UI.toc").read_text(encoding="utf-8")
+          versions = re.findall(r"^## Version:\s*(\S+)\s*$", toc, re.MULTILINE)
+          if len(versions) != 1 or not re.fullmatch(r"\d+\.\d+\.\d+(?:[-.][\w.-]+)?", versions[0]):
+              raise SystemExit("Roth_UI.toc must declare exactly one valid release version")
+          print(f"version={versions[0]}")
+          PY
 
       - name: Install Lua 5.1
         run: |
@@ -31,7 +49,7 @@ jobs:
       - name: Validate repository text policy
         run: python3 tools/validate_repository_text.py
 
-      - name: Validate load graph, ownership and Retail 12.1 boundaries
+      - name: Validate load graph, ownership and Retail boundaries
         run: python3 tools/validate_addon.py
 
       - name: Validate exact secure-header visibility semantics
@@ -40,31 +58,8 @@ jobs:
       - name: Validate lazy Settings, bounded bootstrap and action-button hardening
         run: python3 tools/validate_runtime_hardening.py
 
-      - name: Parse all Lua 5.1 sources
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS= read -r -d '' file; do
-            luac5.1 -p "$file"
-          done < <(find . -type f -name '*.lua' -not -path './.git/*' -print0)
-
-      - name: Run isolated regression tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          lua5.1 tests/test_safety.lua
-          lua5.1 tests/test_safety_aspects.lua
-          lua5.1 tests/test_frame_policy.lua
-          lua5.1 tests/test_frame_policy_bootstrap.lua
-          lua5.1 tests/test_ouf_contract.lua
-          lua5.1 tests/test_target_castbar.lua
-          lua5.1 tests/test_aura_lazy.lua
-          lua5.1 tests/test_combat_fader.lua
-          lua5.1 tests/test_group_header_visibility.lua
-          lua5.1 tests/test_settings_lifecycle.lua
-          lua5.1 tests/test_action_button_skin.lua
-          lua5.1 tests/test_minimap_button.lua
-          lua5.1 tests/test_action_bar_background.lua
+      - name: Parse Lua 5.1 sources and run every regression test
+        run: python3 tools/run_lua_tests.py --lua lua5.1 --luac luac5.1
 
       - name: Reject whitespace and conflict-marker errors
         shell: bash
@@ -80,20 +75,23 @@ jobs:
 
       - name: Build deterministic runtime package twice
         shell: bash
+        env:
+          VERSION: ${{ steps.metadata.outputs.version }}
         run: |
           set -euo pipefail
+          archive="Roth_UI-${VERSION}.zip"
           mkdir -p dist-a dist-b dist
-          python3 tools/package_release.py "dist-a/Roth_UI-3.3.8-v57.8-B4.3.4.zip"
-          python3 tools/package_release.py "dist-b/Roth_UI-3.3.8-v57.8-B4.3.4.zip"
-          cmp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.4.zip" "dist-b/Roth_UI-3.3.8-v57.8-B4.3.4.zip"
-          cp "dist-a/Roth_UI-3.3.8-v57.8-B4.3.4.zip" dist/
-          (cd dist && sha256sum Roth_UI-3.3.8-v57.8-B4.3.4.zip > SHA256SUMS.txt)
-          unzip -Z1 dist/Roth_UI-3.3.8-v57.8-B4.3.4.zip > dist/ZIP-CONTENTS.txt
+          python3 tools/package_release.py "dist-a/${archive}"
+          python3 tools/package_release.py "dist-b/${archive}"
+          cmp "dist-a/${archive}" "dist-b/${archive}"
+          cp "dist-a/${archive}" dist/
+          (cd dist && sha256sum "${archive}" > SHA256SUMS.txt)
+          unzip -Z1 "dist/${archive}" > dist/ZIP-CONTENTS.txt
 
       - name: Upload verified package
         uses: actions/upload-artifact@v4
         with:
-          name: Roth_UI-3.3.8-v57.8-B4.3.4
+          name: Roth_UI
           path: dist/*
           if-no-files-found: error
           retention-days: 30
@@ -107,49 +105,38 @@ jobs:
       contents: write
 
     steps:
+      - name: Check out validated commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
       - name: Download verified package
         uses: actions/download-artifact@v4
         with:
-          name: Roth_UI-3.3.8-v57.8-B4.3.4
+          name: Roth_UI
           path: dist
 
-      - name: Publish B4.3.4 release once
+      - name: Publish versioned release once
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v3.3.8-v57.8-B4.3.4
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
           set -euo pipefail
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; leaving it unchanged."
+          tag="v${VERSION}"
+          archive="Roth_UI-${VERSION}.zip"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists; leaving it unchanged."
             exit 0
           fi
 
-          cat > RELEASE_NOTES.md <<'NOTES'
-          ## Roth UI 3.3.8-v57.8-B4.3.4
-
-          Retail/Midnight 12.1 secure lifecycle and runtime hardening update.
-
-          - validated against live Blizzard UI baseline `12.1.0.69933`;
-          - requires current oUF 14.1.1 or newer;
-          - keeps each party/raid secure header session-owned instead of rebuilding protected headers from Settings;
-          - stores desired/applied secure-header visibility in addon-owned weak metadata;
-          - centralizes post-combat callbacks in one coalescing event queue;
-          - bounds login/addon bootstrap listeners and unregisters them after their named work completes;
-          - structural party/raid options are persisted as reload-required changes;
-          - Blizzard Settings pages register lazily without forcing `Blizzard_Settings` to load at login;
-          - action-button skinning checks access and operation-specific forbidden aspects before mutating Blizzard regions;
-          - validates these contracts with dedicated static and Lua regression guards;
-          - produces one deterministic runtime-only `Roth_UI` addon directory.
-
-          Source/static validation passed on the tagged commit. Retail-client combat, taint, party/raid transition and visual validation remain a separate acceptance gate.
-          NOTES
-
-          gh release create "$TAG" \
+          test -f RELEASE_NOTES.md
+          test -f "dist/${archive}"
+          gh release create "$tag" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Roth UI 3.3.8-v57.8-B4.3.4" \
+            --title "Roth UI ${VERSION}" \
             --notes-file RELEASE_NOTES.md \
-            dist/Roth_UI-3.3.8-v57.8-B4.3.4.zip \
+            "dist/${archive}" \
             dist/SHA256SUMS.txt \
             dist/ZIP-CONTENTS.txt

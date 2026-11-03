@@ -6,6 +6,8 @@ local addonName, ns = ...
 local func = assert(ns and ns.func, "Roth_UI: ns.func is required by unit_value_runtime.lua")
 local cfg = ns and ns.cfg
 local safety = ns and ns.safety
+local CanAccess = assert(safety and safety.CanAccess,
+  "Roth_UI: safety.CanAccess is required by unit_value_runtime.lua")
 
 local type = type
 local tonumber = tonumber
@@ -23,6 +25,10 @@ local UnitReaction = UnitReaction
 local GetPlayerInfoByGUID = GetPlayerInfoByGUID
 
 local IsSecretValue = assert(func.IsSecretValue, "Roth_UI: func.IsSecretValue is required by unit_value_runtime.lua")
+
+local function CanReadOrdinaryValue(value)
+  return CanAccess(value) and not IsSecretValue(value)
+end
 --update health func
 --
 -- WoW 12.x: Unit* APIs may return Secret Values in combat. Secret Values must never
@@ -38,7 +44,7 @@ func.GetScaleTo100Curve = GetScaleTo100Curve
 
 local function SafeUnitHealthPercent(unit)
   local fn = _G.UnitHealthPercent
-  if not (unit and type(fn) == "function") then
+  if not CanReadOrdinaryValue(unit) or unit == nil or type(fn) ~= "function" then
     return nil
   end
   local curve = GetScaleTo100Curve()
@@ -50,7 +56,7 @@ end
 
 local function SafeUnitPowerPercent(unit)
   local fn = _G.UnitPowerPercent
-  if not (unit and type(fn) == "function") then
+  if not CanReadOrdinaryValue(unit) or unit == nil or type(fn) ~= "function" then
     return nil
   end
   local curve = GetScaleTo100Curve()
@@ -63,18 +69,16 @@ end
 func.SafeUnitHealthPercent = SafeUnitHealthPercent
 func.SafeUnitPowerPercent = SafeUnitPowerPercent
 
-local CanAccessValue = _G.canaccessvalue
 local function CoerceAccessibleNumber(v)
-  if IsSecretValue(v) then
-    if type(CanAccessValue) == "function" and CanAccessValue(v) then
-      local n = tonumber(v)
-      if type(n) == "number" then
-        return n
-      end
-    end
+  if not CanAccess(v) then
     return nil
   end
   if v == nil then
+    return nil
+  end
+  if IsSecretValue(v) then
+    -- Conversion does not declassify. Leave the opaque value for a documented
+    -- native text sink instead of trying tonumber on it.
     return nil
   end
   if type(v) == "number" then
@@ -95,6 +99,7 @@ func.CoerceAccessibleNumber = CoerceAccessibleNumber
 
 local function SetTextCached(fs, v)
   if not fs then return end
+  if not CanReadOrdinaryValue(v) then return end
   if v == nil then v = "" end
   if type(v) == "number" then
     v = tostring(v)
@@ -147,9 +152,14 @@ end
 
 local function SafeSetText(fs, v)
   if not fs then return end
+  local accessible = CanAccess(v)
   if IsSecretValue(v) then
     fs._rothLastText = nil
     fs:SetText(v)
+    return
+  end
+  if not accessible then
+    SetTextCached(fs, "")
     return
   end
   if v == nil then
@@ -161,9 +171,14 @@ end
 
 local function SafeSetStackText(fs, v)
   if not fs then return end
+  local accessible = CanAccess(v)
   if IsSecretValue(v) then
     fs._rothLastText = nil
     fs:SetText(v)
+    return
+  end
+  if not accessible then
+    SetTextCached(fs, "")
     return
   end
   if v == nil then
@@ -189,11 +204,16 @@ end
 
 local function SetPercentText(fs, d)
   if not fs then return end
+  local accessible = CanAccess(d)
   if IsSecretValue(d) then
     -- Formatting secret percentages using Lua triggers taint errors when fractions appear.
     -- Calling FontString:SetFormattedText natively rounds and appends the '%' safely in C!
     fs._rothLastText = nil
     fs:SetFormattedText("%.0f%%", d)
+    return
+  end
+  if not accessible then
+    SetTextCached(fs, "")
     return
   end
   if d == nil then
@@ -246,27 +266,27 @@ local function GetEffectiveRuntimeConfig()
 end
 
 local function GetClassColorForUnit(unit)
-  if not unit then return nil end
+  if not CanReadOrdinaryValue(unit) or unit == nil then return nil end
   local isPlayer = UnitIsPlayer(unit)
-  if IsSecretValue(isPlayer) or not isPlayer then return nil end
+  if not CanReadOrdinaryValue(isPlayer) or isPlayer ~= true then return nil end
 
   local classToken
   local guid = UnitGUID(unit)
-  if not IsSecretValue(guid) and guid then
+  if CanReadOrdinaryValue(guid) and guid ~= nil then
     if GetPlayerInfoByGUID then
       local _, byGUID = GetPlayerInfoByGUID(guid)
-      if not IsSecretValue(byGUID) and byGUID then
+      if CanReadOrdinaryValue(byGUID) and byGUID ~= nil then
         classToken = byGUID
       end
     end
   end
   if not classToken then
     local _, byUnit = UnitClass(unit)
-    if not IsSecretValue(byUnit) and byUnit then
+    if CanReadOrdinaryValue(byUnit) and byUnit ~= nil then
       classToken = byUnit
     end
   end
-  if not classToken then return nil end
+  if not CanReadOrdinaryValue(classToken) or classToken == nil then return nil end
   return (RAID_CLASS_COLORS and RAID_CLASS_COLORS[classToken]) or nil
 end
 func.GetClassColorForUnit = GetClassColorForUnit
@@ -277,34 +297,69 @@ func.updateHealth = function(bar, unit, cur, min, max)
   -- it like (bar, unit, cur, min, max). Normalize without touching secrets.
   local value = cur
   local maxv = max
-  if (not IsSecretValue(maxv)) and maxv == nil then
+  if CanReadOrdinaryValue(maxv) and maxv == nil then
     maxv = min
+  end
+  local valueReadable = CanReadOrdinaryValue(value)
+  local maxReadable = CanReadOrdinaryValue(maxv)
+
+  -- A permitted numeric conversion can produce an ordinary number. Values that
+  -- remain secret or inaccessible stay out of Lua arithmetic and formatters.
+  if not valueReadable then
+    local n = CoerceAccessibleNumber(value)
+    if type(n) == "number" then
+      value = n
+      valueReadable = true
+    end
+  end
+  if not maxReadable then
+    local n = CoerceAccessibleNumber(maxv)
+    if type(n) == "number" then
+      maxv = n
+      maxReadable = true
+    end
   end
 
   local dead, offline
   local color
+  local unitReadable = CanReadOrdinaryValue(unit) and unit ~= nil
 
-  local tap = unit and UnitIsTapDenied(unit)
-  if not IsSecretValue(tap) and tap then
+  local tap
+  if unitReadable then
+    tap = UnitIsTapDenied(unit)
+  end
+  if CanReadOrdinaryValue(tap) and tap == true then
     color = COLOR_TAP_DENIED
   else
-    local deadFlag = unit and UnitIsDeadOrGhost(unit)
-    if not IsSecretValue(deadFlag) and deadFlag then
+    local deadFlag
+    if unitReadable then
+      deadFlag = UnitIsDeadOrGhost(unit)
+    end
+    if CanReadOrdinaryValue(deadFlag) and deadFlag == true then
       color = COLOR_DEAD_OFFLINE
       dead = 1
     else
-      local connected = unit and UnitIsConnected(unit)
-      if not IsSecretValue(connected) and not connected then
+      local connected
+      if unitReadable then
+        connected = UnitIsConnected(unit)
+      end
+      if CanReadOrdinaryValue(connected) and connected == false then
         color = COLOR_DEAD_OFFLINE
         offline = 1
       elseif not colorCfg.classcolored then
         color = colorCfg.bright
       else
-        local classColor = GetClassColorForUnit(unit)
+        local classColor
+        if unitReadable then
+          classColor = GetClassColorForUnit(unit)
+        end
         if classColor then color = classColor end
         if not color then
-          local reaction = unit and UnitReaction(unit, "player")
-          if not IsSecretValue(reaction) and reaction then
+          local reaction
+          if unitReadable then
+            reaction = UnitReaction(unit, "player")
+          end
+          if CanReadOrdinaryValue(reaction) and reaction ~= nil then
             color = FACTION_BAR_COLORS[reaction]
           end
         end
@@ -313,32 +368,21 @@ func.updateHealth = function(bar, unit, cur, min, max)
   end
   if not color then color = COLOR_NEUTRAL_FALLBACK end
 
-  local minSecret = IsSecretValue(value)
-  local maxSecret = IsSecretValue(maxv)
-
-  -- If the values are Secret Values, try to coerce them to plain numbers when allowed.
-  -- This enables short-number formatting in combat without doing arithmetic on secrets.
-  if minSecret then
-    local n = CoerceAccessibleNumber(value)
-    if type(n) == "number" then
-      value = n
-      minSecret = false
-    end
-  end
-  if maxSecret then
-    local n = CoerceAccessibleNumber(maxv)
-    if type(n) == "number" then
-      maxv = n
-      maxSecret = false
-    end
-  end
-
   -- Prefer UnitHealthPercent so we can display % even when max is secret.
-  local d = SafeUnitHealthPercent(unit)
-  local dIsNumber = (not IsSecretValue(d)) and type(d) == "number"
+  local d
+  if unitReadable then
+    d = SafeUnitHealthPercent(unit)
+  end
+  local dReadable = CanReadOrdinaryValue(d)
+  if dReadable and d ~= nil and type(d) ~= "number" then
+    d = nil
+    dReadable = true
+  end
+  local dIsNumber = dReadable and type(d) == "number"
 
   -- Fallback to manual ratio only if both inputs are not secret.
-  if (d == nil) and (not minSecret) and (not maxSecret) and (maxv ~= nil) and (maxv > 0) and (value ~= nil) then
+  if dReadable and d == nil and valueReadable and maxReadable
+      and maxv ~= nil and maxv > 0 and value ~= nil then
     d = floor(value / maxv * 100)
     dIsNumber = true
   end
@@ -349,15 +393,17 @@ func.updateHealth = function(bar, unit, cur, min, max)
       SafeSetText(bar.valueText, PLAYER_OFFLINE or "OFFLINE")
     elseif dead == 1 then
       SafeSetText(bar.valueText, DEAD or "DEAD")
-    elseif (not minSecret) and (value ~= nil) then
+    elseif valueReadable and value ~= nil then
       local valueMode = bar.valueTextMode or "curmax"
-      if (not maxSecret) and (maxv ~= nil) and (maxv > 0) then
+      if maxReadable and maxv ~= nil and maxv > 0 then
         if valueMode == "cur" then
           SafeSetText(bar.valueText, func.numFormat(value))
         elseif valueMode == "percent" then
           if dIsNumber then
             SafeSetText(bar.valueText, floor(d) .. "%")
-          elseif d ~= nil then
+          elseif dReadable and d ~= nil then
+            SetPercentText(bar.valueText, d)
+          elseif IsSecretValue(d) then
             SetPercentText(bar.valueText, d)
           else
             SafeSetText(bar.valueText, func.numFormat(value))
@@ -376,11 +422,12 @@ func.updateHealth = function(bar, unit, cur, min, max)
           SafeSetText(bar.valueText, func.numFormat(value) .. " / " .. func.numFormat(maxv))
         end
       else
-        -- When max is secret, still show current (abbreviated) value.
+        -- When max is unreadable, still show a readable current value.
         SafeSetText(bar.valueText, func.numFormat(value))
       end
     else
-      -- Inaccessible values are forwarded only to the native FontString sink.
+      -- Secret values use the documented native text sink; inaccessible
+      -- non-secret values are cleared by SafeSetText without inspection.
       SafeSetText(bar.valueText, value)
     end
   end
@@ -392,7 +439,9 @@ func.updateHealth = function(bar, unit, cur, min, max)
       SafeSetText(bar.perText, "")
     elseif dIsNumber then
       SafeSetText(bar.perText, floor(d) .. "%")
-    elseif d ~= nil then
+    elseif dReadable and d ~= nil then
+      SetPercentText(bar.perText, d)
+    elseif IsSecretValue(d) then
       SetPercentText(bar.perText, d)
     else
       SafeSetText(bar.perText, "")
@@ -436,9 +485,18 @@ end
 --update power func
 func.updatePower = function(bar, unit, cur, min, max)
   local _, _, powerColors = GetEffectiveRuntimeConfig()
-  local token = unit and select(2, UnitPowerType(unit)) or nil
-  if IsSecretValue(token) then token = nil end
-  local color = token and powerColors[token] or nil
+  local unitReadable = CanReadOrdinaryValue(unit) and unit ~= nil
+  local token
+  if unitReadable then
+    local _, tokenValue = UnitPowerType(unit)
+    if CanReadOrdinaryValue(tokenValue) then
+      token = tokenValue
+    end
+  end
+  local color
+  if type(token) == "string" then
+    color = powerColors[token]
+  end
   if not color then
     color = COLOR_POWER_DEFAULT
   end
@@ -448,47 +506,55 @@ func.updatePower = function(bar, unit, cur, min, max)
   -- Normalize signature (bar, unit, cur, max) vs (bar, unit, cur, min, max)
   local value = cur
   local maxv = max
-  if (not IsSecretValue(maxv)) and maxv == nil then
+  if CanReadOrdinaryValue(maxv) and maxv == nil then
     maxv = min
   end
+  local valueReadable = CanReadOrdinaryValue(value)
+  local maxReadable = CanReadOrdinaryValue(maxv)
 
-  local minSecret = IsSecretValue(value)
-  local maxSecret = IsSecretValue(maxv)
-
-  -- If the values are Secret Values, try to coerce them to plain numbers when allowed.
-  -- This enables short-number formatting in combat without doing arithmetic on secrets.
-  if minSecret then
+  if not valueReadable then
     local n = CoerceAccessibleNumber(value)
     if type(n) == "number" then
       value = n
-      minSecret = false
+      valueReadable = true
     end
   end
-  if maxSecret then
+  if not maxReadable then
     local n = CoerceAccessibleNumber(maxv)
     if type(n) == "number" then
       maxv = n
-      maxSecret = false
+      maxReadable = true
     end
   end
 
-  local d = SafeUnitPowerPercent(unit)
-  local dIsNumber = (not IsSecretValue(d)) and type(d) == "number"
-  if (d == nil) and (not minSecret) and (not maxSecret) and (maxv ~= nil) and (maxv > 0) and (value ~= nil) then
+  local d
+  if unitReadable then
+    d = SafeUnitPowerPercent(unit)
+  end
+  local dReadable = CanReadOrdinaryValue(d)
+  if dReadable and d ~= nil and type(d) ~= "number" then
+    d = nil
+    dReadable = true
+  end
+  local dIsNumber = dReadable and type(d) == "number"
+  if dReadable and d == nil and valueReadable and maxReadable
+      and maxv ~= nil and maxv > 0 and value ~= nil then
     d = floor(value / maxv * 100)
     dIsNumber = true
   end
 
   if bar.valueText then
-    if (not minSecret) and (value ~= nil) then
+    if valueReadable and value ~= nil then
       local valueMode = bar.valueTextMode or "curmax"
-      if (not maxSecret) and (maxv ~= nil) and (maxv > 0) then
+      if maxReadable and maxv ~= nil and maxv > 0 then
         if valueMode == "cur" then
           SafeSetText(bar.valueText, func.numFormat(value))
         elseif valueMode == "percent" then
           if dIsNumber then
             SafeSetText(bar.valueText, floor(d) .. "%")
-          elseif d ~= nil then
+          elseif dReadable and d ~= nil then
+            SetPercentText(bar.valueText, d)
+          elseif IsSecretValue(d) then
             SetPercentText(bar.valueText, d)
           else
             SafeSetText(bar.valueText, func.numFormat(value))
@@ -517,7 +583,9 @@ func.updatePower = function(bar, unit, cur, min, max)
   if bar.perText then
     if dIsNumber then
       SafeSetText(bar.perText, floor(d) .. "%")
-    elseif d ~= nil then
+    elseif dReadable and d ~= nil then
+      SetPercentText(bar.perText, d)
+    elseif IsSecretValue(d) then
       SetPercentText(bar.perText, d)
     else
       SafeSetText(bar.perText, "")

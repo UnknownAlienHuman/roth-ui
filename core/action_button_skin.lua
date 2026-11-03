@@ -16,6 +16,8 @@ local CanUseRegion = assert(safety.CanUseRegion, "Roth_UI: safety.CanUseRegion i
 local CanUseRegionFor = assert(safety.CanUseRegionFor, "Roth_UI: safety.CanUseRegionFor is required by action_button_skin.lua")
 local TryGet = assert(safety.TryGet, "Roth_UI: safety.TryGet is required by action_button_skin.lua")
 local TryMethod = assert(safety.TryMethod, "Roth_UI: safety.TryMethod is required by action_button_skin.lua")
+local DeferUntilOutOfCombat = assert(ns.framePolicy and ns.framePolicy.DeferUntilOutOfCombat,
+  "Roth_UI: shared frame policy is required by action_button_skin.lua")
 local InCombatLockdown = InCombatLockdown
 local CreateFrame = CreateFrame
 local rawget = rawget
@@ -29,7 +31,6 @@ local SET_TEXTURE_ASPECT = type(Enum) == "table"
 
 local artworkStates = setmetatable({}, { __mode = "k" })
 local pendingButtons = setmetatable({}, { __mode = "k" })
-local regenFrame
 local ApplyButtonSkin
 
 local function CanSetTexture(region)
@@ -102,34 +103,26 @@ local function EnsureArtwork(button)
   end
 end
 
-local function EnsureRegenFrame()
-  if regenFrame then return end
-
-  regenFrame = CreateFrame("Frame")
-  regenFrame:SetScript("OnEvent", function(self)
-    self:UnregisterEvent("PLAYER_REGEN_ENABLED")
-    local work = pendingButtons
-    pendingButtons = setmetatable({}, { __mode = "k" })
-    for button in pairs(work) do
-      ApplyButtonSkin(button)
-    end
-  end)
+local function FlushPendingButtons()
+  local work = pendingButtons
+  pendingButtons = setmetatable({}, { __mode = "k" })
+  for button in pairs(work) do
+    ApplyButtonSkin(button)
+  end
 end
 
 local function QueueButton(button)
   if not button then return end
   pendingButtons[button] = true
-  EnsureRegenFrame()
-  regenFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+  DeferUntilOutOfCombat("action-button-skin", FlushPendingButtons)
 end
 
 ApplyButtonSkin = function(button)
-  if not button then return false end
+  if not CanUseRegion(button) then return false end
   if InCombatLockdown and InCombatLockdown() then
     QueueButton(button)
     return false
   end
-  if not CanUseRegion(button) then return false end
 
   local gotName, buttonName = TryMethod(button, "GetName")
   if gotName ~= true or not CanAccess(buttonName) or type(buttonName) ~= "string" or buttonName == "" then
@@ -147,7 +140,7 @@ ApplyButtonSkin = function(button)
   end
 
   local floating = Region(button, "FloatingBG")
-  if CanUseRegion(floating) then TryMethod(floating, "Hide") end
+  if CanUseRegion(floating) then TryMethod(floating, "SetAlpha", 0) end
 
   local hotkey = Region(button, "HotKey", "HotKey")
   if CanUseRegion(hotkey) then

@@ -1,68 +1,53 @@
 # Roth UI
 
-A lightweight Diablo-inspired World of Warcraft Retail interface built on the external [oUF](https://github.com/oUF-wow/oUF) framework.
+A Diablo-inspired World of Warcraft Retail interface built around Blizzard's native unit, action-bar, aura, and Settings systems, with [oUF](https://github.com/oUF-wow/oUF) providing unit-frame lifecycle and elements.
 
 ## Compatibility
 
-- World of Warcraft Retail / Midnight `12.1.0`
-- Interface `120100`
-- Verified live Blizzard UI baseline: `12.1.0.69933`, source `09b9db7948abc9b9648dedaab51eb0cf3ee67b31`
-- Required dependency: oUF `14.1.1` or newer
-- Roth UI version: `3.3.8-v57.8-B4.3.4`
-- Author: Neomorph
+- Target client: Retail `12.1.5`, Interface `120105`, target source build `12.1.5.70688`.
+- Addon version: `3.4.0`.
+- Required dependency: oUF `14.1.1` or newer. Install oUF separately; Roth UI includes the library files required by its own package but not oUF.
+- Source pins used for review: [Blizzard UI source `d07eb002`](https://github.com/Gethe/wow-ui-source/tree/d07eb00237d8891f153215db98a5df880a26cfe5) and [oUF `8f37c36`](https://github.com/oUF-wow/oUF/tree/8f37c36e3ed37d2fcfca2f3690f5e37e52b758c7), checked `2026-11-02`.
+- Author: Neomorph.
+
+These are compatibility targets and source-review references. The addon has **not** been validated in the target client: `GetBuildInfo`, combat behavior, taint, visual layout, and performance checks are `NOT-RUN`.
 
 ## Installation
 
-Install the release archive's single addon folder into `_retail_/Interface/AddOns/`:
-
-```text
-Roth_UI/
-```
-
-Install oUF `14.1.1` or newer separately. Settings, import/export, diagnostics and the minimap button are included in `Roth_UI`; there is no companion options addon.
+Install the release archive's `Roth_UI` folder into `_retail_/Interface/AddOns/`. Install a compatible oUF release separately and enable both addons. Settings, commands, import/export, diagnostics, and the minimap button are included in `Roth_UI`; no companion options addon is needed.
 
 ## Commands
 
 - `/roth` — command list
 - `/roth options` — open Settings
-- `/roth config` — open Health Orb settings
+- `/roth config` — open health orb settings
 - `/rothui` and `/rui` — backward-compatible aliases for `/roth`
 
-The addon-owned minimap button opens Settings with left-click and shows command help with right-click. Settings are not opened during combat.
+The minimap button opens Settings with left-click and shows command help with right-click. Settings do not open during combat.
 
-## Runtime architecture
+## Runtime ownership
 
-- Blizzard owns action buttons, paging, bindings, vehicle/override state and visibility. Roth UI applies additive art/skin only.
-- oUF owns unit-frame lifecycle, health/power/class resources, secure group headers and cast discovery/timing.
-- Party and raid secure headers are created at most once per UI session. Provider visibility, scale, position and range can update live; child-structure changes are persisted as reload-required settings.
-- Desired/applied group visibility and foreign-frame suppression state live in addon-owned weak-key tables, not on Blizzard/oUF objects.
-- One coalescing `PLAYER_REGEN_ENABLED` queue owns bounded post-combat work and unregisters when drained.
-- Group-header visibility uses the oUF header contract outside combat and never reparents protected headers.
-- General aura display uses Blizzard-managed AuraContainers through oUF; Roth UI does not enumerate raw AuraData or own `UNIT_AURA` state.
-- `core/safety.lua` owns Secret/Forbidden/access and serializable-copy guards; `core/safety_aspects.lua` handles operation-specific forbidden aspects.
-- Blizzard Settings registration is lazy: ordinary login does not force `Blizzard_Settings` to load.
-- `core/config_persistence_owner.lua` is the only SavedVariables root writer.
-- `core/settings_main.lua` is the only Blizzard Settings category owner.
-- `core/combat_fader.lua` is the only class-bar combat-fade owner and uses events instead of a permanent `OnUpdate`.
-- Action-bar artwork remains `UIParent`-owned and does not reparent protected Blizzard frames.
-- 3D portraits and managed aura containers are created lazily.
-- Status-bar smoothing uses native `Enum.StatusBarInterpolation`.
+- Blizzard owns action buttons, paging, bindings, vehicle and override state, and native visibility. Roth UI adds button skin and `UIParent`-owned artwork.
+- oUF owns unit-frame lifecycle, health/power/class resources, secure group headers, cast discovery, and managed aura events.
+- One shared frame policy coalesces bounded work until combat ends. The keyed next-frame scheduler coalesces layout refreshes. Owners do not keep separate permanent combat-exit listeners.
+- `core/mover_runtime.lua` is the sole mover owner for frame handles and saved point, scale, and size. Blizzard frames are not reparented.
+- `core/font_policy.lua` owns Roth font updates and optional Blizzard font overrides. It restores only the exact Blizzard font state it still owns.
+- `units/mini_target_scaffold.lua` shares construction for focus, boss, pet, target-of-target, and pet-target frames while each style supplies its own settings.
+- The custom Experience element in `oUF/elements/experience.lua` owns rested XP display. The experience and reputation elements request action-artwork refresh only when their visibility changes.
+- `core/config_persistence_owner.lua` is the only SavedVariables root writer; `core/settings_main.lua` is the only Blizzard Settings category owner.
+- The legacy embedded mover helper has been removed; mover behavior lives in the main runtime.
 
-## Validation
+## Source checks and tests
 
-The manual `Addon validation and package` workflow performs:
+Run the isolated Lua tests with:
 
-- repository text-policy checks;
-- TOC/XML closure, exact metadata, load-order and ownership validation;
-- secure group-header lifecycle and reload-only structure checks;
-- lazy Settings and operation-specific forbidden-aspect checks;
-- rejection of retired aura scanners, replacement action bars, duplicate Settings/SavedVariables owners and legacy rLib modules;
-- Lua 5.1 parsing of all Lua sources;
-- isolated safety, frame-policy, oUF, castbar, aura, combat-fader, group-header, Settings, action-button, minimap and action-bar tests;
-- two deterministic package builds followed by byte comparison;
-- runtime-only ZIP inventory and SHA-256 generation.
+```bash
+python3 tools/run_lua_tests.py
+```
 
-Static checks do not prove in-client safety. Before calling a release client-certified, validate login/reload, target/focus/boss casts, party/raid auras, secure header enable/disable and reload-required transitions, stance/action bars, vehicle/override/possess states, Edit Mode, persistence migration, `/console taintLog 1` and `C_AddOnProfiler` on the target Retail client.
+The runner discovers every `tests/test_*.lua` file. The current suite has 22 tests, with Lua 5.1 syntax validation covering 97 Lua files. Repository and addon validators are available under `tools/`; static checks do not establish in-client safety or performance.
+
+See [release notes](RELEASE_NOTES.md), [current status](CURRENT_STATUS.md), and [12.1.5 migration notes](MIGRATION_12_1_5.md) for implementation detail and validation status.
 
 ## License
 

@@ -10,6 +10,10 @@
 
   --get the functions
   local func = ns.func
+  local buildMiniTargetScaffold = assert(
+    func.buildMiniTargetScaffold,
+    "Roth_UI: buildMiniTargetScaffold is required by units/targettarget.lua"
+  )
 
   --get the unit container
   local unit = ns.unit
@@ -32,100 +36,6 @@
     self:SetHitRectInsets(10,10,10,10)
   end
 
-  --actionbar background
-  local createArtwork = function(self)
-    local t = self:CreateTexture(nil,"BORDER",nil,-8)
-    t:SetAllPoints(self)
-    t:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget")
-  end
-
-  --create health frames
-  local createHealthFrame = function(self)
-
-    local cfg = self.cfg.health
-
-    --health
-    local h = CreateFrame("StatusBar", nil, self)
-    h:SetPoint("TOP",0,-29)
-    h:SetPoint("LEFT",30.5,0)
-    h:SetPoint("RIGHT",-30.5,0)
-    h:SetPoint("BOTTOM",0,25.7)
-	  h:SetFrameStrata("BACKGROUND")
-
-    h:SetStatusBarTexture(cfg.texture)
-    h.bg = h:CreateTexture(nil,"BACKGROUND",nil,-6)
-    h.bg:SetTexture(cfg.texture)
-    h.bg:SetAllPoints(h)
-
-    h.glow = h:CreateTexture(nil,"OVERLAY",nil,-5)
-    h.glow:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget_hpglow")
-    h.glow:SetPoint("TOP",0,-33)
-    h.glow:SetPoint("LEFT",-27.5,0)
-    h.glow:SetPoint("RIGHT",27.5,0)
-    h.glow:SetPoint("BOTTOM",0,27)
-    h.glow:SetVertexColor(0,0,0,1)
-
-    h.highlight = h:CreateTexture(nil,"OVERLAY",nil,-4)
-    h.highlight:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget_highlight")
-    h.highlight:SetAllPoints(h.glow)
-
-    self.Health = h
-    self.Health.smoothing = func.ResolveStatusBarSmoothing(self.cfg.health and self.cfg.health.smooth)
-  end
-
-  --create power frames
-  local createPowerFrame = function(self)
-    local cfg = self.cfg.power
-
-    --power
-    local h = CreateFrame("StatusBar", nil, self.Health)
-    h:SetPoint("TOP",0,-12)
-    h:SetPoint("LEFT",4,0)
-    h:SetPoint("RIGHT",-4,0)
-    h:SetPoint("BOTTOM",0,-10)
-
-    h:SetStatusBarTexture(cfg.texture)
-
-    h.bg = h:CreateTexture(nil,"BACKGROUND",nil,-6)
-    h.bg:SetTexture(cfg.texture)
-    h.bg:SetAllPoints(h)
-
-    h.glow = h:CreateTexture(nil,"OVERLAY",nil,-5)
-    h.glow:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget_ppglow")
-    h.glow:SetAllPoints(self)
-    h.glow:SetVertexColor(0,0,0,1)
-
-    self.Power = h
-    self.Power.smoothing = func.ResolveStatusBarSmoothing(self.cfg.power and self.cfg.power.smooth)
-
-  end
-
-  --create health power strings
-  local createHealthPowerStrings = function(self)
-
-    local name = func.createFontString(self, cfg.font, 11, "THINOUTLINE")
-    name:SetPoint("BOTTOM", self, "TOP", 0, -16)
-    name:SetPoint("LEFT", self.Health, 0, 0)
-    name:SetPoint("RIGHT", self.Health, 0, 0)
-    self.Name = name
-
-    local hpval = func.createFontString(self.Health, cfg.font, 8, "THINOUTLINE")
-    hpval:SetPoint("RIGHT", self.Health, "RIGHT", -4, 0)
-    hpval:SetJustifyH("RIGHT")
-
-    local perphp = func.createFontString(self.Health, cfg.font, 8, "THINOUTLINE")
-    perphp:SetPoint("CENTER", self.Health, "CENTER", 0, 0)
-    perphp:SetJustifyH("CENTER")
-
-    self:Tag(name, "[roth:namecolor][name<$|r]")
-
-    self.Health.valueText = hpval
-    self.Health.valueTextMode = func.ResolveHealthValueMode()
-    self.Health.perText = perphp
-
-  end
-
-
   ---------------------------------------------
   -- TARGETTARGET STYLE FUNC
   ---------------------------------------------
@@ -140,15 +50,36 @@
     --init
     initUnitParameters(self)
 
-    --create the art
-    createArtwork(self)
-
-    --createhealthPower
-    createHealthFrame(self)
-    createPowerFrame(self)
-
-    --health power strings
-    createHealthPowerStrings(self)
+    buildMiniTargetScaffold(self, {
+      artLayer = "BORDER",
+      healthPoints = {
+        { "TOP", "TOP", 0, -29 },
+        { "LEFT", "LEFT", 30.5, 0 },
+        { "RIGHT", "RIGHT", -30.5, 0 },
+        { "BOTTOM", "BOTTOM", 0, 25.7 },
+      },
+      healthStrata = "BACKGROUND",
+      healthGlowPoints = {
+        { "TOP", "TOP", 0, -33 },
+        { "LEFT", "LEFT", -27.5, 0 },
+        { "RIGHT", "RIGHT", 27.5, 0 },
+        { "BOTTOM", "BOTTOM", 0, 27 },
+      },
+      healthHighlightRelativeTo = "glow",
+      powerPoints = {
+        { "TOP", "TOP", 0, -12 },
+        { "LEFT", "LEFT", 4, 0 },
+        { "RIGHT", "RIGHT", -4, 0 },
+        { "BOTTOM", "BOTTOM", 0, -10 },
+      },
+      smoothPower = true,
+      nameSize = 11,
+      nameYOffset = -16,
+      healthValueSize = 8,
+      healthValuePoint = { "RIGHT", "health", "RIGHT", -4, 0 },
+      healthValueJustify = "RIGHT",
+      healthPercentSize = 8,
+    })
 
     --health power update
     self.Health.PostUpdate = func.updateHealth

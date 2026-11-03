@@ -37,19 +37,19 @@ local function CaptureFrameState(frame)
   if not CanUseRegion(frame) then return nil end
 
   local state = frameState[frame]
-  if state and state.suppressed == true then
+  if state then
+    -- A partial setter failure still owns the original snapshot. Do not capture
+    -- our already-applied alpha as Blizzard's state on the next attempt.
     return state
   end
 
-  state = { alpha = 1, mouse = true, suppressed = false }
   local gotAlpha, alpha = TryMethod(frame, "GetAlpha")
-  if gotAlpha == true and CanAccess(alpha) and type(alpha) == "number" then
-    state.alpha = alpha
-  end
   local gotMouse, enabled = TryMethod(frame, "IsMouseEnabled")
-  if gotMouse == true and CanAccess(enabled) and type(enabled) == "boolean" then
-    state.mouse = enabled
+  if gotAlpha ~= true or not CanAccess(alpha) or type(alpha) ~= "number"
+      or gotMouse ~= true or not CanAccess(enabled) or type(enabled) ~= "boolean" then
+    return nil
   end
+  state = { alpha = alpha, mouse = enabled, suppressed = false }
   frameState[frame] = state
   return state
 end

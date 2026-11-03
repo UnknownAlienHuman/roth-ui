@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static release gate for Roth UI Retail 12.1 / oUF 14."""
+"""Static release gate for Roth UI Retail 12.1.5 / oUF 14."""
 
 from __future__ import annotations
 
@@ -10,11 +10,15 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "3.3.8-v57.8-B4.3.4"
-INTERFACE = "120100"
-TARGET_BUILD = "12.1.0.69933"
+INTERFACE = "120105"
+TARGET_BUILD = "12.1.5.70688"
 OUF_MIN = "14.1.1"
 MAIN_TOC = ROOT / "Roth_UI.toc"
+# The TOC owns the release version used by packages and workflow artifacts.
+_versions = re.findall(r"^## Version:\s*(\S+)\s*$", MAIN_TOC.read_text(), re.MULTILINE)
+if len(_versions) != 1 or not re.fullmatch(r"\d+\.\d+\.\d+(?:[-.][\w.-]+)?", _versions[0]):
+    raise RuntimeError("Roth_UI.toc must declare one valid release version")
+VERSION = _versions[0]
 
 RETIRED_PATHS = {
     "Roth_UI_Options", "core/options_loader.lua", "core/unit_policy.lua",
@@ -29,6 +33,8 @@ RETIRED_PATHS = {
     "core/micromenu_bar.lua", "core/bags_bar.lua", "core/extrabar_holder.lua",
     "core/leave_vehicle_bar.lua", "core/hide_endcaps.lua",
     "embeds/rLib/framefader.lua", "embeds/rLib/grid.lua", "embeds/rLib/slashcmd.lua",
+    "embeds/rLib/core.lua", "embeds/rLib/dragframe.lua", "embeds/rLib/snapguides.lua",
+    "embeds/rLib/rLib.xml", "embeds/rLib/rLib.toc",
     "modules/Roth_UI_oUFModules/modules/oUF_Smooth.lua",
     "Libs/LibActionButton-1.0-GE/LibActionButton-1.0-GE.lua",
     "Libs/LibKeyBound-1.0/LibKeyBound-1.0.lua",
@@ -178,6 +184,9 @@ def assert_order(entries: list[Entry]) -> None:
 
     before("init.lua", "core/safety.lua")
     before("core/safety.lua", "core/safety_aspects.lua")
+    before("core/safety_aspects.lua", "core/frame_policy.lua")
+    before("core/frame_policy.lua", "core/mover_runtime.lua")
+    before("core/frame_policy.lua", "core/settings_main.lua")
     before("core/safety_aspects.lua", "core/ouf_contract.lua")
     before("core/ouf_contract.lua", "core/config_persistence_owner.lua")
     before("core/group_header_visibility.lua", "units/party.lua")
@@ -196,6 +205,8 @@ def assert_order(entries: list[Entry]) -> None:
     before("units/raid.lua", "core/group_structure_contract.lua")
     before("core/group_structure_contract.lua", "core/action_button_skin.lua")
     before("units/player.lua", "core/action_bar_background.lua")
+    for consumer in ("pet", "targettarget", "pettarget", "focustarget", "focus", "boss"):
+        before("units/mini_target_scaffold.lua", f"units/{consumer}.lua")
 
 
 def strip_lua_comments(text: str) -> str:
@@ -294,13 +305,21 @@ def assert_runtime_boundaries(graph: list[Entry]) -> None:
     }
     missing = sorted(required_sources.difference(sources))
     if missing:
-        fail("required B4.3.4 runtime modules missing from graph: " + ", ".join(missing))
+        fail("required runtime modules missing from graph: " + ", ".join(missing))
 
     for path, text in sources.items():
         if path != "core/aura_runtime.lua" and re.search(r"\b(?:CreateAuras|AddGroup|AddSlot)\s*\(", text):
             fail(f"managed aura ownership escaped core/aura_runtime.lua: {path}")
-        if re.search(r"(?:Set|Hook)Script\s*\(\s*[\"']OnUpdate", text) and path != "embeds/rLib/dragframe.lua":
+        if re.search(r"(?:Set|Hook)Script\s*\(\s*[\"']OnUpdate", text):
             fail(f"unapproved first-party OnUpdate: {path}")
+        if re.search(r'RegisterEvent\s*\(\s*[\"\']PLAYER_REGEN_ENABLED[\"\']', text) and path not in {
+            "core/frame_policy.lua", "core/combat_fader.lua"
+        }:
+            fail(f"parallel post-combat listener escaped the shared owner: {path}")
+        if re.search(r"_G\.(?:STANDARD_TEXT_FONT|UNIT_NAME_FONT|DAMAGE_TEXT_FONT)\s*=", text):
+            fail(f"Blizzard global font path overwritten: {path}")
+        if re.search(r"\b(?:RunWithRetry|RunSeries|AttachLegacyDragFrame|simpleDragFunc)\b", text):
+            fail(f"retired retry or mover path restored: {path}")
 
     safety = sources.get("core/safety.lua", "")
     for token in ("canaccessvalue", "CopySerializable", "CanUseRegion", "TryMethod"):

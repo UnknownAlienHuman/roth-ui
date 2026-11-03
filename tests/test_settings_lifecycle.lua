@@ -80,6 +80,9 @@ local ns = {
       local ok, value = pcall(fn, ...)
       return ok, value
     end,
+    CanAccess = function() return true end,
+    CanUseRegion = function() return true end,
+    TryMethod = function() return false end,
   },
   store = {
     GetConfigValue = function(path, fallback)
@@ -95,6 +98,9 @@ local ns = {
   cfgDefaults = {},
 }
 _G.Roth_UI = ns
+
+assert(loadfile("core/frame_policy.lua"))("Roth_UI", ns)
+local framePolicy = assert(ns.framePolicy)
 
 assert(loadfile("core/settings_main.lua"))("Roth_UI")
 local ui = assert(ns.SettingsUI)
@@ -114,7 +120,7 @@ expect(ui.registered == true and ui.registering == false, "settings registration
 expect(categoryCount == 8, "settings categories were duplicated or omitted")
 expect(registeredCategories == 1, "addon category was registered more than once")
 expect(builderCalls == 1, "settings builder did not run exactly once")
-expect(openCount == 2, "existing double OpenToCategory compatibility call changed")
+expect(openCount == 1, "settings open called OpenToCategory more than once")
 
 settingsLoadCallback()
 expect(categoryCount == 8 and registeredCategories == 1 and builderCalls == 1,
@@ -125,6 +131,9 @@ inCombat = true
 expect(ui:RunOutOfCombat("test", function() deferredCalls = deferredCalls + 1 end) == false,
   "combat callback was not deferred")
 expect(#createdFrames == 1, "regen queue created an unexpected number of frames")
+expect(ui.regenFrame == nil and ui.pendingCombatCallbacks == nil,
+  "settings created a second combat deferral owner")
+expect(framePolicy.GetPendingCount() == 1, "shared frame policy did not own deferred settings work")
 local regenFrame = createdFrames[1]
 expect(regenFrame.events.PLAYER_REGEN_ENABLED == true, "regen event was not registered")
 
@@ -132,6 +141,7 @@ inCombat = false
 regenFrame.scripts.OnEvent(regenFrame, "PLAYER_REGEN_ENABLED")
 expect(deferredCalls == 1, "deferred callback did not run")
 expect(regenFrame.events.PLAYER_REGEN_ENABLED == nil, "regen event remained permanently registered")
+expect(framePolicy.GetPendingCount() == 0, "shared frame-policy work remained after drain")
 
 inCombat = true
 ui:RunOutOfCombat("test2", function() deferredCalls = deferredCalls + 1 end)

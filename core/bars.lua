@@ -217,38 +217,6 @@ bars.createExpBar = function(self)
     s.__tooltipHandled = nil
   end)
 
-  f.PostUpdate = function(bar, unit, cur, maxv)
-    local rested = bar and bar.Rested
-    if not rested then return end
-
-    local exhaustion = (type(GetXPExhaustion) == "function") and CoerceNumber(GetXPExhaustion()) or nil
-    local maxXP = CoerceNumber(maxv)
-    if not maxXP and type(UnitXPMax) == "function" then
-      maxXP = CoerceNumber(UnitXPMax(unit or "player"))
-    end
-
-    if not exhaustion or exhaustion <= 0 or not maxXP or maxXP <= 0 then
-      rested:SetMinMaxValues(0, 1)
-      rested:SetValue(0)
-      rested:Hide()
-      return
-    end
-
-    local currentXP = CoerceNumber(cur)
-    if not currentXP and type(UnitXP) == "function" then
-      currentXP = CoerceNumber(UnitXP(unit or "player"))
-    end
-    if not currentXP then currentXP = 0 end
-
-    local restedValue = currentXP + exhaustion
-    if restedValue > maxXP then
-      restedValue = maxXP
-    end
-    rested:SetMinMaxValues(0, maxXP)
-    rested:SetValue(restedValue)
-    rested:Show()
-  end
-
   self.Experience = f
   self.Experience.Rested = r
   self.Experience.show = cfg.show

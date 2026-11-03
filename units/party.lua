@@ -202,20 +202,25 @@
     --create portrait
     if func.ShouldShowPortrait(self) then
       func.createPortrait(self)
-      if self.PortraitHolder then
-        if(InCombatLockdown()) then
-          self.PortraitHolder:RegisterEvent("PLAYER_REGEN_ENABLED")
-        else
-          if self.cfg.vertical then
-            self:SetHitRectInsets(0,0,0,0)
-          else 
-            self:SetHitRectInsets(0,0,-100,0)
+      local portraitHolder = self.PortraitHolder
+      if portraitHolder then
+        local function ApplyPortraitHitRect(afterCombat)
+          -- Group-header children are reused. Ignore deferred work if another
+          -- style has replaced this frame's portrait holder in the meantime.
+          if self.PortraitHolder ~= portraitHolder then return end
+          if InCombatLockdown and InCombatLockdown() then
+            DeferUntilOutOfCombat("party-portrait-hitrect:" .. tostring(self), function()
+              ApplyPortraitHitRect(true)
+            end)
+            return
           end
-        end      
-        self.PortraitHolder:SetScript("OnEvent", function(...)
-          self.PortraitHolder:UnregisterEvent("PLAYER_REGEN_ENABLED")
-          self:SetHitRectInsets(0, 0, 0, 0)
-        end)
+          if afterCombat or self.cfg.vertical then
+            self:SetHitRectInsets(0, 0, 0, 0)
+          else
+            self:SetHitRectInsets(0, 0, -100, 0)
+          end
+        end
+        ApplyPortraitHitRect()
       end      
     end
 

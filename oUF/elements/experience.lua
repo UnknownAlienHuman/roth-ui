@@ -11,14 +11,12 @@ local UnitXP = UnitXP
 local UnitXPMax = UnitXPMax
 local GetXPExhaustion = GetXPExhaustion
 local UnitHasVehicleUI = UnitHasVehicleUI
-local IsSecretValue = (ns and ns.safety and ns.safety.IsSecret) or function(value)
-  return type(_G.issecretvalue) == "function" and _G.issecretvalue(value) or false
-end
+local CanAccess = assert(ns.safety and ns.safety.CanAccess, "Roth_UI: value access guard is required")
 
 local function PlayerHasVehicleUI()
   if type(UnitHasVehicleUI) ~= "function" then return false end
   local value = UnitHasVehicleUI("player")
-  return not IsSecretValue(value) and value == true
+  return CanAccess(value) and value == true
 end
 local UnitLevel = UnitLevel
 local IsXPUserDisabled = IsXPUserDisabled
@@ -62,6 +60,10 @@ local function IsPlayerAtMaxLevel()
 end
 
 local function RefreshActionBarArtwork(self)
+  if ns and type(ns.QueueActionBarArtworkRefresh) == "function" then
+    ns.QueueActionBarArtworkRefresh()
+    return
+  end
   if ns and type(ns.RefreshActionBarArtwork) == "function" then
     ns.RefreshActionBarArtwork()
     return
@@ -94,8 +96,10 @@ local function SetVisibility(self, element, shouldShow)
 end
 
 local function Update(self, event, unit)
-  if unit and unit ~= self.__unit then
-    return
+  -- Unitless events carry booleans (world entry) or numbers (level-up),
+  -- not unit tokens. Only unit-event payloads participate in this filter.
+  if event == "PLAYER_XP_UPDATE" or event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE" then
+    if not CanAccess(unit) or unit ~= self.__unit then return end
   end
 
   local experience = self.Experience
@@ -113,7 +117,7 @@ local function Update(self, event, unit)
 
   local visibilityChanged = SetVisibility(self, experience, shouldShow)
   if not shouldShow then
-    RefreshActionBarArtwork(self)
+    if visibilityChanged then RefreshActionBarArtwork(self) end
     return
   end
 
@@ -144,7 +148,7 @@ local function Update(self, event, unit)
     experience:PostUpdate(self.__unit, current, maximum, restedExhaustion)
   end
 
-  if visibilityChanged or event ~= "ForceUpdate" then
+  if visibilityChanged then
     RefreshActionBarArtwork(self)
   end
 end
@@ -178,7 +182,9 @@ local function Enable(self, unit)
   end
 
   self:RegisterEvent("PLAYER_ENTERING_WORLD", Path, true)
-  self:RegisterEvent("PLAYER_XP_UPDATE", Path)
+  -- Use the general event route and filter its documented unitTarget payload
+  -- in Update, without relying on native RegisterUnitEvent support.
+  self:RegisterEvent("PLAYER_XP_UPDATE", Path, true)
   self:RegisterEvent("PLAYER_LEVEL_UP", Path, true)
   self:RegisterEvent("UPDATE_EXHAUSTION", Path, true)
   self:RegisterEvent("ENABLE_XP_GAIN", Path, true)

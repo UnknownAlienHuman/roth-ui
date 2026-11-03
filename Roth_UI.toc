@@ -1,17 +1,15 @@
-## Interface: 120100
+## Interface: 120105
 ## Author: Neomorph
 ## Title: Roth UI
-## Version: 3.3.8-v57.8-B4.3.4
-## Notes: Lightweight Diablo-inspired oUF layout for Retail 12.1.
+## Version: 3.4.0
+## Notes: Diablo-inspired oUF layout for Retail 12.1.5.
 ## IconTexture: Interface\AddOns\Roth_UI\media\d3_head_diablo.tga
 ## RequiredDeps: oUF
 ## OptionalDeps: RothFont, RothLib
 ## SavedVariables: Roth_UI_DB
 ## SavedVariablesPerCharacter: Roth_UI_DB_Char
 ## X-oUF-Min-Version: 14.1.1
-## X-Target-Build: 12.1.0.69933
-
-embeds/rLib/rLib.xml
+## X-Target-Build: 12.1.5.70688
 
 Libs/LibStub/LibStub.lua
 Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua
@@ -20,6 +18,7 @@ Libs/LibSharedMedia-3.0/lib.xml
 init.lua
 core/safety.lua
 core/safety_aspects.lua
+core/frame_policy.lua
 core/ouf_contract.lua
 
 oUF/elements/target_border.lua
@@ -70,7 +69,6 @@ core/minimap_button.lua
 core/unit_value_runtime.lua
 core/unit_misc_runtime.lua
 core/aura_runtime.lua
-core/frame_policy.lua
 core/font_policy.lua
 core/group_policy.lua
 core/frame_policy_bootstrap.lua
@@ -78,10 +76,10 @@ core/tags.lua
 core/bars.lua
 core/units.lua
 
+units/mini_target_scaffold.lua
 units/target.lua
 units/targettarget.lua
 units/pet.lua
-units/mini_target_scaffold.lua
 units/focus.lua
 units/pettarget.lua
 units/focustarget.lua
