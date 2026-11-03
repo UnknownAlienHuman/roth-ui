@@ -50,6 +50,21 @@ expect(policy.SetSuppressed(region, false) == true, "ordinary restore failed")
 expect(region.alpha == 0.75 and region.mouse == true, "captured frame state was not restored")
 expect(policy.GetSuppressionState(region) == false, "restored state was not cleared")
 
+-- Restore each property only while it still has Roth's suppressed value.
+local outsideAlpha = NewRegion()
+expect(policy.SetSuppressed(outsideAlpha, true) == true, "alpha ownership setup failed")
+outsideAlpha.alpha = 0.35
+expect(policy.SetSuppressed(outsideAlpha, false) == true, "external alpha change blocked restore")
+expect(outsideAlpha.alpha == 0.35 and outsideAlpha.mouse == true,
+  "restore overwrote an alpha change made by another owner")
+
+local outsideMouse = NewRegion()
+expect(policy.SetSuppressed(outsideMouse, true) == true, "mouse ownership setup failed")
+outsideMouse.mouse = true
+expect(policy.SetSuppressed(outsideMouse, false) == true, "external mouse change blocked restore")
+expect(outsideMouse.alpha == 0.75 and outsideMouse.mouse == true,
+  "restore overwrote a mouse change made by another owner")
+
 -- Blizzard may change its own ordinary state after restoration. A new Roth
 -- suppression cycle must capture and restore the new values, not the old ones.
 region.alpha = 0.45
@@ -69,6 +84,21 @@ partial.EnableMouse = mouseSetter
 expect(policy.SetSuppressed(partial, true) == true, "later explicit suppression failed")
 expect(policy.SetSuppressed(partial, false) == true, "partial cycle did not restore")
 expect(partial.alpha == 0.75 and partial.mouse == true, "partial retry lost the original snapshot")
+
+local partialRestore = NewRegion()
+expect(policy.SetSuppressed(partialRestore, true) == true, "partial restore setup failed")
+local restoreMouseSetter = partialRestore.EnableMouse
+partialRestore.EnableMouse = function() error("temporary restore failure") end
+expect(policy.SetSuppressed(partialRestore, false) == false, "partial restore failure was reported as success")
+expect(partialRestore.alpha == 0.75 and partialRestore.mouse == false,
+  "partial restore did not isolate the failed property")
+partialRestore.EnableMouse = restoreMouseSetter
+local alphaMutations = partialRestore.mutations
+expect(policy.SetSuppressed(partialRestore, false) == true, "partial restore retry failed")
+expect(partialRestore.alpha == 0.75 and partialRestore.mouse == true,
+  "partial restore retry lost the original snapshot")
+expect(partialRestore.mutations == alphaMutations + 1,
+  "partial restore retry mutated an already-restored property")
 
 local unreadable = NewRegion()
 unreadable.GetAlpha = function() error("alpha unavailable") end

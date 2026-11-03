@@ -2,7 +2,7 @@
 
 ## Current target
 
-Addon `3.4.1` targets Retail `12.1.5`, Interface `120105`, target source build `12.1.5.70688`. Source references checked `2026-11-02`: Blizzard UI source `d07eb00237d8891f153215db98a5df880a26cfe5` and oUF `14.1.1` at `8f37c36e3ed37d2fcfca2f3690f5e37e52b758c7`. Live client build, combat, taint, visual, and performance verification have not been run; do not describe the addon as client-certified.
+Addon `3.4.2` targets Retail `12.1.5`, Interface `120105`, target source build `12.1.5.70688`. Source references checked `2026-11-02`: Blizzard UI source `d07eb00237d8891f153215db98a5df880a26cfe5` and oUF `14.1.1` at `8f37c36e3ed37d2fcfca2f3690f5e37e52b758c7`. Live client build, combat, taint, visual, and performance verification have not been run; do not describe the addon as client-certified.
 
 Before editing, read `README.md`, `ARCHITECTURE.md`, `CODE_INDEX.md`, `CODE_GRAPH.md`, the current status and migration notes, the TOC, and applicable local policy guides. Treat current repository code and explicit project instructions as authoritative. Check pinned framework/platform source for API contracts when needed; distinguish source review from client evidence.
 
@@ -43,7 +43,7 @@ Run the complete isolated Lua suite with the discovered Lua 5.1 interpreter:
 python3 tools/run_lua_tests.py
 ```
 
-The current tree contains 31 isolated test scripts and 106 Lua files total (75 addon Lua files plus the tests). The available Lua 5.1.1 interpreter can check syntax with native `loadfile`; `luac5.1` is unavailable in this environment. When available, also run:
+The current tree contains 34 isolated test scripts and 109 Lua files total (75 addon Lua files plus the tests). The runner accepts `--lua PATH` or `LUA_BIN` and checks syntax with native `loadfile` when a standalone Lua 5.1 compiler is unavailable. When available, also run:
 
 ```bash
 python3 tools/validate_repository_text.py

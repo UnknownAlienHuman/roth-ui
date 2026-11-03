@@ -163,6 +163,7 @@ def assert_metadata(meta: dict[str, str]) -> None:
         "Author": "Neomorph",
         "Version": VERSION,
         "RequiredDeps": "oUF",
+        "LoadSavedVariablesFirst": "1",
         "X-oUF-Min-Version": OUF_MIN,
         "X-Target-Build": TARGET_BUILD,
     }

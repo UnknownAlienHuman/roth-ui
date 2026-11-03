@@ -158,8 +158,12 @@ local function SeedMissing(dst, defaults)
       if copyValue ~= nil then
         dst[k] = copyValue
       end
-    elseif type(v) == "table" and type(dst[k]) == "table" and not IsSecret(v) and not IsForbiddenTable(v) and not IsForbiddenTable(dst[k]) then
-      SeedMissing(dst[k], v)
+    elseif type(v) == "table" and not IsSecret(v) and not IsForbiddenTable(v) then
+      if type(dst[k]) ~= "table" or IsForbiddenTable(dst[k]) then
+        dst[k] = CopySerializable(v) or {}
+      else
+        SeedMissing(dst[k], v)
+      end
     end
   end
 end
@@ -461,9 +465,15 @@ end
 
 local function ReconcileConfigStore(store)
   local cfg = ResolveConfigDefaults()
-  if type(store) ~= "table" then
+  -- Remove cycles and unsupported descendants before recursive migration.
+  -- An unreadable root cannot become a runtime config; seed a fresh one.
+  if SanitizeSerializableInPlace(store, { maxDepth = 12 }) ~= true then
     store = {}
   end
+
+  -- Preserve legacy boolean castbar values before repairing default-backed
+  -- table shapes below (false means the bar was explicitly disabled).
+  NormalizeLegacyUnitConfig(store)
 
   store.__mode = store.__mode or "full_v3"
   store.__build = store.__build or "noace_fullsv_v3"
@@ -476,8 +486,6 @@ local function ReconcileConfigStore(store)
   store.playercolor = nil
   store.playerspec = nil
 
-  SanitizeSerializableInPlace(store, { maxDepth = 12 })
-  NormalizeLegacyUnitConfig(store)
   ApplyConfigSchemaPatches(store)
   return store
 end

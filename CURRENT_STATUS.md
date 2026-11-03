@@ -1,4 +1,4 @@
-# Current status — Roth UI 3.4.1
+# Current status — Roth UI 3.4.2
 
 Evidence date: **2026-11-03**. Source and local test results are recorded separately from game-client acceptance.
 
@@ -6,7 +6,7 @@ Evidence date: **2026-11-03**. Source and local test results are recorded separa
 
 | Component | Selected version / evidence |
 | --- | --- |
-| Addon | `3.4.1`, one `Roth_UI` package root |
+| Addon | `3.4.2`, one `Roth_UI` package root |
 | Retail source | `12.1.5.70688`, [Gethe/wow-ui-source at d07eb00237d8](https://github.com/Gethe/wow-ui-source/commit/d07eb00237d8891f153215db98a5df880a26cfe5) |
 | TOC Interface | `120105`, derived from the selected patch family; client `GetBuildInfo()` not captured |
 | External framework | oUF `14.1.1+`; reviewed [14.1.1 source](https://github.com/oUF-wow/oUF/tree/8f37c36e3ed37d2fcfca2f3690f5e37e52b758c7) |
@@ -14,6 +14,10 @@ Evidence date: **2026-11-03**. Source and local test results are recorded separa
 
 ## Implemented
 
+- The TOC opts into `LoadSavedVariablesFirst: 1`: configuration migration and captured unit config views consume loaded SavedVariables before frame construction. The static gate requires this loading contract.
+- Configuration repair sanitizes before recursive seeding, repairs malformed table shapes, and preserves legacy castbar booleans and provider selections. An unreadable config root is replaced with fresh validated defaults.
+- General reset delegates directly to the canonical root reset/reload owner. Failed reset does not preemptively clear mover layouts. Suppression restores alpha and mouse properties independently only while they still match Roth's last successful writes.
+- One-shot configuration callbacks release captured state after dispatch; persistence bootstrap unregisters its completed load/login listeners and retains logout sanitation.
 - Safety queries reject inaccessible, missing, throwing or non-boolean results. Unit-value, experience, tag, orb and target-classification paths gate access before ordinary Lua operations; secret-capable presentation uses supported native sinks.
 - Managed AuraContainer methods are checked when each container is created. Secure group headers remain session-owned; structural settings still require reload.
 - `core/frame_policy.lua` owns the shared keyed post-combat queue. Settings, button skinning, artwork, portrait hit areas, fonts and movers use that owner.
@@ -37,11 +41,12 @@ Evidence date: **2026-11-03**. Source and local test results are recorded separa
 | Repository text policy | PASS |
 | TOC/XML graph, ownership and Retail boundary checks | PASS; 76 expanded entries |
 | Secure-header visibility and runtime hardening guards | PASS |
-| Lua 5.1.1 syntax via native `assert(loadfile(...))` | PASS; 106 Lua files |
-| Isolated Lua 5.1 regression scripts | PASS; 31 scripts |
+| Lua 5.1.1 syntax via native `assert(loadfile(...))` | PASS; 109 Lua files |
+| Isolated Lua 5.1 regression scripts | PASS; 34 scripts |
 | Lua compiler (`luac5.1`) | NOT-RUN; compiler unavailable in this environment |
 | Workflow YAML structure and manual-trigger contract | PASS; workflow execution NOT-RUN |
 | Deterministic runtime ZIP | PASS; two builds byte-identical, 283 files |
+| Extracted runtime package | PASS; TOC/XML graph, all packaged Lua syntax and four affected regression scripts |
 
 The regressions use isolated API stubs and secret-value sentinels. They exercise addon control flow and ownership; they do not emulate the client's secure execution engine. Package SHA256 and inventory accompany the built ZIP rather than being embedded in this file.
 

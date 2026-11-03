@@ -7,14 +7,6 @@ local InCombatLockdown = InCombatLockdown
 local actions = ns.settingsActions or {}
 ns.settingsActions = actions
 
-local function GetMoverRuntime()
-  local moverRuntime = ns and ns.moverRuntime
-  if type(moverRuntime) ~= "table" then
-    return nil
-  end
-  return moverRuntime
-end
-
 local function OpenSettingsCategory(categoryKey, unavailableMessage)
   local settingsUI = ns and ns.SettingsUI
   local openCategory = type(settingsUI) == "table" and settingsUI.Open or nil
@@ -37,16 +29,6 @@ function actions.ResetAll()
     return false
   end
 
-  local moverRuntime = GetMoverRuntime()
-  local forEachMoverFrame = moverRuntime and moverRuntime.ForEachFrame or nil
-  local resetMoverLayout = moverRuntime and moverRuntime.ResetLayout or nil
-  if type(forEachMoverFrame) == "function" and type(resetMoverLayout) == "function" then
-    forEachMoverFrame("all", function(frame)
-      resetMoverLayout(frame)
-    end)
-  end
-
-  print("Roth_UI: Settings reset. Reloading UI...")
   if ResetPersistenceAndReload() ~= true then
     print("Roth_UI: failed to reset settings. UI was not reloaded.")
     return false

@@ -233,16 +233,18 @@ local f = CreateFrame("Frame")
 f:RegisterEvent("ADDON_LOADED")
 f:RegisterEvent("PLAYER_LOGIN")
 f:RegisterEvent("PLAYER_LOGOUT")
-f:SetScript("OnEvent", function(_, event, arg1)
+f:SetScript("OnEvent", function(self, event, arg1)
   if event == "ADDON_LOADED" then
     if arg1 ~= addon then
       return
     end
+    self:UnregisterEvent("ADDON_LOADED")
     GetConfigRoot()
     return
   end
 
   if event == "PLAYER_LOGIN" then
+    self:UnregisterEvent("PLAYER_LOGIN")
     ReconcilePersistenceStores()
     if ns and ns.RefreshOrbsVisual then
       ns.RefreshOrbsVisual()

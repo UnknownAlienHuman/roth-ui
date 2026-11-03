@@ -1,4 +1,4 @@
-# Roth UI architecture — 3.4.1
+# Roth UI architecture — 3.4.2
 
 ## Compatibility target
 
@@ -6,7 +6,7 @@ Retail `12.1.5`, Interface `120105`, target source build `12.1.5.70688`; require
 
 ## Package and load boundary
 
-Roth UI ships as one addon root, `Roth_UI`. oUF is a separately installed required dependency. The TOC loads the safety and frame-policy foundations before the oUF contract and unit elements, then runtime services, settings, and unit layouts. `units/mini_target_scaffold.lua` loads before every style that calls its shared builder.
+Roth UI ships as one addon root, `Roth_UI`. oUF is a separately installed required dependency. `LoadSavedVariablesFirst: 1` makes Roth's declared stores available before file-scope configuration migration and unit construction; it does not establish player/world readiness. The TOC loads the safety and frame-policy foundations before the oUF contract and unit elements, then runtime services, settings, and unit layouts. `units/mini_target_scaffold.lua` loads before every style that calls its shared builder.
 
 ## Ownership map
 

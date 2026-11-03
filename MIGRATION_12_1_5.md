@@ -32,3 +32,9 @@ Import rejects encoded text above 2 MiB and compressed or decompressed serialize
 ## Acceptance boundary
 
 See [CURRENT_STATUS.md](CURRENT_STATUS.md) for executed local gates and the client matrix. Stub-based Lua tests establish addon-side behavior; they do not prove secure execution, taint freedom, visual fit or CPU savings in Retail. Those claims remain **NOT-RUN** until recorded against a named client build.
+
+## 3.4.2 loading correction — 2026-11-03
+
+Roth initializes configuration and constructs unit frames during TOC file execution. Without `LoadSavedVariablesFirst`, replacing the initial config root at `ADDON_LOADED` left already-captured unit configuration views bound to defaults. A local integration reproduction using the actual persistence modules demonstrated this stale-reference path.
+
+The TOC now opts into `LoadSavedVariablesFirst: 1`, and the static validator requires it. Selected primary evidence: [Blizzard Damage Meter TOC](https://github.com/Gethe/wow-ui-source/blob/d07eb00237d8891f153215db98a5df880a26cfe5/Interface/AddOns/Blizzard_DamageMeter/Blizzard_DamageMeter.toc). The [KB persistence guide](https://github.com/UnknownAlienHuman/wow-addon-engineering-kb/blob/b03e1635d0ff8bcd6be4f4dfac589dafec4e5e83/KB/addon/Addon_SavedVariables.md) documents the own-SavedVariables boundary and its limits. This opt-in does not establish player, world, dependency or protected-action readiness. Named-client third-party loading verification remains NOT-RUN.

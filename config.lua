@@ -614,60 +614,9 @@
     insets = { left = 4, right = 4, top = 4, bottom = 4 },
   }
 
-  ---------------------------------------------
-  -- SavedVariables overlay
-  --
-  -- Goal:
-  --   * config.lua remains the DEFAULTS definition.
-  --   * In-game Settings edit SavedVariables.
-  --   * Runtime reads SavedVariables (with safe fallback to defaults).
-  --
-  -- Approach:
-  --   1) Build defaults table (cfg) above.
-  --   2) Seed missing keys into the canonical account settings store WITHOUT overwriting.
-  --      Only serializable values are seeded (numbers/strings/booleans/tables).
-  --   3) Build a runtime cfg by starting from defaults and applying SV overrides.
-  --      This avoids persisting any runtime-only / non-serializable objects.
-  ---------------------------------------------
-
-    ---------------------------------------------
-  -- SavedVariables: FULL CONFIG MODE (project requirement)
-  --
-  -- Policy:
-  --   * config.lua defines DEFAULTS (schema + values).
-  --   * On first run (or when upgrading from overrides-only mode) we copy the
-  --     entire defaults table into the canonical account settings store.
-  --   * All modules read settings from the canonical account settings store.
-  --   * Session-only fields are kept in a thin runtime wrapper and are never
-  --     persisted (playername/playerclass/playercolor/playerspec).
-  ---------------------------------------------
-
-  
-  ---------------------------------------------
-  -- SavedVariables: FULL CONFIG MODE (authoritative SV)
-  --
-  -- Policy (project requirement):
-  --   * config.lua defines DEFAULTS (schema + values).
-  --   * On first run (or when upgrading), we copy the ENTIRE defaults table into
-  --     Roth_UI_DB.account.settings.
-  --   * Runtime reads settings from Roth_UI_DB.account.settings (not from config.lua).
-  --   * Runtime-only fields are kept in a separate runtime table and are never persisted.
-  --
-  -- Implementation:
-  --   * cfg          = defaults (schema)
-  --   * SV           = Roth_UI_DB.account.settings (full persisted config)
-  --   * ns.cfg       = SV root (runtime view; persisted)
-  --
-  -- IMPORTANT:
-  --   Do NOT write frames/textures/functions/etc into SV. Only store serializable
-  --   primitives and plain tables. SV writes are only allowed via ns.SVSet().
-  ---------------------------------------------
-
-  -- Config persistence bootstrap
-  --
-  -- config.lua now owns only the defaults/schema table.
-  -- The config persistence owner handles reconcile, schema patching,
-  -- runtime-only proxy fields, and metadata for the canonical config store.
+  -- The TOC loads this addon's SavedVariables before its files. This module
+  -- supplies defaults; the persistence owner migrates/validates the loaded
+  -- store and exposes the runtime proxy before unit styles are constructed.
   local configOwner = assert(ns and ns.configPersistence, "Roth_UI: configPersistence owner is required by config.lua")
   local InitializeConfigDefaults = assert(configOwner.InitializeConfigDefaults, "Roth_UI: configPersistence.InitializeConfigDefaults is required by config.lua")
 

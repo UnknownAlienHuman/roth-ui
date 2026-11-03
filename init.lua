@@ -58,8 +58,10 @@ function Roth_UI:InitConfig()
 
   configLoaded = true
 
-  for _, callback in pairs(loadedCallbacks) do
-    SafeInvoke(callback)
+  local callbacks = loadedCallbacks
+  loadedCallbacks = nil
+  for index = 1, #callbacks do
+    SafeInvoke(callbacks[index])
   end
 end
 

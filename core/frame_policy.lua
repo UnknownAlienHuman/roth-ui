@@ -49,9 +49,30 @@ local function CaptureFrameState(frame)
       or gotMouse ~= true or not CanAccess(enabled) or type(enabled) ~= "boolean" then
     return nil
   end
-  state = { alpha = alpha, mouse = enabled, suppressed = false }
+  state = {
+    alpha = alpha,
+    mouse = enabled,
+    suppressed = false,
+  }
   frameState[frame] = state
   return state
+end
+
+local function RestoreProperty(frame, getter, setter, original, applied)
+  if applied == nil then return true, nil end
+
+  local ok, current = TryMethod(frame, getter)
+  if ok ~= true or not CanAccess(current) or type(current) ~= type(applied) then
+    return false, applied
+  end
+  if current ~= applied then
+    -- Another owner changed this property after Roth suppressed it.
+    return true, nil
+  end
+  if TryMethod(frame, setter, original) ~= true then
+    return false, applied
+  end
+  return true, nil
 end
 
 local function ApplySuppressed(frame, suppressed)
@@ -66,21 +87,36 @@ local function ApplySuppressed(frame, suppressed)
     if not state then return true end
   end
 
-  local alphaTarget = suppressed and 0 or state.alpha
-  local mouseTarget = state.mouse
-  if suppressed then mouseTarget = false end
+  if suppressed then
+    local alphaApplied = TryMethod(frame, "SetAlpha", 0) == true
+    if alphaApplied then
+      state.appliedAlpha = 0
+    end
 
-  local alphaApplied = TryMethod(frame, "SetAlpha", alphaTarget) == true
-  local mouseApplied = TryMethod(frame, "EnableMouse", mouseTarget) == true
-  if not (alphaApplied and mouseApplied) then
+    local mouseApplied = TryMethod(frame, "EnableMouse", false) == true
+    if mouseApplied then
+      state.appliedMouse = false
+    end
+
+    if alphaApplied and mouseApplied then
+      state.suppressed = true
+      return true
+    end
     return false
   end
 
-  if suppressed then
-    state.suppressed = true
-  else
-    frameState[frame] = nil
+  local alphaResolved, appliedAlpha = RestoreProperty(
+    frame, "GetAlpha", "SetAlpha", state.alpha, state.appliedAlpha)
+  local mouseResolved, appliedMouse = RestoreProperty(
+    frame, "IsMouseEnabled", "EnableMouse", state.mouse, state.appliedMouse)
+  state.appliedAlpha = appliedAlpha
+  state.appliedMouse = appliedMouse
+
+  if not (alphaResolved and mouseResolved) then
+    return false
   end
+
+  frameState[frame] = nil
   return true
 end
 
