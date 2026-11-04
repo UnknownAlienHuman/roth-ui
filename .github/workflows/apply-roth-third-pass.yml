@@ -29,7 +29,7 @@ jobs:
       - name: Download and verify audit overlay
         shell: bash
         env:
-          OVERLAY_URL: "https://sdmntpreastus2.oaiusercontent.com/files/00000000-6658-81f6-a554-77049bd8c053/raw?se=2026-11-04T23%3A38%3A24Z&sp=r&sv=2026-02-06&sr=b&scid=2bbe82d5-ee61-5da1-8eab-b29e7cb6989e&skoid=dd316919-ffbf-4550-9c54-dfc99f412009&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-11-04T21%3A12%3A07Z&ske=2026-11-05T21%3A12%3A07Z&sks=b&skv=2026-02-06&sig=t8VyQWRCJQmqX7JHx6fqXRo2XsIw7b6zpTLjTiVcoFw%3D"
+          OVERLAY_URL: "https://sdmntpreastus2.oaiusercontent.com/files/00000000-dc54-81f6-8bc8-efb03bdbe809/raw?se=2026-11-04T23%3A47%3A03Z&sp=r&sv=2026-02-06&sr=b&scid=4333e738-680a-5875-bb6b-f254e3487fdc&skoid=dd316919-ffbf-4550-9c54-dfc99f412009&sktid=a48cca56-e6da-484e-a814-9c849652bcb3&skt=2026-11-04T20%3A58%3A22Z&ske=2026-11-05T20%3A58%3A22Z&sks=b&skv=2026-02-06&sig=AaoIX8sF14AI7cFsmeHyvA2OfFfYU1uXa5jBOZ40Rcg%3D"
         run: |
           set -euo pipefail
           curl --fail --location --retry 3 --retry-all-errors "$OVERLAY_URL" --output /tmp/audit3.zip
