@@ -118,6 +118,11 @@ local ns = {
       deferredWork[key] = callback
       return true
     end,
+    DeferForObject = function(scope, object, callback)
+      if not inCombat then return false end
+      deferredWork[scope .. ":" .. tostring(object)] = callback
+      return true
+    end,
   },
 }
 local function noop() end

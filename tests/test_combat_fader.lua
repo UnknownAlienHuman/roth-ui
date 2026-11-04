@@ -66,8 +66,8 @@ local ns = {
 assert(loadfile("core/combat_fader.lua"))("Roth_UI", ns)
 expect(type(ns.func.AttachCombatFader) == "function", "combat fader was not published")
 expect(type(ns.func.DetachCombatFader) == "function", "combat fader detach API was not published")
-expect(_G.rCombatFrameFader == ns.func.AttachCombatFader,
-  "compatibility alias does not point to the sole fader owner")
+expect(_G.rCombatFrameFader == nil,
+  "combat fader leaked the retired global alias")
 
 local frame = NewFrame()
 expect(ns.func.AttachCombatFader(frame, { alpha = 1, time = 0 }, { alpha = 0.2, time = 0 }) == true,

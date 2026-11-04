@@ -59,27 +59,28 @@ expect(type(playerView.castbar) == "table" and playerView.castbar.show == false,
 expect(ns.cfg.units.party.show == 0 and ns.cfg.units.raid.show == "blizzard",
   "legacy provider show values were overwritten during config reconciliation")
 
+local reconcileConfig = ns.configPersistence.ReconcileConfigStore
 local malformedUnit = { units = { player = false } }
-ns.ReconcileConfigStore(malformedUnit)
+reconcileConfig(malformedUnit)
 expect(type(malformedUnit.units.player) == "table" and malformedUnit.units.player.size == 100,
   "malformed units.player shape was not repaired")
 
 local malformedPortrait = { units = { player = { portrait = false } } }
-ns.ReconcileConfigStore(malformedPortrait)
+reconcileConfig(malformedPortrait)
 expect(type(malformedPortrait.units.player.portrait) == "table"
     and malformedPortrait.units.player.portrait.show == true,
   "malformed nested portrait shape was not repaired")
 
 local cyclic = { units = { player = { portrait = {} } } }
 cyclic.units.player.loop = cyclic
-expect(type(ns.ReconcileConfigStore(cyclic)) == "table",
+expect(type(reconcileConfig(cyclic)) == "table",
   "cyclic legacy input prevented config reconciliation")
 expect(cyclic.units.player.loop == nil,
   "cyclic legacy input was not sanitized before recursive default seeding")
 
 deniedKey = "restricted-key"
 local unreadableRoot = { [deniedKey] = true, child = { invalid = function() end } }
-local recovered = ns.ReconcileConfigStore(unreadableRoot)
+local recovered = reconcileConfig(unreadableRoot)
 expect(recovered ~= unreadableRoot and recovered.units.player.size == 100,
   "failed sanitation exposed an unreadable root to runtime consumers")
 expect(unreadableRoot.child.invalid ~= nil,
@@ -97,6 +98,17 @@ expect(ns.GetUnitConfig("player").size == 222,
   "repeated initialization overwrote existing persisted values")
 
 assert(loadfile("core/persistence_root_store.lua"))("Roth_UI", ns)
+expect(ns.configPersistence.EnsureCanonicalStores == nil
+    and ns.configPersistence.GetConfigRoot == nil
+    and ns.configPersistence.GetCanonicalTemplateStore == nil
+    and ns.configPersistence.GetCanonicalOrbCharStore == nil
+    and ns.configPersistence.GetConfigDefaults == nil
+    and ns.configPersistence.ReplaceCanonicalRoots == nil
+    and ns.configPersistence.ResetCanonicalRoots == nil
+    and ns.configPersistence.SetCanonicalConfigStore == nil
+    and ns.configPersistence.AttachCfgProxy == nil
+    and ns.configPersistence.InitializeConfigDefaults == nil,
+  "root-store capture left raw config-owner root access published")
 local replacement = {
   schema = { version = 1 },
   account = {
@@ -104,9 +116,9 @@ local replacement = {
     templates = {},
   },
 }
-expect(ns.ReplacePersistenceRoots({ accountRoot = replacement }) == true,
-  "ordinary account-root replacement was rejected")
+expect(ns.store.CommitRoots({ accountRoot = replacement }) == true,
+  "internal staged account-root commit was rejected")
 expect(ns.store.GetConfigRoot().units.player.size == 444 and ns.cfg.units.player.size == 444,
-  "root replacement did not rebind the config proxy to the canonical SavedVariables root")
+  "root commit did not rebind the config proxy to the canonical SavedVariables root")
 
 print("config persistence bootstrap and malformed-shape test: OK")

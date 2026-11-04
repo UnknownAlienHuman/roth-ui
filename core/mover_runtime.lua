@@ -1,11 +1,11 @@
-local addonName, ns = ...
+local _, ns = ...
 
 local func = assert(ns and ns.func, "Roth_UI: ns.func is required by mover_runtime.lua")
 local storeApi = assert(ns and ns.store, "Roth_UI: ns.store is required by mover_runtime.lua")
 local GetConfigValue = assert(storeApi.GetConfigValue, "Roth_UI: store GetConfigValue is required by mover_runtime.lua")
 local SetConfigValue = assert(storeApi.SetConfigValue, "Roth_UI: store SetConfigValue is required by mover_runtime.lua")
-local DeferUntilOutOfCombat = assert(ns.framePolicy and ns.framePolicy.DeferUntilOutOfCombat,
-  "Roth_UI: shared frame policy is required by mover_runtime.lua")
+local DeferForObject = assert(ns.framePolicy and ns.framePolicy.DeferForObject,
+  "Roth_UI: object-scoped frame policy is required by mover_runtime.lua")
 
 local cfg = ns and ns.cfg or {}
 local floor = floor
@@ -648,7 +648,7 @@ func.applyDragFunctionality = function(f, special)
   local moving = false
   local function StopDrag()
     if not moving then return end
-    if DeferUntilOutOfCombat("mover-stop:" .. (GetMoverFrameName(f) or tostring(f)), StopDrag) then return end
+    if DeferForObject("mover-stop", f, StopDrag) then return end
     moving = false
     f:StopMovingOrSizing()
     SaveMoverPoint(f)

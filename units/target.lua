@@ -1,5 +1,5 @@
 --get the addon namespace
-local addon, ns = ...
+local _, ns = ...
 
 --get oUF namespace (just in case needed)
 local oUF = ns.oUF or oUF

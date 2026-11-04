@@ -1,5 +1,5 @@
-local addonName = ...
-local ns = assert(_G.Roth_UI, "Roth_UI: main namespace is required")
+local _, private = ...
+local ns = assert(private or _G.Roth_UI, "Roth_UI: main namespace is required")
 
 local ui = assert(ns and ns.SettingsUI, "Roth_UI: SettingsUI is required by settings_general.lua")
 local type = type
@@ -348,7 +348,7 @@ ui:RegisterBuilder("general", function()
     category = "root",
     label = "Saved Variables",
     buttonText = "Reset Settings",
-    tooltip = "Wipes Roth_UI_DB and Roth_UI_DB_Char, clears any loaded legacy globals, then reloads the UI.",
+    tooltip = "Wipes Roth_UI_DB and Roth_UI_DB_Char, then reloads the UI.",
     onClick = ResetAllSettings,
   })
 

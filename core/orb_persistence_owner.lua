@@ -13,12 +13,17 @@ local SetOrbCharRoot = assert(storeApi.SetOrbCharRoot, "Roth_UI: store.SetOrbCha
 local GetOrbGlobalRoot = assert(storeApi.GetOrbGlobalRoot, "Roth_UI: store.GetOrbGlobalRoot is required by orb_persistence_owner.lua")
 local SetOrbGlobalRoot = assert(storeApi.SetOrbGlobalRoot, "Roth_UI: store.SetOrbGlobalRoot is required by orb_persistence_owner.lua")
 
+-- The orb owner captures the raw root closures once. Later runtime modules use
+-- validated value/config APIs instead of gaining a second whole-root writer.
+storeApi.GetOrbCharRoot = nil
+storeApi.SetOrbCharRoot = nil
+storeApi.GetOrbGlobalRoot = nil
+storeApi.SetOrbGlobalRoot = nil
+
 local orbPersistence = ns.orbPersistence or {}
 ns.orbPersistence = orbPersistence
 
-local CreateFrame = _G.CreateFrame
 local InCombatLockdown = _G.InCombatLockdown
-local ReloadUI = _G.ReloadUI
 local ORB_OWNER_FILE = "core/orb_persistence_owner.lua"
 local CHAR_SCHEMA_VERSION = 4
 local GLOBAL_SCHEMA_VERSION = 4
@@ -403,14 +408,10 @@ function orbPersistence.GetSchemaPolicy()
   }
 end
 
-function orbPersistence.GetStores()
-  return GetStores()
-end
-
 function orbPersistence.EnsureStores()
   EnsureGlobalDB()
   EnsureCharDB()
-  return GetStores()
+  return true
 end
 
 function orbPersistence.SanitizeStores()
@@ -435,7 +436,7 @@ function orbPersistence.SanitizeStores()
   end
 
   SyncTemplateListCache()
-  return GetStores()
+  return true
 end
 
 function orbPersistence.ReconcileStores()
@@ -444,23 +445,14 @@ function orbPersistence.ReconcileStores()
 end
 
 function orbPersistence.RunPipeline()
-  orbPersistence.ReconcileStores()
+  local schemaInfo = orbPersistence.ReconcileStores()
   SyncTemplateListCache()
-  return GetStores()
+  return schemaInfo
 end
 
 function orbPersistence.GetTemplateList()
   orbPersistence.RunPipeline()
   return SyncTemplateListCache()
-end
-
-function orbPersistence.LoadGlobalDataDefaults()
-  local glob = db:GetTemplateDefaults()
-  glob.TEMPLATE_LIST = db:GetTemplateListDefaults()
-  if SetGlobalStore(glob) ~= true then return false end
-  print("Roth_UI: global data defaults loaded")
-  orbPersistence.RunPipeline()
-  return GetGlobalStore()
 end
 
 function orbPersistence.LoadGlobalData()
@@ -653,28 +645,26 @@ function orbPersistence.DeleteTemplate(name)
   return true
 end
 
-local addonName = select(1, ...)
-local orbBootstrap = CreateFrame("Frame")
-orbBootstrap:RegisterEvent("ADDON_LOADED")
-orbBootstrap:SetScript("OnEvent", function(self, event, arg1)
-  if event ~= "ADDON_LOADED" or arg1 ~= addonName then
-    return
-  end
-
+-- LoadSavedVariablesFirst makes both declared roots available before this file.
+-- Migrate once at file scope so orb consumers never need a second ADDON_LOADED
+-- owner or observe an unnormalized store.
+local function InitializeOrbPersistence()
   local hadCharStore = type(GetCharStore()) == "table"
   local glob = GetGlobalStore()
   if type(glob) == "table" and glob.reset then
     glob = db:GetTemplateDefaults()
     glob.TEMPLATE_LIST = db:GetTemplateListDefaults()
-    if SetGlobalStore(glob) ~= true then return end
+    if SetGlobalStore(glob) ~= true then return false end
   end
 
-  orbPersistence.LoadGlobalData()
+  if type(orbPersistence.LoadGlobalData()) ~= "table" then
+    return false
+  end
   if hadCharStore then
-    orbPersistence.LoadCharacterData()
-  else
-    orbPersistence.LoadCharacterDataDefaults()
+    return orbPersistence.LoadCharacterData() == true
   end
+  return orbPersistence.LoadCharacterDataDefaults() == true
+end
 
-  self:UnregisterEvent("ADDON_LOADED")
-end)
+assert(InitializeOrbPersistence() == true,
+  "Roth_UI: orb persistence initialization failed")

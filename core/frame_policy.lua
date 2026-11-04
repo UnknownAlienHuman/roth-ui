@@ -5,7 +5,7 @@
 -- CVars. The policy applies ordinary visual/input state outside combat and owns
 -- the single coalescing PLAYER_REGEN_ENABLED queue used by runtime services.
 
-local addonName, ns = ...
+local _, ns = ...
 
 local safety = assert(ns and ns.safety, "Roth_UI: safety is required by frame_policy.lua")
 local CanAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by frame_policy.lua")
@@ -16,7 +16,6 @@ local InCombatLockdown = InCombatLockdown
 local CreateFrame = CreateFrame
 local pairs = pairs
 local type = type
-local tostring = tostring
 local setmetatable = setmetatable
 
 local policy = ns.framePolicy or {}
@@ -25,6 +24,8 @@ ns.framePolicy = policy
 -- State exists only while a foreign frame is suppressed or while a failed
 -- transition still owns one ordinary property that must be restored.
 local frameState = setmetatable({}, { __mode = "k" })
+local deferredObjectKeys = setmetatable({}, { __mode = "k" })
+local nextDeferredObjectKey = 0
 local pending = {}
 local regenFrame
 
@@ -163,7 +164,10 @@ local function EnsureRegenFrame()
 end
 
 local function DeferUntilOutOfCombat(key, callback)
-  if type(key) ~= "string" or key == "" or type(callback) ~= "function" then return false end
+  if not CanAccess(key) or type(key) ~= "string" or key == ""
+      or not CanAccess(callback) or type(callback) ~= "function" then
+    return false
+  end
   if not (InCombatLockdown and InCombatLockdown()) then return false end
 
   pending[key] = callback
@@ -171,7 +175,29 @@ local function DeferUntilOutOfCombat(key, callback)
   return true
 end
 
+local function DeferForObject(scope, object, callback)
+  local objectType = type(object)
+  if not CanAccess(scope) or type(scope) ~= "string" or scope == ""
+      or not CanAccess(object) or (objectType ~= "table" and objectType ~= "userdata")
+      or not CanAccess(callback) or type(callback) ~= "function" then
+    return false
+  end
+  if not (InCombatLockdown and InCombatLockdown()) then
+    return false
+  end
+
+  local key = deferredObjectKeys[object]
+  if not key then
+    nextDeferredObjectKey = nextDeferredObjectKey + 1
+    key = nextDeferredObjectKey
+    deferredObjectKeys[object] = key
+  end
+
+  return DeferUntilOutOfCombat(scope .. ":" .. key, callback)
+end
+
 local function IsRothEnabled(value)
+  if not CanAccess(value) then return false end
   if value == nil then return true end
   if type(value) == "boolean" then return value end
   if type(value) == "number" then return value ~= 0 end
@@ -184,7 +210,14 @@ local function IsRothEnabled(value)
 end
 
 local function SetSuppressed(frame, suppressed)
-  if DeferUntilOutOfCombat("frame:" .. tostring(frame), function()
+  -- Validate the foreign object and requested state before branching, deriving
+  -- queue identity or retaining either value in a deferred closure.
+  if not CanAccess(suppressed) or type(suppressed) ~= "boolean"
+      or not frame or IsForbidden(frame) then
+    return false
+  end
+
+  if DeferForObject("frame-suppression", frame, function()
     ApplySuppressed(frame, suppressed)
   end) then
     return false
@@ -196,8 +229,10 @@ policy.IsForbidden = IsForbidden
 policy.IsRothEnabled = IsRothEnabled
 policy.SetSuppressed = SetSuppressed
 policy.DeferUntilOutOfCombat = DeferUntilOutOfCombat
+policy.DeferForObject = DeferForObject
 policy.FlushPending = function() return FlushPending(regenFrame) end
 policy.GetSuppressionState = function(frame)
+  if not CanAccess(frame) then return false end
   local state = frame and frameState[frame]
   return state and state.suppressed == true or false
 end

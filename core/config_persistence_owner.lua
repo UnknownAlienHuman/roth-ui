@@ -491,7 +491,7 @@ local function ReconcileConfigStore(store)
 end
 
 local function AttachCfgProxy(saved)
-  saved = type(saved) == "table" and saved or activeConfigStore or configOwner.GetConfigRoot()
+  saved = type(saved) == "table" and saved or activeConfigStore or GetCanonicalStores().settings
   activeConfigStore = saved
 
   local runtime = ns.runtime or RefreshRuntimeConfig()
@@ -596,7 +596,7 @@ end
 
 local function BuildConfigSchemaInfo(currentStore)
   local info = configOwner.GetConfigPersistenceInfo()
-  local current = type(currentStore) == "table" and currentStore or activeConfigStore or configOwner.GetConfigRoot()
+  local current = type(currentStore) == "table" and currentStore or activeConfigStore or GetCanonicalStores().settings
   return {
     owner = info.owner,
     variable = info.variable,
@@ -618,28 +618,40 @@ local function BuildConfigSchemaPolicy()
   }
 end
 
+local function GetConfigRoot()
+  return GetCanonicalStores().settings
+end
+
+local function GetCanonicalTemplateStore()
+  return GetCanonicalStores().templates
+end
+
+local function GetCanonicalOrbCharStore()
+  return GetCanonicalStores().orbChar
+end
+
+local function SetCanonicalConfigStore(store)
+  return SetCanonicalStore("config", store).settings
+end
+
+local function SetCanonicalTemplateStore(store)
+  return SetCanonicalStore("templates", store).templates
+end
+
+local function SetCanonicalOrbCharStore(store)
+  return SetCanonicalStore("orbChar", store).orbChar
+end
+
 configOwner.EnsureCanonicalRootTables = EnsureCanonicalRootTables
 configOwner.EnsureCanonicalStores = GetCanonicalStores
 configOwner.ReplaceCanonicalRoots = ReplaceCanonicalRoots
 configOwner.ResetCanonicalRoots = ResetCanonicalRoots
-configOwner.GetConfigRoot = function()
-  return GetCanonicalStores().settings
-end
-configOwner.GetCanonicalTemplateStore = function()
-  return GetCanonicalStores().templates
-end
-configOwner.GetCanonicalOrbCharStore = function()
-  return GetCanonicalStores().orbChar
-end
-configOwner.SetCanonicalConfigStore = function(store)
-  return SetCanonicalStore("config", store).settings
-end
-configOwner.SetCanonicalTemplateStore = function(store)
-  return SetCanonicalStore("templates", store).templates
-end
-configOwner.SetCanonicalOrbCharStore = function(store)
-  return SetCanonicalStore("orbChar", store).orbChar
-end
+configOwner.GetConfigRoot = GetConfigRoot
+configOwner.GetCanonicalTemplateStore = GetCanonicalTemplateStore
+configOwner.GetCanonicalOrbCharStore = GetCanonicalOrbCharStore
+configOwner.SetCanonicalConfigStore = SetCanonicalConfigStore
+configOwner.SetCanonicalTemplateStore = SetCanonicalTemplateStore
+configOwner.SetCanonicalOrbCharStore = SetCanonicalOrbCharStore
 configOwner.GetConfigPersistenceInfo = function()
   return {
     owner = OWNER_FILE,
@@ -665,9 +677,9 @@ end
 configOwner.ReconcileConfigStore = function(store)
   local target = store
   if type(target) ~= "table" then
-    target = configOwner.GetConfigRoot()
+    target = GetConfigRoot()
   end
-  target = configOwner.SetCanonicalConfigStore(ReconcileConfigStore(target))
+  target = SetCanonicalConfigStore(ReconcileConfigStore(target))
   activeConfigStore = target
   AttachCfgProxy(target)
   return target
@@ -680,44 +692,12 @@ configOwner.InitializeConfigDefaults = function(cfg)
   configDefaults = cfg
   ns.cfgDefaults = cfg
 
-  local store = configOwner.GetConfigRoot()
-  store = configOwner.SetCanonicalConfigStore(ReconcileConfigStore(store))
+  local store = GetConfigRoot()
+  store = SetCanonicalConfigStore(ReconcileConfigStore(store))
   activeConfigStore = store
   RefreshRuntimeConfig()
   AttachCfgProxy(store)
   return store
-end
-
-function ns.EnsureCanonicalPersistenceStores()
-  return configOwner.EnsureCanonicalStores()
-end
-
-function ns.GetCanonicalTemplateStore()
-  return configOwner.GetCanonicalTemplateStore()
-end
-
-function ns.GetCanonicalOrbCharStore()
-  return configOwner.GetCanonicalOrbCharStore()
-end
-
-function ns.SetCanonicalConfigStore(store)
-  return configOwner.SetCanonicalConfigStore(store)
-end
-
-function ns.SetCanonicalTemplateStore(store)
-  return configOwner.SetCanonicalTemplateStore(store)
-end
-
-function ns.SetCanonicalOrbCharStore(store)
-  return configOwner.SetCanonicalOrbCharStore(store)
-end
-
-function ns.GetConfigPersistenceInfo()
-  return configOwner.GetConfigPersistenceInfo()
-end
-
-function ns.GetReadOnlyConfigView(source)
-  return CreateReadOnlyConfigView(source)
 end
 
 function ns.GetUnitConfig(unitKey)
@@ -727,8 +707,4 @@ function ns.GetUnitConfig(unitKey)
     return nil
   end
   return CreateReadOnlyConfigView(unitConfig)
-end
-
-function ns.ReconcileConfigStore(store)
-  return configOwner.ReconcileConfigStore(store)
 end

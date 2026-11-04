@@ -1,39 +1,42 @@
-# Current status — Roth UI 3.4.3
+# Current status — Roth UI 3.4.3 audit candidate
 
-Evidence date: **2026-11-03**. Source/static evidence is separated from target-client acceptance.
+Evidence date: **2026-11-04**.
 
-## Selected target
+Selected source remains `12.1.5.70688`. Post-selected `12.1.5.70783` was reviewed; its changed APIs are outside Roth's loaded graph. oUF `14.2.1` is now the minimum reviewed dependency.
 
-| Component | Version / evidence |
-| --- | --- |
-| Addon | `3.4.3`, one `Roth_UI` package root |
-| Retail source | `12.1.5.70688`, Gethe/wow-ui-source `d07eb00237d8891f153215db98a5df880a26cfe5` |
-| TOC Interface | `120105`; client `GetBuildInfo()` not captured |
-| External framework | oUF `14.1.1+`; reviewed `8f37c36e3ed37d2fcfca2f3690f5e37e52b758c7` |
-| Knowledge base | wow-addon-engineering-kb `b03e1635d0ff8bcd6be4f4dfac589dafec4e5e83` |
+## Implemented
 
-## Implemented in 3.4.3
+- SavedVariables import/reset uses detached strict validation, exact-reference snapshot, one root commit, one reconciliation and rollback for false/throw/reload failure.
+- Full export validates account and character roots as one tree, so cross-root aliases cannot be laundered by separate copies.
+- Strict serialization now has depth, table-count, entry-count and aggregate-string-byte ceilings.
+- Malformed legacy roots no longer prevent recovery import/reset; exact root references remain rollback authority.
+- Raw config/root getters and writers are captured then removed from shared namespace tables. Dead namespace aliases were removed.
+- Foreign-frame suppression rolls back partial setters, including setters that mutate before throwing.
+- Object-scoped deferred work uses weak-key identities; `tostring(frame)` keys are gone.
+- The retired global `rCombatFrameFader`, duplicate `svrebuild` route and unused value-helper exports were removed; class bars bind directly to their sole owners.
+- Removed 18 one-use locals, including inert addon-name captures and unused `LibSharedMedia`/locale lookups during configuration load.
+- Transfer-dialog hide clears encoded/pasted text and active closures instead of retaining potentially large buffers for the session.
+- The shared next-frame scheduler now owns one timer per generation, preserves latest-per-key semantics, isolates callback failures and sends reentrant work to the next generation. Action-bar artwork requires that owner and has no fallback scheduler.
+- Orb persistence migrates at file scope under `LoadSavedVariablesFirst`; the redundant own-addon `ADDON_LOADED` frame was removed. Live root maps remain private.
+- Media ownership was re-audited by exact Lua string literals and SHA-256. **84 unused/duplicate files (7,026,025 bytes)** were removed; **120** owned media files remain.
 
-- Persistence export reads detached strict snapshots and performs no cleanup mutation on live roots.
-- Import is one reversible transaction: strict staging, complete-root snapshot, one replacement, reconciliation acceptance and rollback on false/throwing outcomes.
-- Reset/reload is reversible when reload invocation fails.
-- Detached root replacement rejects unsupported descendants and shared-reference graphs instead of silently truncating them.
-- Foreign-frame suppression rolls back partial alpha/mouse changes and retains only unresolved ownership state.
-- Obsolete optional dependency metadata is removed.
-- Validation is mandatory on pull requests and pushes to `main`; manual dispatch remains the only release-publication path.
+## Validation performed on this second-pass overlay
 
-## Validation state
+| Gate | Result |
+|---|---|
+| Python validator syntax | PASS |
+| Packaged runtime Lua parse with available `texlua` | PASS; 75 runtime Lua files |
+| Focused regression layer | PASS; 12 tests |
+| Exact media ownership | PASS |
+| Duplicate media SHA-256 scan | PASS |
+| Deterministic runtime package | PASS; two byte-identical builds |
+| Extracted package root/layout/TOC/XML closure | PASS; 199 files, 76 load-graph entries |
+| Focused regressions against extracted package | PASS |
+| Full Lua 5.1 CI for this overlay | NOT-RUN; overlay is not pushed from this environment |
+| Retail client acceptance | NOT-RUN |
 
-The repository contains **36 isolated Lua regression scripts** and **111 Lua files total** after this change. The affected persistence, transfer, frame-policy and bootstrap regressions passed in the development preflight. The authoritative full Lua 5.1 result and deterministic package artifact are produced by the GitHub Actions validation attached to the commit/PR.
+The original PR #16 head passed GitHub Actions before this candidate. That result must not be attributed to the unpushed audit changes.
 
-A green static workflow proves source parsing, ownership guards, isolated control flow and package determinism. It does not emulate WoW's secure execution engine.
+## Remaining client acceptance
 
-## Client acceptance — NOT-RUN
-
-Before claiming runtime certification:
-
-1. Record `GetBuildInfo()`, installed oUF version and enabled addons.
-2. Test first install, migration, malformed SavedVariables, export/import rollback, reset/reload and `/reload`.
-3. Exercise combat, target/focus/boss casts, managed auras, secure party/raid transitions, action-bar vehicle/override states and Settings.
-4. Capture taint output and compare CPU/allocation measurements with `C_AddOnProfiler` under a controlled workload.
-5. Verify movers, fonts, orb visuals, text fit and layering across representative resolutions and Cyrillic names.
+Record the actual `GetBuildInfo()` and installed oUF version, then test login/reload with fresh/migrated/malformed SavedVariables, combat/taint, casts/channels/empower, managed auras, party/raid secure headers, vehicle/override action states, movers, Settings, fonts, representative resolutions and `C_AddOnProfiler` measurements.

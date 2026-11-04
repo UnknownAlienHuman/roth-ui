@@ -1,7 +1,7 @@
 -- Extracted from core/lib.lua to reduce monolithic hot-path runtime coupling.
 -- Provides numeric/unit-value helpers and health/power PostUpdate handlers.
 
-local addonName, ns = ...
+local _, ns = ...
 
 local func = assert(ns and ns.func, "Roth_UI: ns.func is required by unit_value_runtime.lua")
 local cfg = ns and ns.cfg
@@ -40,7 +40,6 @@ end
 local function GetScaleTo100Curve()
   return (_G.CurveConstants and _G.CurveConstants.ScaleTo100) or nil
 end
-func.GetScaleTo100Curve = GetScaleTo100Curve
 
 local function SafeUnitHealthPercent(unit)
   local fn = _G.UnitHealthPercent
@@ -169,39 +168,6 @@ local function SafeSetText(fs, v)
   SetTextCached(fs, v)
 end
 
-local function SafeSetStackText(fs, v)
-  if not fs then return end
-  local accessible = CanAccess(v)
-  if IsSecretValue(v) then
-    fs._rothLastText = nil
-    fs:SetText(v)
-    return
-  end
-  if not accessible then
-    SetTextCached(fs, "")
-    return
-  end
-  if v == nil then
-    SetTextCached(fs, "")
-    return
-  end
-  -- Some game APIs (and some callers) may pass stack text as a string.
-  -- Avoid comparing numbers with strings.
-  if type(v) ~= "number" then
-    local n = tonumber(v)
-    if not n then
-      SetTextCached(fs, "")
-      return
-    end
-    v = n
-  end
-  if v > 1 then
-    SetTextCached(fs, v)
-  else
-    SetTextCached(fs, "")
-  end
-end
-
 local function SetPercentText(fs, d)
   if not fs then return end
   local accessible = CanAccess(d)
@@ -229,9 +195,7 @@ local function SetPercentText(fs, d)
 end
 
 func.SafeSetText             = SafeSetText
-func.SafeSetStackText        = SafeSetStackText
 func.SetPercentText          = SetPercentText
-func.SetVertexColorCached    = SetVertexColorCached
 
 -----------------------------------------------------------------------------
 -- PERF: avoid per-update table allocations in frequently-called oUF PostUpdate

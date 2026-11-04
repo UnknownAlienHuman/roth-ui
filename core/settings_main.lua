@@ -1,5 +1,5 @@
-local addonName = ...
-local ns = assert(_G.Roth_UI, "Roth_UI: main namespace is required")
+local _, private = ...
+local ns = assert(private or _G.Roth_UI, "Roth_UI: main namespace is required")
 
 ns.SettingsUI = ns.SettingsUI or {}
 local ui = ns.SettingsUI
@@ -10,7 +10,6 @@ local ipairs = ipairs
 local tostring = tostring
 local tonumber = tonumber
 local string_format = string.format
-local string_upper = string.upper
 local CreateFrame = CreateFrame
 local framePolicy = assert(ns and ns.framePolicy, "Roth_UI: framePolicy is required by settings_main.lua")
 local DeferUntilOutOfCombat = assert(framePolicy.DeferUntilOutOfCombat, "Roth_UI: framePolicy.DeferUntilOutOfCombat is required by settings_main.lua")

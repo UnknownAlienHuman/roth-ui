@@ -2,10 +2,10 @@
 --
 -- By the time this file runs, config.lua has created the runtime config (ns.cfg)
 -- by overlaying Roth_UI_DB.account.settings onto defaults.
--- We now fire Roth_UI:ListenForLoaded callbacks for module-addons.
+-- We fire Roth_UI:ListenForLoaded callbacks for bounded internal consumers.
 
-local addonName, ns = ...
-local Roth_UI = _G.Roth_UI or ns
+local _, ns = ...
+local Roth_UI = assert(ns, "Roth_UI: main namespace is required by bootstrap.lua")
 
 -- Clear the "reload required" hint once a reload actually happened.
 if ns and type(ns.ClearPendingReloadHint) == "function" then

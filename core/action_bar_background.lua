@@ -2,7 +2,7 @@
 -- Main action bar background + skin owner
 -----------------------------
 
-local addon, ns = ...
+local _, ns = ...
 local gcfg = ns.cfg
 if not (gcfg and gcfg.bars and gcfg.units and gcfg.units.player) then return end
 
@@ -23,6 +23,8 @@ local TryGet = assert(safety.TryGet, "Roth_UI action_bar_background: TryGet is r
 local TryMethod = assert(safety.TryMethod, "Roth_UI action_bar_background: TryMethod is required")
 local DeferUntilOutOfCombat = assert(ns.framePolicy and ns.framePolicy.DeferUntilOutOfCombat,
   "Roth_UI action_bar_background: shared frame policy is required")
+local RunNextFrame = assert(ns.defer and ns.defer.RunNextFrame,
+  "Roth_UI action_bar_background: defer.RunNextFrame is required")
 local MAIN_BAR_SYSTEM_INDEX = type(Enum) == "table"
   and type(Enum.EditModeActionBarSystemIndices) == "table"
   and Enum.EditModeActionBarSystemIndices.MainBar
@@ -34,7 +36,6 @@ local backgroundPlayerFrame
 local backgroundLayoutReady = false
 local mainBarHooksInstalled = false
 local auxiliaryHooks = setmetatable({}, { __mode = "k" })
-local refreshQueued = false
 local controller = CreateFrame("Frame")
 
 local function IsAccessible(value)
@@ -106,22 +107,11 @@ end
 local RefreshArtwork
 
 local function RunQueuedRefresh()
-  refreshQueued = false
   if RefreshArtwork then RefreshArtwork() end
 end
 
 local function QueueArtworkRefresh()
-  if refreshQueued then return end
-  refreshQueued = true
-
-  local scheduler = ns and ns.defer
-  if type(scheduler) == "table" and type(scheduler.RunNextFrame) == "function" then
-    scheduler.RunNextFrame("action-bar-background", RunQueuedRefresh)
-  elseif C_Timer and type(C_Timer.After) == "function" then
-    C_Timer.After(0, RunQueuedRefresh)
-  else
-    RunQueuedRefresh()
-  end
+  return RunNextFrame("action-bar-background", RunQueuedRefresh)
 end
 
 ns.QueueActionBarArtworkRefresh = QueueArtworkRefresh

@@ -74,6 +74,7 @@ local ns = {
   cfgDefaults = { units = { player = { expbar = {}, repbar = {} } } },
   func = {
     IsSecretValue = function() return false end,
+    AttachCombatFader = function() return true end,
     applyDragFunctionality = function() end,
   },
   safety = {

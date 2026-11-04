@@ -6,7 +6,7 @@
 -- public header method when available; desired/applied state stays in a weak
 -- addon-owned table rather than on the protected frame.
 
-local addon, ns = ...
+local _, ns = ...
 
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by group_header_visibility.lua")
 local TryCall = assert(safety.TryCall, "Roth_UI: safety.TryCall is required by group_header_visibility.lua")

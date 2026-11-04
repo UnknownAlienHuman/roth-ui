@@ -3,7 +3,7 @@
 -- addon enable state; Roth UI only suppresses the default visual roots when its
 -- own party/raid frames are enabled.
 
-local addonName, ns = ...
+local _, ns = ...
 
 local func = assert(ns and ns.func, "Roth_UI: ns.func is required by group_policy.lua")
 local policy = assert(ns and ns.framePolicy, "Roth_UI: framePolicy is required by group_policy.lua")

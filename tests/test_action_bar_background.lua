@@ -100,6 +100,7 @@ local ns = {
   framePolicy = {
     DeferUntilOutOfCombat = function(key, callback) policyQueue[key] = callback end,
   },
+  defer = { RunNextFrame = function() return true end },
 }
 
 -- These mocks preserve the real ordering contract: configured layout is in
@@ -248,6 +249,7 @@ local disabledNs = {
     TryMethod = function(value, key, ...) if value and type(value[key]) == "function" then return true, value[key](value, ...) end; return false end,
   },
   framePolicy = { DeferUntilOutOfCombat = function(key, callback) policyQueue[key] = callback end },
+  defer = { RunNextFrame = function() return true end },
 }
 assert(loadfile("core/action_bar_background.lua"))("Roth_UI", disabledNs)
 expect(#created == disabledStart + 1, "disabled artwork created more than its event controller")

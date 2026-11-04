@@ -1,22 +1,25 @@
 # Roth UI 3.4.3
 
-Persistence transactions, lifecycle cleanup and mandatory continuous validation. The compatibility target remains Retail `12.1.5.70688`, Interface `120105`, with external oUF `14.1.1+`.
+Target: Retail `12.1.5.70688`, Interface `120105`, external oUF `14.2.1+`.
 
 ## Changes
 
-- Export now creates a detached strict snapshot and never sanitizes or exposes live SavedVariables roots.
-- Import validates a complete tree, rejects cycles/shared aliases/unsupported values, snapshots both roots, commits once and rolls back when replacement or reconciliation fails.
-- Factory reset restores the previous roots when `ReloadUI` cannot complete.
-- Direct root replacement uses strict copying rather than silently dropping unsupported descendants.
-- Blizzard-frame suppression is transactional: a failed second mutation rolls back the first, including setters that mutate and then throw.
-- Retired `RothFont`/`RothLib` optional dependency metadata is removed; Roth's bundled font assets remain unchanged.
-- GitHub validation now runs on every pull request and push to `main`, while release publication remains an explicit manual action.
-- Added regressions for strict alias rejection, persistence rollback, export immutability and failed reset recovery.
+- Made import/reset atomic with strict staging, exact-reference rollback and reload inside the transaction boundary.
+- Made export immutable and rejected cycles, aliases, inaccessible values, unsupported values, non-finite numbers and oversized trees.
+- Preserved recovery when existing legacy SavedVariables are malformed.
+- Closed raw live-root access after owner capture and removed unused compatibility aliases.
+- Rolled back partial Blizzard-frame suppression writes.
+- Replaced frame-string queue keys with weak object identity.
+- Consolidated all next-frame refresh work onto one timer per generation; action-art no longer has an optional/fallback scheduler.
+- Removed the global combat-fader alias and the duplicate persistence rebuild command.
+- Removed 18 one-use locals and two inert configuration-time lookups.
+- Moved orb migration to the pre-file SavedVariables boundary and removed its redundant load-event owner.
+- Clear transfer-dialog strings and closures on hide to release large export/import buffers.
+- Raised the external oUF minimum to `14.2.1` for current secret/tag/event fixes.
+- Removed 84 unowned or duplicate media files (7,026,025 bytes uncompressed).
 
-## Installation
+## Validation
 
-Install the ZIP's `Roth_UI` folder into `_retail_/Interface/AddOns/` and keep existing SavedVariables. Install oUF `14.1.1+` separately.
+Audit-candidate local checks: 75 packaged Lua files parsed, 12 focused regressions passed, deterministic ZIP reproduced byte-for-byte, extracted package validated (199 files; 76 TOC/XML graph entries). Full Lua 5.1 GitHub CI and Retail client acceptance for this exact overlay remain `NOT-RUN` until the overlay is pushed.
 
-## Acceptance boundary
-
-Source/static validation and isolated Lua tests do not establish in-client combat, taint, visual or performance acceptance. Those checks remain `NOT-RUN` until recorded against a named Retail build.
+Install the ZIP's `Roth_UI` folder and keep existing SavedVariables.

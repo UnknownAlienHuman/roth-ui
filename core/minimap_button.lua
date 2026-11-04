@@ -3,7 +3,7 @@
 -- The button is addon-owned, fixed-position and eventless. It does not modify
 -- the Minimap object, install polling, or create another Settings owner.
 
-local addonName, ns = ...
+local _, ns = ...
 
 local CreateFrame = CreateFrame
 local InCombatLockdown = InCombatLockdown

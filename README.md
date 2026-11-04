@@ -1,41 +1,51 @@
 # Roth UI
 
-A Diablo-inspired World of Warcraft Retail interface built around Blizzard-owned action bars and widgets, with [oUF](https://github.com/oUF-wow/oUF) providing unit-frame lifecycle and elements.
+Diablo-inspired World of Warcraft Retail interface built on Blizzard-owned action/UI systems and external [oUF](https://github.com/oUF-wow/oUF).
 
 ## Compatibility
 
-- Addon version: `3.4.3`.
-- Target client: Retail `12.1.5`, Interface `120105`, selected source build `12.1.5.70688`.
-- Required dependency: oUF `14.1.1` or newer, installed separately.
-- Review pins: Blizzard UI source `d07eb00237d8891f153215db98a5df880a26cfe5`, oUF `8f37c36e3ed37d2fcfca2f3690f5e37e52b758c7`, and knowledge base `b03e1635d0ff8bcd6be4f4dfac589dafec4e5e83`.
+- Addon: `3.4.3`
+- Retail target: `12.1.5`, Interface `120105`
+- Selected Blizzard source: `12.1.5.70688` (`d07eb00237d8891f153215db98a5df880a26cfe5`)
+- Reviewed post-selected delta: `12.1.5.70783` (`297d7aaaa736f346b3e036f38ee088eaf7f8c07f`); no loaded Roth surface changed
+- Required dependency: oUF `14.2.1+` (`c5ff6e4a09bfaf2186e205777e0fab964b5cddc1` reviewed); this includes current secret/tag/event fixes
+- Knowledge base: `wow-addon-engineering-kb@c2a630aa186de401262663cc8568a77988be69df`
 
-These are source-review targets, not client certification. Combat, taint, visual and profiler acceptance remain `NOT-RUN` until recorded in the target client.
+These are source-review targets, not proof of in-client compatibility. Combat, taint, visual and profiler acceptance remain `NOT-RUN`.
 
 ## Installation
 
-Install the release archive's `Roth_UI` folder into `_retail_/Interface/AddOns/`. Install a compatible oUF release separately and enable both addons. Keep existing SavedVariables when upgrading.
+Install the archive's single `Roth_UI` directory into `_retail_/Interface/AddOns/`. Install oUF separately. Keep existing SavedVariables. Open settings with `/roth options`.
 
 ## Commands
 
 - `/roth` — command list
-- `/roth options` — open Settings
-- `/roth config` — open Health Orb settings
-- `/rothui` and `/rui` — compatibility aliases
+- `/roth options` — Settings
+- `/roth config` — health-orb settings
+- `/rothui`, `/rui` — aliases
 
 ## Runtime ownership
 
-- Blizzard owns secure action buttons, paging, bindings, vehicle/override state and native visibility. Roth UI adds presentation only.
-- oUF owns unit-frame lifecycle, secure group headers, cast discovery and managed aura events.
-- `core/frame_policy.lua` owns the keyed out-of-combat queue and reversible foreign-frame suppression. Partial writes are rolled back before returning failure.
-- `core/persistence_control_plane.lua` owns transfer and reset transactions. Import validates detached data, snapshots current roots, commits once and rolls back rejected reconciliation or failed reload.
-- `core/config_persistence_owner.lua` remains the only SavedVariables root writer; `core/orb_persistence_owner.lua` remains the sole owner of orb template and character-state migration.
-- `core/mover_runtime.lua`, `core/font_policy.lua`, `core/aura_runtime.lua` and `core/settings_main.lua` remain the sole owners of their respective lifecycles.
+- Blizzard owns secure action buttons, paging, bindings, vehicle/override state and native visibility.
+- oUF owns unit-frame lifecycle, secure group headers, cast discovery and managed-aura events.
+- `core/persistence_control_plane.lua` owns import/reset transactions and rollback.
+- `core/frame_policy.lua` owns foreign-frame suppression and the keyed combat-exit queue.
+- `core/deferred_scheduler.lua` is the only next-frame scheduler and owns one timer per work generation.
+- `core/mover_runtime.lua`, `core/font_policy.lua`, `core/aura_runtime.lua` and `core/settings_main.lua` remain sole subsystem owners.
 
 ## Validation
 
-Pull requests and pushes to `main` automatically run repository policy checks, load-graph/ownership validation, Lua 5.1 parsing, every isolated regression, deterministic packaging and artifact upload. Static and stub tests do not prove secure-client behavior.
+Run:
 
-See [release notes](RELEASE_NOTES.md), [current status](CURRENT_STATUS.md), and [architecture](ARCHITECTURE.md).
+```bash
+python3 tools/validate_repository_text.py
+python3 tools/validate_addon.py
+python3 tools/validate_group_visibility.py
+python3 tools/validate_runtime_hardening.py
+python3 tools/run_lua_tests.py
+```
+
+Static/stub validation does not emulate WoW's secure execution engine. See `CURRENT_STATUS.md`.
 
 ## License
 

@@ -1,54 +1,52 @@
 # Roth UI architecture — 3.4.3
 
-## Compatibility target
+## Boundaries
 
-Retail `12.1.5`, Interface `120105`, selected source build `12.1.5.70688`; required oUF `14.1.1+`. These pins are source evidence, not client acceptance.
-
-## Package and load boundary
-
-Roth UI ships as one addon root. oUF is a separately installed required dependency. `LoadSavedVariablesFirst: 1` makes Roth's declared roots available before file-scope migration and frame construction; it does not establish player/world/protected-action readiness.
-
-## Ownership map
-
-| State or subsystem | Authoritative owner |
+| Concern | Owner |
 |---|---|
-| Secret/access/serialization guards | `core/safety.lua` |
-| Operation-specific forbidden aspects | `core/safety_aspects.lua` |
-| Canonical SavedVariables roots and config proxy | `core/config_persistence_owner.lua`, `core/persistence_root_store.lua` |
+| Secret/access/serialization guards | `core/safety.lua`, `core/safety_aspects.lua` |
+| Canonical SavedVariables roots | `core/config_persistence_owner.lua`, `core/persistence_root_store.lua` |
 | Import/export/reset transaction | `core/persistence_control_plane.lua`, `core/transfer.lua` |
-| Orb schema/store lifecycle | `core/orb_persistence_owner.lua` |
-| Blizzard Settings category | `core/settings_main.lua` |
-| oUF unit and secure-header lifecycle | external oUF `14.1.1+` |
-| Combat deferral and reversible foreign-frame state | `core/frame_policy.lua` |
-| Keyed next-frame work | `core/deferred_scheduler.lua` |
+| Orb persistence | `core/orb_persistence_owner.lua` |
+| Combat deferral / foreign-frame state | `core/frame_policy.lua` |
+| Next-frame coalescing | `core/deferred_scheduler.lua` |
 | Movers | `core/mover_runtime.lua` |
 | Fonts | `core/font_policy.lua` |
 | Managed auras | `core/aura_runtime.lua` |
-| Blizzard action state | Blizzard UI |
-| Roth action presentation | `core/action_button_skin.lua`, `core/action_bar_background.lua` |
+| Settings category | `core/settings_main.lua` |
+| Unit/secure-header lifecycle | external oUF |
+| Secure action state | Blizzard UI |
 
 ## Persistence transaction
 
 ```text
 untrusted transfer envelope
-  -> strict detached tree validation
-  -> snapshot current account + character roots
-  -> one canonical root replacement
-  -> schema reconciliation
-  -> accept, or restore snapshot and reconcile rollback
+  -> one bounded strict tree copy
+  -> exact root/schema validation
+  -> capture exact current root references
+  -> one root commit
+  -> one reconcile
+  -> ReloadUI
+  -> rollback exact references on false/throw/reload failure
 ```
 
-Export follows the inverse safety boundary: copy the complete canonical roots first, then serialize the detached document. Export never sanitizes live state. Shared-reference graphs, cycles, restricted values, unsupported types and non-finite numbers fail the strict boundary.
+Strict copies reject inaccessible/secret values, unsupported types, non-finite numbers, cycles, aliases, excessive depth, excessive tables/entries and excessive aggregate string bytes. Export copies first and never sanitizes live roots. Malformed legacy roots do not block reset/import recovery because rollback authority is the exact pre-transaction references; the detached snapshot is only a fallback.
 
-## Lifecycle
+Raw root getters/writers are captured by their owner and removed from shared namespace tables after load. Diagnostics retain only bounded read closures.
 
-Configuration defaults and canonical roots are available before file-scope unit consumers. The control plane retains only `PLAYER_LOGIN` reconciliation and `PLAYER_LOGOUT` sanitation; orb persistence keeps its existing bounded addon-load initialization owner.
+## Scheduling
 
-`framePolicy.DeferUntilOutOfCombat` remains the sole keyed combat-exit queue. Foreign-frame suppression captures restorable state, applies both writes as a transaction and rolls back a partial failure before returning false.
+`framePolicy.DeferUntilOutOfCombat` is the single keyed combat-exit queue. `framePolicy.DeferForObject` assigns weak-key object identities instead of deriving keys with `tostring(frame)`. `deferred_scheduler.RunNextFrame` is the sole next-frame queue. It coalesces all keys into one timer per generation, swaps generations before callback execution and isolates callback failures. Action-bar artwork has no parallel queue state or timer fallback.
 
-## Secure/UI constraints
+## Secure/UI rules
 
-- Never reparent protected Blizzard frames, replace Blizzard action ownership, unregister Blizzard events, mutate enable state or write Blizzard CVars.
-- Secure party/raid headers are session-owned and never rebuilt during combat.
-- Managed aura data and cast discovery remain Blizzard/oUF-owned.
-- No first-party permanent `OnUpdate` loop, raw aura cache, raw cast poller or Lua status-bar smoothing owner is permitted.
+- Never reparent protected Blizzard frames, replace Blizzard action-button ownership, unregister Blizzard events, write CVars or mutate addon enable state.
+- Party/raid secure headers are created once per session; structural changes require reload.
+- Managed auras use the native container contract; no raw aura scanner or parallel `UNIT_AURA` state.
+- Foreign-frame suppression is transactional: a setter that mutates and then throws is detected and rolled back.
+- First-party `OnUpdate` loops are prohibited.
+
+## Compatibility evidence
+
+- KB-selected Blizzard source remains `12.1.5.70688`; the reviewed `12.1.5.70783` delta changes Roleset restrictions, Battle.net/title-icon metadata and `UNIT_COMBAT.amount` secrecy, none of which is consumed by Roth's loaded graph.
+- External oUF minimum is `14.2.1`, pinned at `c5ff6e4a09bfaf2186e205777e0fab964b5cddc1`, to retain current secret-scrubbing, tag and event fixes.

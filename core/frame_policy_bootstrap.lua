@@ -4,7 +4,7 @@
 -- EventUtil when available; the fallback ADDON_LOADED listener tracks only the
 -- named addons and unregisters after both have resolved.
 
-local addonName, ns = ...
+local _, ns = ...
 
 local func = assert(ns and ns.func, "Roth_UI: ns.func is required by frame_policy_bootstrap.lua")
 local CreateFrame = CreateFrame

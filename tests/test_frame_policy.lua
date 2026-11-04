@@ -7,7 +7,8 @@ local function expect(condition, message)
 end
 
 _G.issecretvalue = function() return false end
-_G.canaccessvalue = function() return true end
+local denied = setmetatable({}, { __mode = "k" })
+_G.canaccessvalue = function(value) return denied[value] ~= true end
 _G.canaccessallvalues = function() return true end
 
 local inCombat = false
@@ -40,6 +41,9 @@ local function NewRegion()
 end
 
 local region = NewRegion()
+expect(policy.SetSuppressed(region, "yes") == false,
+  "non-boolean suppression state was accepted")
+expect(region.mutations == 0, "invalid suppression state mutated a foreign frame")
 expect(policy.SetSuppressed(region, false) == true, "unsuppressed no-op failed")
 expect(region.mutations == 0, "unsuppressed no-op mutated a Blizzard frame")
 
@@ -50,7 +54,6 @@ expect(policy.SetSuppressed(region, false) == true, "ordinary restore failed")
 expect(region.alpha == 0.75 and region.mouse == true, "captured frame state was not restored")
 expect(policy.GetSuppressionState(region) == false, "restored state was not cleared")
 
--- Restore each property only while it still has Roth's suppressed value.
 local outsideAlpha = NewRegion()
 expect(policy.SetSuppressed(outsideAlpha, true) == true, "alpha ownership setup failed")
 outsideAlpha.alpha = 0.35
@@ -65,8 +68,6 @@ expect(policy.SetSuppressed(outsideMouse, false) == true, "external mouse change
 expect(outsideMouse.alpha == 0.75 and outsideMouse.mouse == true,
   "restore overwrote a mouse change made by another owner")
 
--- Blizzard may change its own ordinary state after restoration. A new Roth
--- suppression cycle must capture and restore the new values, not the old ones.
 region.alpha = 0.45
 region.mouse = false
 expect(policy.SetSuppressed(region, true) == true, "second suppression failed")
@@ -75,8 +76,6 @@ expect(policy.SetSuppressed(region, false) == true, "second restore failed")
 expect(region.alpha == 0.45 and region.mouse == false,
   "second restore replayed a stale suppression snapshot")
 
--- Suppression is transactional. A failed second setter must roll back the
--- successful first setter instead of leaving a foreign frame half-hidden.
 local partial = NewRegion()
 local mouseSetter = partial.EnableMouse
 partial.EnableMouse = function() error("temporary setter failure") end
@@ -90,8 +89,6 @@ expect(policy.SetSuppressed(partial, true) == true, "later explicit suppression 
 expect(policy.SetSuppressed(partial, false) == true, "partial cycle did not restore")
 expect(partial.alpha == 0.75 and partial.mouse == true, "partial retry lost the original snapshot")
 
--- A setter can mutate and then raise. The policy must detect and roll that
--- change back through the getter rather than assuming no write occurred.
 local mutateThenFail = NewRegion()
 local originalMouseSetter = mutateThenFail.EnableMouse
 mutateThenFail.EnableMouse = function(self, value)
@@ -149,6 +146,38 @@ inCombat = false
 regenFrame.scripts.OnEvent(regenFrame, "PLAYER_REGEN_ENABLED")
 expect(callbackValue == 2, "latest keyed callback did not run")
 expect(regenFrame.events.PLAYER_REGEN_ENABLED == nil, "regen event remained after second drain")
+
+-- Object-scoped work must use weak identity, not tostring(ScriptObject).
+local tostringCalls = 0
+local identityRegion = NewRegion()
+setmetatable(identityRegion, {
+  __tostring = function()
+    tostringCalls = tostringCalls + 1
+    error("foreign object must not be stringified")
+  end,
+})
+inCombat = true
+local objectCallback = 0
+expect(policy.DeferForObject("test-owner", identityRegion, function() objectCallback = 1 end) == true,
+  "object-scoped work was not deferred")
+expect(policy.DeferForObject("test-owner", identityRegion, function() objectCallback = 2 end) == true,
+  "object-scoped replacement was not deferred")
+expect(policy.GetPendingCount() == 1, "object-scoped work was not coalesced")
+inCombat = false
+regenFrame.scripts.OnEvent(regenFrame, "PLAYER_REGEN_ENABLED")
+expect(objectCallback == 2, "latest object-scoped callback did not win")
+expect(tostringCalls == 0, "object-scoped deferral stringified a ScriptObject")
+expect(policy.DeferForObject("test-owner", "not-an-object", function() end) == false,
+  "object-scoped deferral accepted a primitive identity")
+expect(policy.DeferForObject("test-owner", identityRegion, function() end) == false,
+  "object-scoped deferral allocated work outside combat")
+
+local restrictedProvider = {}
+denied[restrictedProvider] = true
+expect(ns.IsRothEnabled(restrictedProvider) == false,
+  "provider normalization branched on an inaccessible value")
+expect(policy.GetSuppressionState(restrictedProvider) == false,
+  "suppression state indexed an inaccessible object")
 
 local inaccessible = NewRegion()
 function inaccessible:HasAccessConstraints() return true end

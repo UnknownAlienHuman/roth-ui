@@ -2,7 +2,7 @@
 -- Numeric health/power text is rendered by element PostUpdate callbacks and
 -- native widget sinks; the tag engine is reserved for unit names only.
 
-local addonName, ns = ...
+local _, ns = ...
 
 local oUF = assert(ns and ns.oUF, "Roth_UI: oUF is required by tags.lua")
 local func = assert(ns and ns.func, "Roth_UI: ns.func is required by tags.lua")

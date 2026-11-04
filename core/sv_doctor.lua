@@ -3,8 +3,8 @@
 -- Scans SavedVariables tables for non-serializable values that can prevent saving.
 -- Stores the last report in addon runtime memory for the current session.
 --
-local addonName = ...
-local ns = assert(_G.Roth_UI, "Roth_UI_Options: Roth_UI namespace is required")
+local _, private = ...
+local ns = assert(private or _G.Roth_UI, "Roth_UI: main namespace is required")
 
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by sv_doctor.lua")
 local IsSecret = assert(safety.IsSecret, "Roth_UI: safety.IsSecret is required by sv_doctor.lua")
@@ -17,6 +17,11 @@ local GetConfigRoot = assert(persistence.GetConfigRoot, "Roth_UI: persistence.Ge
 local GetPersistenceSchemaNodeKeys = assert(ns and ns.GetPersistenceSchemaNodeKeys, "Roth_UI: ns.GetPersistenceSchemaNodeKeys is required by sv_doctor.lua")
 local reportApi = assert(ns and ns.persistenceReport, "Roth_UI: ns.persistenceReport is required by sv_doctor.lua")
 local BuildSchemaReport = assert(reportApi.BuildSchemaReport, "Roth_UI: persistenceReport.BuildSchemaReport is required by sv_doctor.lua")
+
+-- Diagnostics capture their read closures once. Do not leave live SavedVariables
+-- node maps exposed as a general-purpose public persistence API.
+persistence.GetScanStores = nil
+persistence.GetStorageLabels = nil
 
 local doctorApi = ns.persistenceDoctor or {}
 ns.persistenceDoctor = doctorApi
@@ -187,6 +192,3 @@ function doctorApi.TestReport()
   print("Roth_UI SVTest: "..(ok and "OVERALL PASS" or "OVERALL FAIL").." (use /roth dump for more values)")
   return ok
 end
-
-ns.SVDoctorScan = doctorApi.Scan
-ns.SVTestReport = doctorApi.TestReport

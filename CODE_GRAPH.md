@@ -1,26 +1,35 @@
-# Roth UI dependency and event graph — 3.4.3
+# Roth UI dependency graph — 3.4.3
 
-## Critical load dependencies
+```text
+safety
+  -> frame policy / oUF contract
+  -> config owner + defaults
+  -> root store + low-level value API
+  -> schema/domain/reconcile services
+  -> persistence control plane
+  -> diagnostics/settings/transfer
+  -> units/action presentation
+```
 
-| Consumer | Must already be loaded | Purpose |
-|---|---|---|
-| Frame policy and oUF contract | namespace, safety and forbidden-aspect owners | access gates and shared combat work |
-| Persistence root store | config owner and runtime-state service | one canonical root boundary |
-| Transfer/control plane | strict safety copy, root store and reconcile service | detached export and reversible import/reset |
-| Orb persistence owner | orb defaults/text controller and canonical roots | migrate templates and character orb state at its bounded lifecycle boundary |
-| Unit styles | value/aura/cast helpers and mini scaffold | frame construction without duplicate runtime owners |
-| Action presentation | unit styles, mover runtime and frame policy | additive Blizzard-button styling and retained layouts |
+Critical runtime paths:
 
-## Bounded paths
+```text
+import text
+  -> transfer envelope validation
+  -> persistence transaction
+  -> root commit + reconcile + reload
+  -> exact-reference rollback on failure
 
-| Request | Authoritative path | Completion |
-|---|---|---|
-| Combat-sensitive mutation | keyed `framePolicy.DeferUntilOutOfCombat` | drain once outside combat and unregister listener |
-| Foreign-frame suppression | capture → apply alpha/mouse → rollback partial failure | retain state only while unresolved/suppressed |
-| Next-frame layout refresh | keyed `defer.RunNextFrame` | newest callback runs once |
-| Export | strict detached root copy → encode | no live mutation |
-| Import | validate → snapshot → replace → reconcile | accept or rollback snapshot |
-| Factory reset | snapshot → clear roots → reload | rollback if reload fails |
-| Structural party/raid setting | persistence + reload contract | no live secure-header rebuild |
+combat-sensitive request
+  -> frame_policy keyed queue
+  -> PLAYER_REGEN_ENABLED drain
+  -> listener removed
 
-Blizzard retains secure action state; oUF retains unit/header/element lifecycle. Tests and build tooling are excluded from runtime packages.
+layout refresh requests
+  -> deferred_scheduler keyed generation
+  -> one timer for all keys
+  -> newest callback per key runs once
+  -> reentrant work enters the next generation
+```
+
+The TOC is the executable load order. `core/safety.lua` precedes all consumers; `core/persistence_control_plane.lua` loads after root/schema services; `core/deferred_scheduler.lua` precedes action artwork; `units/mini_target_scaffold.lua` precedes its unit styles.

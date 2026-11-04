@@ -5,7 +5,7 @@
 -- potentially secret notInterruptible boolean is never compared, formatted,
 -- cached or used as Lua application state.
 
-local addonName, ns = ...
+local _, ns = ...
 
 local runtime = ns.TargetCastbarRuntime or {}
 ns.TargetCastbarRuntime = runtime

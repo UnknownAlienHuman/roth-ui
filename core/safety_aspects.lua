@@ -3,7 +3,7 @@
 -- A script object may be accessible while a particular operation remains
 -- forbidden. Keep these checks separate from the generic region-access gate.
 
-local addonName, ns = ...
+local _, ns = ...
 
 local safety = assert(ns and ns.safety, "Roth_UI: safety is required by safety_aspects.lua")
 local CanAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by safety_aspects.lua")

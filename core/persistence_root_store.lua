@@ -2,8 +2,6 @@ local _, ns = ...
 
 -- Own canonical account/char roots and domain access separately from sv_store.lua.
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by persistence_root_store.lua")
-local CopySerializableStrict = assert(safety.CopySerializableStrict,
-  "Roth_UI: safety.CopySerializableStrict is required by persistence_root_store.lua")
 local SanitizeSerializableInPlace = assert(safety.SanitizeSerializableInPlace, "Roth_UI: safety.SanitizeSerializableInPlace is required by persistence_root_store.lua")
 local CanAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by persistence_root_store.lua")
 local configOwner = assert(ns and ns.configPersistence, "Roth_UI: ns.configPersistence is required by persistence_root_store.lua")
@@ -29,6 +27,23 @@ local SetCanonicalOrbCharStore = ResolveConfigOwnerMethod("SetCanonicalOrbCharSt
 local AttachConfigProxy = ResolveConfigOwnerMethod("AttachCfgProxy")
 local ReplaceCanonicalRoots = ResolveConfigOwnerMethod("ReplaceCanonicalRoots")
 local ResetCanonicalRoots = ResolveConfigOwnerMethod("ResetCanonicalRoots")
+
+-- Root-store internals capture the writer closures once. No later module gets a
+-- second mutable SavedVariables-root API through the config owner table.
+configOwner.EnsureCanonicalRootTables = nil
+configOwner.EnsureCanonicalStores = nil
+configOwner.GetConfigRoot = nil
+configOwner.GetCanonicalTemplateStore = nil
+configOwner.GetCanonicalOrbCharStore = nil
+configOwner.GetConfigDefaults = nil
+configOwner.SetCanonicalConfigStore = nil
+configOwner.SetCanonicalTemplateStore = nil
+configOwner.SetCanonicalOrbCharStore = nil
+configOwner.ReplaceCanonicalRoots = nil
+configOwner.ResetCanonicalRoots = nil
+configOwner.AttachCfgProxy = nil
+configOwner.RefreshRuntimeConfig = nil
+configOwner.InitializeConfigDefaults = nil
 
 local function GetCanonicalStores()
   return EnsureCanonicalPersistenceStores()
@@ -200,8 +215,7 @@ local function SetPersistenceDomainRoot(domain, store)
   return true
 end
 
-function ns.ReplacePersistenceRoots(opts)
-  local payload = CopySerializableStrict(opts)
+local function CommitPersistenceRoots(payload)
   if type(payload) ~= "table" then
     return false
   end
@@ -226,7 +240,7 @@ function ns.ReplacePersistenceRoots(opts)
     normalized.charRoot = NormalizeCharRoot(payload.charRoot)
     if type(normalized.charRoot) ~= "table" then return false end
   end
-  if not ReplaceCanonicalRoots(normalized) then
+  if ReplaceCanonicalRoots(normalized) ~= true then
     return false
   end
 
@@ -234,8 +248,29 @@ function ns.ReplacePersistenceRoots(opts)
   return true
 end
 
-function ns.ResetPersistenceRoots()
+local function ResetPersistenceRoots()
   return ResetCanonicalRoots()
+end
+
+local function RestorePersistenceRootReferences(snapshot)
+  if type(snapshot) ~= "table"
+      or type(snapshot.accountRoot) ~= "table"
+      or type(snapshot.charRoot) ~= "table" then
+    return false
+  end
+
+  -- Transaction rollback must restore the exact roots that existing unit
+  -- configuration views reference. This path is internal to the control plane;
+  -- ordinary imports still pass through strict detached validation above.
+  if ReplaceCanonicalRoots({
+    accountRoot = snapshot.accountRoot,
+    charRoot = snapshot.charRoot,
+  }) ~= true then
+    return false
+  end
+
+  SyncPersistenceCaches(GetCanonicalStores())
+  return true
 end
 
 storeApi.GetCanonicalStores = GetCanonicalStores
@@ -244,9 +279,6 @@ storeApi.GetDomainRoot = function(domain, ensure)
 end
 storeApi.SetDomainRoot = SetPersistenceDomainRoot
 storeApi.GetConfigRoot = EnsureConfigRoot
-storeApi.SetConfigRoot = function(store)
-  return SetPersistenceDomainRoot("config", store)
-end
 storeApi.GetOrbCharRoot = function()
   return GetPersistenceDomainRoot("orbChar", false)
 end
@@ -265,5 +297,6 @@ end
 storeApi.SetOrbGlobalRoot = function(store)
   return SetPersistenceDomainRoot("orbGlobal", store)
 end
-storeApi.ReplaceRoots = ns.ReplacePersistenceRoots
-storeApi.ResetRoots = ns.ResetPersistenceRoots
+storeApi.CommitRoots = CommitPersistenceRoots
+storeApi.ResetRoots = ResetPersistenceRoots
+storeApi.RestoreRoots = RestorePersistenceRootReferences

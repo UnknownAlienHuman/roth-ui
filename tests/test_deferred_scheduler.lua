@@ -1,34 +1,66 @@
-local ns = {}
-local timers = {}
-C_Timer = { After = function(delay, callback)
-  assert(delay == 0, "next-frame work must not be retried later")
-  timers[#timers + 1] = callback
-end }
-assert(loadfile("core/deferred_scheduler.lua"))("Roth_UI", ns)
-
-local calls = 0
-for index = 1, 100 do
-  local value = index
-  ns.defer.RunNextFrame("layout", function() calls = value end)
+local function expect(condition, message)
+  if not condition then error(message, 2) end
 end
-assert(#timers == 1, "rapid changes scheduled duplicate timers")
-assert(calls == 0, "deferred callback ran synchronously")
+
+local timers = {}
+_G.C_Timer = {
+  After = function(delay, callback)
+    expect(delay == 0, "scheduler used a non-zero delay")
+    timers[#timers + 1] = callback
+  end,
+}
+
+local failures = 0
+local ns = {
+  safety = {
+    TryCall = function(callback, ...)
+      local ok, value = pcall(callback, ...)
+      if not ok then failures = failures + 1 end
+      return ok, value
+    end,
+  },
+}
+assert(loadfile("core/deferred_scheduler.lua"))("Roth_UI", ns)
+local scheduler = assert(ns.defer)
+
+expect(scheduler.RunNextFrame(nil, function() end) == false, "scheduler accepted a missing key")
+expect(scheduler.RunNextFrame("key", nil) == false, "scheduler accepted a missing callback")
+
+local calls = {}
+expect(scheduler.RunNextFrame("shared", function() calls[#calls + 1] = "old" end) == true,
+  "first same-key callback was rejected")
+expect(scheduler.RunNextFrame("other", function() calls[#calls + 1] = "other" end) == true,
+  "independent callback was rejected")
+expect(scheduler.RunNextFrame("shared", function() calls[#calls + 1] = "new" end) == true,
+  "replacement same-key callback was rejected")
+expect(scheduler.RunNextFrame("failure", function() error("expected") end) == true,
+  "failing callback was not queued")
+expect(scheduler.RunNextFrame("after-failure", function() calls[#calls + 1] = "after" end) == true,
+  "post-failure callback was not queued")
+expect(#timers == 1, "one scheduler generation allocated more than one timer")
+
 timers[1]()
-assert(calls == 100, "coalesced work did not use the latest callback")
+expect(table.concat(calls, ",") == "new,other,after",
+  "coalescing/order or failure isolation changed: " .. table.concat(calls, ","))
+expect(failures == 1, "failing callback escaped the shared safety sink")
 
-ns.defer.RunNextFrame("layout", function()
-  calls = calls + 1
-  ns.defer.RunNextFrame("layout", function() calls = calls + 10 end)
-end)
-assert(#timers == 2, "drained key could not be reused")
+local generations = 0
+expect(scheduler.RunNextFrame("reschedule", function()
+  generations = generations + 1
+  scheduler.RunNextFrame("reschedule", function() generations = generations + 10 end)
+end) == true, "reschedule setup failed")
+expect(scheduler.RunNextFrame("same-generation", function() generations = generations + 100 end) == true,
+  "same-generation setup failed")
+expect(#timers == 2, "second generation did not use one timer")
 timers[2]()
-assert(calls == 101 and #timers == 3, "reentrant work was lost")
+expect(generations == 101 and #timers == 3,
+  "reentrant work was not isolated to the next generation")
 timers[3]()
-assert(calls == 111, "reentrant callback did not run")
+expect(generations == 111, "reentrant callback did not execute exactly once")
 
-C_Timer = nil
-ns.defer.RunNextFrame("fallback", function() calls = calls + 1 end)
-assert(calls == 112, "missing timer service silently dropped work")
-assert(ns.defer.RunNextFrame("", function() error("must not run") end) == false)
+_G.C_Timer = nil
+expect(scheduler.RunNextFrame("fallback", function() generations = generations + 1 end) == true,
+  "missing-timer fallback rejected work")
+expect(generations == 112, "missing-timer fallback dropped work")
 
-print("deferred scheduler test: OK")
+print("deferred scheduler generation/coalescing test: OK")

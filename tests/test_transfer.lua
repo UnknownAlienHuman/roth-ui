@@ -41,19 +41,13 @@ _G.C_EncodingUtil = {
     serializeCalls = serializeCalls + 1
     return serializeOutput
   end,
-  CompressString = function(value)
-    return value
-  end,
-  EncodeBase64 = function(value)
-    return value
-  end,
+  CompressString = function(value) return value end,
+  EncodeBase64 = function(value) return value end,
   DecodeBase64 = function(value)
     decodeCalls = decodeCalls + 1
     return value
   end,
-  DecompressString = function()
-    return decompressOutput
-  end,
+  DecompressString = function() return decompressOutput end,
   DeserializeCBOR = function()
     return decodedEnvelope or {
       kind = "Roth_UI_Settings_Export",
@@ -80,17 +74,16 @@ local ns = {
       end
       return transferRoots
     end,
-    ApplyTransferRoots = function(payload)
+    ApplyTransferRootsAndReload = function(payload)
       if applyResult ~= true then return false, applyError end
       appliedPayload = payload
       return true
     end,
-    ReloadUI = function() return true end,
   },
 }
 _G.Roth_UI = ns
 
-assert(loadfile("core/transfer.lua"))("Roth_UI")
+assert(loadfile("core/transfer.lua"))("Roth_UI", ns)
 local transfer = assert(ns.transfer)
 local ok, message
 
@@ -127,7 +120,7 @@ decodedEnvelope = {
   char = { orbs = {} },
 }
 ok, message = transfer.Import("full", "RUI1:small")
-expect(ok == false and message:find("Account payload", 1, true),
+expect(ok == false and message:find("complete serializable tree", 1, true),
   "import accepted a root containing a nonserializable descendant")
 expect(appliedPayload == previousPayload, "invalid import replaced persisted roots")
 decodedEnvelope = {
@@ -138,7 +131,7 @@ decodedEnvelope = {
   char = { orbs = {} },
 }
 ok, message = transfer.Import("full", "RUI1:small")
-expect(ok == false and message:find("Account payload", 1, true),
+expect(ok == false and message:find("complete serializable tree", 1, true),
   "import accepted a non-finite persisted number")
 expect(appliedPayload == previousPayload, "non-finite number import replaced persisted roots")
 
@@ -151,9 +144,68 @@ decodedEnvelope = {
   char = { orbs = {} },
 }
 ok, message = transfer.Import("full", "RUI1:small")
-expect(ok == false and message:find("Account payload", 1, true),
+expect(ok == false and message:find("complete serializable tree", 1, true),
   "import accepted a shared-reference persistence graph")
 expect(appliedPayload == previousPayload, "aliased import replaced persisted roots")
+
+local crossRootAlias = { value = true }
+decodedEnvelope = {
+  kind = "Roth_UI_Settings_Export",
+  version = 1,
+  mode = "full",
+  account = { account = { settings = { shared = crossRootAlias }, templates = {} } },
+  char = { orbs = { shared = crossRootAlias } },
+}
+ok, message = transfer.Import("full", "RUI1:small")
+expect(ok == false and message:find("complete serializable tree", 1, true),
+  "import accepted an alias shared across account and character roots")
+expect(appliedPayload == previousPayload, "cross-root alias replaced persisted roots")
+
+decodedEnvelope = {
+  kind = "Roth_UI_Settings_Export", version = 1, mode = "full",
+  account = { account = { settings = {}, templates = {} } },
+  char = { orbs = {} },
+  futureField = true,
+}
+ok, message = transfer.Import("full", "RUI1:small")
+expect(ok == false and message:find("unsupported envelope field", 1, true),
+  "import accepted an unknown envelope field")
+
+decodedEnvelope.futureField = nil
+decodedEnvelope.version = "1"
+ok, message = transfer.Import("full", "RUI1:small")
+expect(ok == false and message:find("version", 1, true),
+  "import accepted a string export version")
+
+decodedEnvelope.version = 1
+decodedEnvelope.mode = "profile"
+ok, message = transfer.Import("full", "RUI1:small")
+expect(ok == false and message:find("unsupported transfer mode", 1, true),
+  "import accepted an unknown envelope mode")
+
+decodedEnvelope.mode = "full"
+decodedEnvelope.char = nil
+ok, message = transfer.Import("full", "RUI1:small")
+expect(ok == false and message:find("missing an account or character root", 1, true),
+  "import accepted an incomplete full envelope")
+
+decodedEnvelope = {
+  kind = "Roth_UI_Settings_Export", version = 1, mode = "account",
+  account = { account = { settings = {}, templates = {} } },
+  char = { orbs = {} },
+}
+ok, message = transfer.Import("account", "RUI1:small")
+expect(ok == false and message:find("inconsistent roots", 1, true),
+  "account import accepted a character root")
+
+decodedEnvelope = {
+  kind = "Roth_UI_Settings_Export", version = 1, mode = "full",
+  account = { account = { settings = {}, templates = {} } },
+  char = { orbs = {} },
+}
+ok, message = transfer.Import("account", "RUI1:small")
+expect(ok == false and message:find("Import mode mismatch", 1, true),
+  "selected import mode did not have to match the payload")
 
 decodedEnvelope = nil
 applyResult, applyError = false, "transaction rolled back"
@@ -176,5 +228,72 @@ serializeOutput = string.rep("x", 4 * 1024 * 1024 + 1)
 local exportText, exportError = transfer.Export("full")
 expect(exportText == nil and exportError:find("Export is too large", 1, true),
   "oversized export was not rejected before compression")
+
+
+serializeOutput = "valid"
+_G.UIParent = {}
+_G.STANDARD_TEXT_FONT = "font"
+_G.ChatFontNormal = nil
+
+local function NewWidget(kind, parent)
+  local widget = { kind = kind, parent = parent, scripts = {}, text = "", width = 700, height = 400 }
+  function widget:SetSize(width, height) self.width, self.height = width, height end
+  function widget:SetPoint() end
+  function widget:SetFrameStrata() end
+  function widget:SetMovable() end
+  function widget:SetClampedToScreen() end
+  function widget:EnableMouse() end
+  function widget:RegisterForDrag() end
+  function widget:SetScript(name, callback) self.scripts[name] = callback end
+  function widget:StartMoving() end
+  function widget:StopMovingOrSizing() end
+  function widget:Hide() self.shown = false; if self.scripts.OnHide then self.scripts.OnHide(self) end end
+  function widget:Show() self.shown = true end
+  function widget:CreateFontString() return NewWidget("FontString", self) end
+  function widget:SetJustifyH() end
+  function widget:SetJustifyV() end
+  function widget:SetMultiLine() end
+  function widget:SetAutoFocus() end
+  function widget:SetFontObject() end
+  function widget:SetFont() end
+  function widget:SetTextInsets() end
+  function widget:SetScrollChild(child) self.child = child end
+  function widget:SetVerticalScroll() end
+  function widget:UpdateScrollChildRect() end
+  function widget:GetWidth() return self.width end
+  function widget:GetHeight() return self.height end
+  function widget:GetStringHeight() return #self.text > 0 and 20 or 0 end
+  function widget:SetWidth(value) self.width = value end
+  function widget:SetHeight(value) self.height = value end
+  function widget:SetText(value)
+    self.text = value or ""
+    if self.scripts.OnTextChanged then self.scripts.OnTextChanged(self) end
+  end
+  function widget:GetText() return self.text end
+  function widget:SetFocus() self.focused = true end
+  function widget:ClearFocus() self.focused = false end
+  function widget:HighlightText() self.highlighted = true end
+  return widget
+end
+_G.CreateFrame = function(kind, name, parent) return NewWidget(kind, parent) end
+
+expect(transfer.ShowExportDialog("full") == true, "export dialog did not open")
+local dialog = assert(transfer.dialog)
+expect(dialog.EditBox:GetText():find("RUI1:", 1, true) == 1,
+  "export dialog did not retain its active transfer string")
+expect(type(dialog.RunPrimary) == "function" and type(dialog.RunSecondary) == "function",
+  "export dialog did not bind active callbacks")
+dialog:Hide()
+expect(dialog.operation == nil and dialog.mode == nil
+    and dialog.RunPrimary == nil and dialog.RunSecondary == nil,
+  "hidden transfer dialog retained operation/callback ownership")
+expect(dialog.EditBox:GetText() == "" and dialog.Status.text == "" and dialog.Subtitle.text == "",
+  "hidden transfer dialog retained transfer text")
+
+expect(transfer.ShowImportDialog("full") == true, "import dialog did not reopen")
+dialog.EditBox:SetText("RUI1:sensitive")
+dialog:Hide()
+expect(dialog.EditBox:GetText() == "" and dialog.RunPrimary == nil,
+  "hidden import dialog retained pasted input or callbacks")
 
 print("transfer size and transaction boundary test: OK")

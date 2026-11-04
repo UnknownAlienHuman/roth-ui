@@ -43,7 +43,10 @@ local ns = {
   cfg = { font = "font.ttf" },
   frameRegistry = { Register = noop },
   oUF = { RegisterInitCallback = function(_, callback) initCallback = callback end },
-  framePolicy = { DeferUntilOutOfCombat = function(_, callback) deferred = callback return true end },
+  framePolicy = {
+    DeferUntilOutOfCombat = function(_, callback) deferred = callback return true end,
+    DeferForObject = function(_, _, callback) deferred = callback return true end,
+  },
 }
 assert(loadfile("core/safety.lua"))("Roth_UI", ns)
 assert(loadfile("core/lib.lua"))("Roth_UI", ns)

@@ -56,17 +56,17 @@ local function Run(version, oUF)
   return ns
 end
 
-local current = Run("14.1.1", NewOUF())
+local current = Run("14.2.1", NewOUF())
 expect(type(current.oUFContract) == "table", "oUF contract was not published")
-expect(current.oUFContract.minimumVersion == "14.1.1", "minimum oUF version changed")
-expect(current.oUFContract.detectedVersion == "14.1.1", "detected version was lost")
+expect(current.oUFContract.minimumVersion == "14.2.1", "minimum oUF version changed")
+expect(current.oUFContract.detectedVersion == "14.2.1", "detected version was lost")
 expect(current.oUFContract.managedAuras == "validated-on-create",
   "managed-aura capability was not marked for runtime contract validation")
 expect(current.oUFContract.sessionOwnedSecureHeaders == true,
   "secure-header lifecycle capability was not declared")
 
 local oldOK, oldError = pcall(function()
-  Run("14.1.0", NewOUF())
+  Run("14.2.0", NewOUF())
 end)
 expect(oldOK == false and tostring(oldError):find("too old", 1, true),
   "old oUF version was not rejected")
@@ -74,7 +74,7 @@ expect(oldOK == false and tostring(oldError):find("too old", 1, true),
 local broken = NewOUF()
 broken.SpawnHeader = nil
 local brokenOK, brokenError = pcall(function()
-  Run("14.1.1", broken)
+  Run("14.2.1", broken)
 end)
 expect(brokenOK == false and tostring(brokenError):find("missing SpawnHeader", 1, true),
   "missing oUF group-header capability was not rejected")

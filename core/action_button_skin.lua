@@ -5,7 +5,7 @@
 -- current execution context can safely access them. No replacement buttons,
 -- reparenting or permanent polling.
 
-local addonName, ns = ...
+local _, ns = ...
 
 local cfg = assert(ns.cfg, "Roth_UI: config is required by action_button_skin.lua")
 local barsCfg = cfg.bars or {}

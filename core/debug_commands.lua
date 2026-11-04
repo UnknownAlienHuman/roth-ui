@@ -1,5 +1,5 @@
-local addonName = ...
-local ns = assert(_G.Roth_UI, "Roth_UI_Options: main Roth_UI namespace is required")
+local _, private = ...
+local ns = assert(private or _G.Roth_UI, "Roth_UI: main namespace is required")
 
 local persistence = assert(ns and ns.persistence, "Roth_UI: persistence service is required by debug_commands.lua")
 local storeApi = assert(ns and ns.store, "Roth_UI: store service is required by debug_commands.lua")
@@ -10,10 +10,13 @@ local GetPersistenceState = assert(persistence.GetRuntimeState, "Roth_UI: persis
 local GetSVDoctorState = assert(persistence.GetDoctorState, "Roth_UI: persistence.GetDoctorState is required by debug_commands.lua")
 local RunPersistenceDoctor = assert(persistence.RunDoctor, "Roth_UI: persistence.RunDoctor is required by debug_commands.lua")
 local ReconcilePersistence = assert(persistence.Reconcile, "Roth_UI: persistence.Reconcile is required by debug_commands.lua")
-local RebuildPersistenceRuntime = assert(persistence.RebuildRuntime, "Roth_UI: persistence.RebuildRuntime is required by debug_commands.lua")
 local ReportPersistenceSchema = assert(persistence.ReportSchema, "Roth_UI: persistence.ReportSchema is required by debug_commands.lua")
 local SetConfigValue = assert(storeApi.SetConfigValue, "Roth_UI: store SetConfigValue is required by debug_commands.lua")
 local ClearRuntimeLog = assert(persistence.ClearLog, "Roth_UI: persistence.ClearLog is required by debug_commands.lua")
+
+-- init.lua and SVDoctor have already captured this read closure. Do not leave a
+-- mutable SavedVariables root reachable through the public addon namespace.
+persistence.GetConfigRoot = nil
 
 local debugCommands = ns.debugCommands or {}
 ns.debugCommands = debugCommands
@@ -205,11 +208,6 @@ function debugCommands.RunSVReconcile()
   return true
 end
 
-function debugCommands.RunSVRebuild()
-  RebuildPersistenceRuntime()
-  print("Roth_UI: runtime cfg rebuilt from SavedVariables (no reload).")
-  return true
-end
 
 function debugCommands.RequestBlizzardRestore()
   SetConfigValue({"units", "party", "show"}, false, { markPendingReload = false })

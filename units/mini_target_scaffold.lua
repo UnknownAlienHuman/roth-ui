@@ -1,4 +1,4 @@
-local addon, ns = ...
+local _, ns = ...
 
 local cfg = assert(ns and ns.cfg, "Roth_UI: cfg is required by units/mini_target_scaffold.lua")
 local func = assert(ns and ns.func, "Roth_UI: func is required by units/mini_target_scaffold.lua")
@@ -37,7 +37,7 @@ function func.buildMiniTargetScaffold(self, opts)
 
   local art = self:CreateTexture(nil, opts.artLayer or "BACKGROUND", nil, opts.artSublevel or -8)
   art:SetAllPoints(self)
-  art:SetTexture(opts.artTexture or "Interface\\AddOns\\Roth_UI\\media\\targettarget")
+  art:SetTexture(opts.artTexture or "Interface\\AddOns\\Roth_UI\\media\\target")
   if opts.artPoints then
     art:ClearAllPoints()
     ApplyPoints(art, opts.artPoints, self)
