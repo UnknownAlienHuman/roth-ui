@@ -37,11 +37,22 @@ jobs:
           mkdir -p /tmp/audit3
           unzip -q /tmp/audit3.zip -d /tmp/audit3
 
-      - name: Apply exact overlay and remove delivery workflow
+      - name: Apply exact overlay and validator correction
         shell: bash
         run: |
           set -euo pipefail
           python3 /tmp/audit3/Roth_UI-3.4.3-audit3-source-overlay/apply_overlay.py . --force
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("tools/validate_addon.py")
+          text = path.read_text(encoding="utf-8")
+          old = 'for token in ("14.1.1", "AddElement", "RegisterStyle", "SpawnHeader", "AuraContainerSortMethod"):'
+          new = 'for token in (OUF_MIN, "AddElement", "RegisterStyle", "SpawnHeader", "AuraContainerSortMethod"):'
+          if text.count(old) != 1:
+              raise SystemExit(f"expected one stale oUF validator token, found {text.count(old)}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
           rm -f .github/workflows/apply-roth-third-pass.yml
           git diff --check
 
