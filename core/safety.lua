@@ -291,6 +291,12 @@ local function CopySerializable(source, stack, memo, depth, strict)
     return nil
   end
   if memo[source] then
+    -- A canonical import/export document is a tree. Shared-reference graphs
+    -- are rejected in strict mode because object identity is not part of the
+    -- portable schema and can hide cycles or alias unrelated roots.
+    if strict then
+      return nil
+    end
     return memo[source]
   end
   stack[source] = true
@@ -300,6 +306,7 @@ local function CopySerializable(source, stack, memo, depth, strict)
   for key, child in pairs(source) do
     if not safety.CanAccess(key) then
       stack[source] = nil
+      memo[source] = nil
       return nil
     end
 
@@ -339,7 +346,8 @@ end
 
 -- Validate and copy a complete serializable tree. Unlike CopySerializable's
 -- migration-oriented sanitizer, this rejects the entire input when any nested
--- value is secret, inaccessible, unsupported, cyclic, or beyond the depth cap.
+-- value is secret, inaccessible, unsupported, cyclic, aliased, or beyond the
+-- depth cap.
 function safety.CopySerializableStrict(source)
   return CopySerializable(source, nil, nil, 0, true)
 end

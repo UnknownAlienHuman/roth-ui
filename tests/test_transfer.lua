@@ -2,17 +2,43 @@ local function expect(condition, message)
   if not condition then error(message, 2) end
 end
 
+local function copyStrict(value, seen)
+  local kind = type(value)
+  if kind == "number" and (value ~= value or value == math.huge or value == -math.huge) then return nil end
+  if kind == "string" or kind == "number" or kind == "boolean" then return value end
+  if kind ~= "table" then return nil end
+  seen = seen or {}
+  if seen[value] then return nil end
+  seen[value] = true
+  local result = {}
+  for key, child in pairs(value) do
+    local copiedKey = copyStrict(key, seen)
+    local copiedValue = copyStrict(child, seen)
+    if copiedKey == nil or copiedValue == nil then return nil end
+    result[copiedKey] = copiedValue
+  end
+  return result
+end
+
 local decodeCalls = 0
+local serializeCalls = 0
 local decompressOutput = "valid"
 local serializeOutput = "valid"
 local appliedPayload
+local applyResult, applyError = true, nil
 local inCombat = false
 local decodedEnvelope
+local exportRootsAvailable = true
+local transferRoots = {
+  accountRoot = { schema = { version = 1 }, account = { settings = {}, templates = {} } },
+  charRoot = { schema = { version = 1 }, orbs = {} },
+}
 _G.InCombatLockdown = function() return inCombat end
 
 _G.Enum = { CompressionMethod = { Deflate = 1 } }
 _G.C_EncodingUtil = {
   SerializeCBOR = function()
+    serializeCalls = serializeCalls + 1
     return serializeOutput
   end,
   CompressString = function(value)
@@ -41,35 +67,21 @@ _G.C_EncodingUtil = {
 
 local ns = {
   safety = {
-    CopySerializable = function(value) return value end,
-    CopySerializableStrict = function(value)
-      local seen = {}
-      local function copyStrict(source, depth)
-        local kind = type(source)
-        if kind == "number" and (source ~= source or source == math.huge or source == -math.huge) then return nil end
-        if kind == "string" or kind == "number" or kind == "boolean" then return source end
-        if kind ~= "table" or depth > 64 or seen[source] then return nil end
-        seen[source] = true
-        local result = {}
-        for key, child in pairs(source) do
-          if type(key) ~= "string" and type(key) ~= "number" then return nil end
-          local copied = copyStrict(child, depth + 1)
-          if copied == nil then return nil end
-          result[key] = copied
-        end
-        seen[source] = nil
-        return result
-      end
-      return copyStrict(value, 0)
-    end,
+    CopySerializableStrict = copyStrict,
     TryCall = function(fn, ...)
       local ok, result = pcall(fn, ...)
       return ok, result
     end,
   },
   persistence = {
-    GetTransferRoots = function() return {} end,
+    GetTransferRoots = function()
+      if not exportRootsAvailable then
+        return nil, "strict export snapshot failed"
+      end
+      return transferRoots
+    end,
     ApplyTransferRoots = function(payload)
+      if applyResult ~= true then return false, applyError end
       appliedPayload = payload
       return true
     end,
@@ -129,11 +141,40 @@ ok, message = transfer.Import("full", "RUI1:small")
 expect(ok == false and message:find("Account payload", 1, true),
   "import accepted a non-finite persisted number")
 expect(appliedPayload == previousPayload, "non-finite number import replaced persisted roots")
+
+local shared = { value = true }
+decodedEnvelope = {
+  kind = "Roth_UI_Settings_Export",
+  version = 1,
+  mode = "full",
+  account = { account = { settings = { first = shared, second = shared }, templates = {} } },
+  char = { orbs = {} },
+}
+ok, message = transfer.Import("full", "RUI1:small")
+expect(ok == false and message:find("Account payload", 1, true),
+  "import accepted a shared-reference persistence graph")
+expect(appliedPayload == previousPayload, "aliased import replaced persisted roots")
+
 decodedEnvelope = nil
+applyResult, applyError = false, "transaction rolled back"
+ok, message = transfer.Import("full", "RUI1:small")
+expect(ok == false and message == applyError,
+  "import discarded the persistence transaction failure reason")
+expect(appliedPayload == previousPayload, "failed transaction published a new payload")
+applyResult, applyError = true, nil
+
+exportRootsAvailable = false
+local beforeSerializeCalls = serializeCalls
+local unavailableExport, unavailableError = transfer.Export("full")
+expect(unavailableExport == nil and unavailableError == "strict export snapshot failed",
+  "export hid strict snapshot failure")
+expect(serializeCalls == beforeSerializeCalls,
+  "failed export snapshot reached native serialization")
+exportRootsAvailable = true
 
 serializeOutput = string.rep("x", 4 * 1024 * 1024 + 1)
 local exportText, exportError = transfer.Export("full")
 expect(exportText == nil and exportError:find("Export is too large", 1, true),
   "oversized export was not rejected before compression")
 
-print("transfer size limits test: OK")
+print("transfer size and transaction boundary test: OK")

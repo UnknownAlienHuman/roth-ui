@@ -1,11 +1,10 @@
 ## Interface: 120105
 ## Author: Neomorph
 ## Title: Roth UI
-## Version: 3.4.2
+## Version: 3.4.3
 ## Notes: Diablo-inspired oUF layout for Retail 12.1.5.
 ## IconTexture: Interface\AddOns\Roth_UI\media\d3_head_diablo.tga
 ## RequiredDeps: oUF
-## OptionalDeps: RothFont, RothLib
 ## SavedVariables: Roth_UI_DB
 ## SavedVariablesPerCharacter: Roth_UI_DB_Char
 ## LoadSavedVariablesFirst: 1

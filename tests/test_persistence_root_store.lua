@@ -86,4 +86,37 @@ expect(ns.ReplacePersistenceRoots({ accountRoot = false }) == false,
 expect(canonical.accountRoot == previousRoots,
   "malformed replacement modified the canonical account root")
 
+local invalidDescendant = {
+  account = {
+    settings = { callback = function() end },
+    templates = {},
+  },
+}
+expect(ns.ReplacePersistenceRoots({ accountRoot = invalidDescendant }) == false,
+  "root replacement silently dropped a non-serializable descendant")
+expect(canonical.accountRoot == previousRoots,
+  "invalid detached root partially replaced canonical persistence")
+
+local shared = { value = true }
+local aliasedRoot = {
+  account = {
+    settings = { first = shared, second = shared },
+    templates = {},
+  },
+}
+expect(ns.ReplacePersistenceRoots({ accountRoot = aliasedRoot }) == false,
+  "root replacement accepted a shared-reference document")
+expect(canonical.accountRoot == previousRoots,
+  "aliased detached root partially replaced canonical persistence")
+
+local crossRootAlias = { value = true }
+expect(ns.ReplacePersistenceRoots({
+  accountRoot = { account = { settings = { shared = crossRootAlias }, templates = {} } },
+  charRoot = { orbs = { shared = crossRootAlias } },
+}) == false, "root replacement accepted an alias shared across roots")
+expect(canonical.accountRoot == previousRoots,
+  "cross-root alias partially replaced canonical persistence")
+expect(ns.ReplacePersistenceRoots({ accountRoot = { account = { settings = {}, templates = {} } }, unexpected = {} }) == false,
+  "root replacement ignored an unsupported top-level root")
+
 print("persistence root sanitizer regression test: OK")

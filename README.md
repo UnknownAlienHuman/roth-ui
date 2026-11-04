@@ -1,53 +1,41 @@
 # Roth UI
 
-A Diablo-inspired World of Warcraft Retail interface built around Blizzard's native unit, action-bar, aura, and Settings systems, with [oUF](https://github.com/oUF-wow/oUF) providing unit-frame lifecycle and elements.
+A Diablo-inspired World of Warcraft Retail interface built around Blizzard-owned action bars and widgets, with [oUF](https://github.com/oUF-wow/oUF) providing unit-frame lifecycle and elements.
 
 ## Compatibility
 
-- Target client: Retail `12.1.5`, Interface `120105`, target source build `12.1.5.70688`.
-- Addon version: `3.4.2`.
-- Required dependency: oUF `14.1.1` or newer. Install oUF separately; Roth UI includes the library files required by its own package but not oUF.
-- Source pins used for review: [Blizzard UI source `d07eb002`](https://github.com/Gethe/wow-ui-source/tree/d07eb00237d8891f153215db98a5df880a26cfe5) and [oUF `8f37c36`](https://github.com/oUF-wow/oUF/tree/8f37c36e3ed37d2fcfca2f3690f5e37e52b758c7), checked `2026-11-02`.
-- Author: Neomorph.
+- Addon version: `3.4.3`.
+- Target client: Retail `12.1.5`, Interface `120105`, selected source build `12.1.5.70688`.
+- Required dependency: oUF `14.1.1` or newer, installed separately.
+- Review pins: Blizzard UI source `d07eb00237d8891f153215db98a5df880a26cfe5`, oUF `8f37c36e3ed37d2fcfca2f3690f5e37e52b758c7`, and knowledge base `b03e1635d0ff8bcd6be4f4dfac589dafec4e5e83`.
 
-These are compatibility targets and source-review references. The addon has **not** been validated in the target client: `GetBuildInfo`, combat behavior, taint, visual layout, and performance checks are `NOT-RUN`.
+These are source-review targets, not client certification. Combat, taint, visual and profiler acceptance remain `NOT-RUN` until recorded in the target client.
 
 ## Installation
 
-Install the release archive's `Roth_UI` folder into `_retail_/Interface/AddOns/`. Install a compatible oUF release separately and enable both addons. Settings, commands, import/export, diagnostics, and the minimap button are included in `Roth_UI`; no companion options addon is needed.
+Install the release archive's `Roth_UI` folder into `_retail_/Interface/AddOns/`. Install a compatible oUF release separately and enable both addons. Keep existing SavedVariables when upgrading.
 
 ## Commands
 
 - `/roth` — command list
 - `/roth options` — open Settings
-- `/roth config` — open health orb settings
-- `/rothui` and `/rui` — backward-compatible aliases for `/roth`
-
-The minimap button opens Settings with left-click and shows command help with right-click. Settings do not open during combat.
+- `/roth config` — open Health Orb settings
+- `/rothui` and `/rui` — compatibility aliases
 
 ## Runtime ownership
 
-- Blizzard owns action buttons, paging, bindings, vehicle and override state, and native visibility. Roth UI adds button skin and `UIParent`-owned artwork.
-- oUF owns unit-frame lifecycle, health/power/class resources, secure group headers, cast discovery, and managed aura events.
-- One shared frame policy coalesces bounded work until combat ends. The keyed next-frame scheduler coalesces layout refreshes. Owners do not keep separate permanent combat-exit listeners.
-- `core/mover_runtime.lua` is the sole mover owner for frame handles and saved point, scale, and size. Blizzard frames are not reparented.
-- `core/font_policy.lua` owns Roth font updates and optional Blizzard font overrides. It restores only the exact Blizzard font state it still owns.
-- `units/mini_target_scaffold.lua` shares construction for focus, boss, pet, target-of-target, and pet-target frames while each style supplies its own settings.
-- The custom Experience element in `oUF/elements/experience.lua` owns rested XP display. The experience and reputation elements request action-artwork refresh only when their visibility changes.
-- `core/config_persistence_owner.lua` is the only SavedVariables root writer; `core/settings_main.lua` is the only Blizzard Settings category owner.
-- The legacy embedded mover helper has been removed; mover behavior lives in the main runtime.
+- Blizzard owns secure action buttons, paging, bindings, vehicle/override state and native visibility. Roth UI adds presentation only.
+- oUF owns unit-frame lifecycle, secure group headers, cast discovery and managed aura events.
+- `core/frame_policy.lua` owns the keyed out-of-combat queue and reversible foreign-frame suppression. Partial writes are rolled back before returning failure.
+- `core/persistence_control_plane.lua` owns transfer and reset transactions. Import validates detached data, snapshots current roots, commits once and rolls back rejected reconciliation or failed reload.
+- `core/config_persistence_owner.lua` remains the only SavedVariables root writer; `core/orb_persistence_owner.lua` remains the sole owner of orb template and character-state migration.
+- `core/mover_runtime.lua`, `core/font_policy.lua`, `core/aura_runtime.lua` and `core/settings_main.lua` remain the sole owners of their respective lifecycles.
 
-## Source checks and tests
+## Validation
 
-Run the isolated Lua tests with:
+Pull requests and pushes to `main` automatically run repository policy checks, load-graph/ownership validation, Lua 5.1 parsing, every isolated regression, deterministic packaging and artifact upload. Static and stub tests do not prove secure-client behavior.
 
-```bash
-python3 tools/run_lua_tests.py
-```
-
-The runner discovers every `tests/test_*.lua` file. The current tree contains 75 addon Lua source files and 34 isolated regression scripts (109 Lua files total). The runner accepts `--lua PATH` or `LUA_BIN` and uses the interpreter's native `loadfile` parser when a standalone Lua 5.1 compiler is unavailable. Repository and addon validators are available under `tools/`; static checks do not establish in-client safety or performance.
-
-See [release notes](RELEASE_NOTES.md), [current status](CURRENT_STATUS.md), and [12.1.5 migration notes](MIGRATION_12_1_5.md) for implementation detail and validation status.
+See [release notes](RELEASE_NOTES.md), [current status](CURRENT_STATUS.md), and [architecture](ARCHITECTURE.md).
 
 ## License
 

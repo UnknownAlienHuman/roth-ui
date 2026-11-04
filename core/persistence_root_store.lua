@@ -2,7 +2,8 @@ local _, ns = ...
 
 -- Own canonical account/char roots and domain access separately from sv_store.lua.
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by persistence_root_store.lua")
-local CopySerializable = assert(safety.CopySerializable, "Roth_UI: safety.CopySerializable is required by persistence_root_store.lua")
+local CopySerializableStrict = assert(safety.CopySerializableStrict,
+  "Roth_UI: safety.CopySerializableStrict is required by persistence_root_store.lua")
 local SanitizeSerializableInPlace = assert(safety.SanitizeSerializableInPlace, "Roth_UI: safety.SanitizeSerializableInPlace is required by persistence_root_store.lua")
 local CanAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by persistence_root_store.lua")
 local configOwner = assert(ns and ns.configPersistence, "Roth_UI: ns.configPersistence is required by persistence_root_store.lua")
@@ -66,18 +67,10 @@ local function EnsureOrbTemplateList(store)
   store.TEMPLATE_LIST = {}
 end
 
-local function NormalizeAccountRoot(store)
-  if not CanAccess(store) or safety.IsSecret(store) or type(store) ~= "table" then
-    return nil
-  end
-  local root = CopySerializable(store)
+local function NormalizeAccountRoot(root)
   if type(root) ~= "table" then
     return nil
   end
-  if SanitizeSerializableInPlace(root) ~= true then
-    return nil
-  end
-
   if type(root.schema) ~= "table" then
     root.schema = {}
   end
@@ -97,18 +90,10 @@ local function NormalizeAccountRoot(store)
   return root
 end
 
-local function NormalizeCharRoot(store)
-  if not CanAccess(store) or safety.IsSecret(store) or type(store) ~= "table" then
-    return nil
-  end
-  local root = CopySerializable(store)
+local function NormalizeCharRoot(root)
   if type(root) ~= "table" then
     return nil
   end
-  if SanitizeSerializableInPlace(root) ~= true then
-    return nil
-  end
-
   if type(root.schema) ~= "table" then
     root.schema = {}
   end
@@ -216,21 +201,29 @@ local function SetPersistenceDomainRoot(domain, store)
 end
 
 function ns.ReplacePersistenceRoots(opts)
-  if not CanAccess(opts) or safety.IsSecret(opts) then return false end
-  local payload = type(opts) == "table" and opts or {}
-  local accountRoot = payload.accountRoot
-  local charRoot = payload.charRoot
-  if not CanAccess(accountRoot) or safety.IsSecret(accountRoot)
-      or not CanAccess(charRoot) or safety.IsSecret(charRoot) then
+  local payload = CopySerializableStrict(opts)
+  if type(payload) ~= "table" then
     return false
   end
+
+  local hasRoot = false
+  for key in pairs(payload) do
+    if key ~= "accountRoot" and key ~= "charRoot" then
+      return false
+    end
+    hasRoot = true
+  end
+  if not hasRoot then
+    return false
+  end
+
   local normalized = {}
-  if accountRoot ~= nil then
-    normalized.accountRoot = NormalizeAccountRoot(accountRoot)
+  if payload.accountRoot ~= nil then
+    normalized.accountRoot = NormalizeAccountRoot(payload.accountRoot)
     if type(normalized.accountRoot) ~= "table" then return false end
   end
-  if charRoot ~= nil then
-    normalized.charRoot = NormalizeCharRoot(charRoot)
+  if payload.charRoot ~= nil then
+    normalized.charRoot = NormalizeCharRoot(payload.charRoot)
     if type(normalized.charRoot) ~= "table" then return false end
   end
   if not ReplaceCanonicalRoots(normalized) then

@@ -1,29 +1,26 @@
-# Roth UI dependency and event graph — 3.4.2
+# Roth UI dependency and event graph — 3.4.3
 
 ## Critical load dependencies
 
-The TOC is the executable load order. This table identifies dependencies checked by the static validator or asserted by the consuming module.
-
 | Consumer | Must already be loaded | Purpose |
-| --- | --- | --- |
-| Frame policy and oUF contract | `init.lua`, safety and forbidden-aspect owners | Access gates and shared combat work |
-| Custom oUF elements | oUF dependency contract | Register Experience, Reputation and target border elements |
-| Persistence facade and value store | Defaults, configuration owner and canonical root store | One SavedVariables write boundary |
-| Settings and runtime services | Persistence, frame policy and deferred scheduler | Configuration access and coalesced refreshes |
-| Movers | Frame registry and shared helpers | One handle/layout owner |
-| Unit styles | Value/aura/cast helpers and `mini_target_scaffold.lua` | Shared construction without duplicate runtime owners |
-| Action skin and artwork | Unit styles, mover runtime and frame policy | Additive Blizzard-button presentation and retained user layouts |
+|---|---|---|
+| Frame policy and oUF contract | namespace, safety and forbidden-aspect owners | access gates and shared combat work |
+| Persistence root store | config owner and runtime-state service | one canonical root boundary |
+| Transfer/control plane | strict safety copy, root store and reconcile service | detached export and reversible import/reset |
+| Orb persistence owner | orb defaults/text controller and canonical roots | migrate templates and character orb state at its bounded lifecycle boundary |
+| Unit styles | value/aura/cast helpers and mini scaffold | frame construction without duplicate runtime owners |
+| Action presentation | unit styles, mover runtime and frame policy | additive Blizzard-button styling and retained layouts |
 
-## Bounded event paths
+## Bounded paths
 
 | Request | Authoritative path | Completion |
-| --- | --- | --- |
-| Combat-sensitive mutation | Keyed `framePolicy.DeferUntilOutOfCombat` callback | Drain outside combat; remove the shared listener |
-| Next-frame layout refresh | Keyed `defer.RunNextFrame` callback | Latest callback runs once; pending entry is removed before invocation |
-| XP/reputation data change | Custom oUF element callback | Update values/visibility; request artwork only on visibility transition |
-| Structural party/raid setting | Persistence and group structure contract | Mark reload required; retain existing secure headers |
-| Settings entry | Lazy category/page owner | Register and build each category once |
-| Font preference change | Shared settings refresh and font policy | Update changed fonts or restore still-owned overrides |
-| Artwork refresh | Configured default geometry followed by mover overrides | Preserve artwork and XP/reputation saved point, scale and size |
+|---|---|---|
+| Combat-sensitive mutation | keyed `framePolicy.DeferUntilOutOfCombat` | drain once outside combat and unregister listener |
+| Foreign-frame suppression | capture → apply alpha/mouse → rollback partial failure | retain state only while unresolved/suppressed |
+| Next-frame layout refresh | keyed `defer.RunNextFrame` | newest callback runs once |
+| Export | strict detached root copy → encode | no live mutation |
+| Import | validate → snapshot → replace → reconcile | accept or rollback snapshot |
+| Factory reset | snapshot → clear roots → reload | rollback if reload fails |
+| Structural party/raid setting | persistence + reload contract | no live secure-header rebuild |
 
-Blizzard retains action-button state and native widget behavior; external oUF retains unit/secure-header lifecycle and element dispatch. Roth UI owns its artwork, configuration and bounded presentation work. Tests, documentation and build tools are excluded from runtime packages.
+Blizzard retains secure action state; oUF retains unit/header/element lifecycle. Tests and build tooling are excluded from runtime packages.

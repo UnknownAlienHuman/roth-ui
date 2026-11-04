@@ -2,7 +2,6 @@ local addonName = ...
 local ns = assert(_G.Roth_UI, "Roth_UI: main namespace is required")
 
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by transfer.lua")
-local CopySerializable = assert(safety.CopySerializable, "Roth_UI: safety.CopySerializable is required by transfer.lua")
 local CopySerializableStrict = assert(safety.CopySerializableStrict,
   "Roth_UI: safety.CopySerializableStrict is required by transfer.lua")
 local TryCall = assert(safety.TryCall, "Roth_UI: safety.TryCall is required by transfer.lua")
@@ -66,7 +65,10 @@ local function StripWhitespace(text)
 end
 
 local function BuildExportEnvelope(mode)
-  local transferRoots = GetTransferRoots(mode)
+  local transferRoots, rootsError = GetTransferRoots(mode)
+  if type(transferRoots) ~= "table" then
+    return nil, rootsError or "SavedVariables could not be copied for export."
+  end
 
   local envelope = {
     kind = EXPORT_KIND,
@@ -76,13 +78,17 @@ local function BuildExportEnvelope(mode)
   }
 
   if mode == "full" or mode == "account" then
-    local accountRoot = type(transferRoots) == "table" and transferRoots.accountRoot or nil
-    envelope.account = CopySerializable(accountRoot) or {}
+    if type(transferRoots.accountRoot) ~= "table" then
+      return nil, "Account SavedVariables could not be copied for export."
+    end
+    envelope.account = transferRoots.accountRoot
   end
 
   if mode == "full" or mode == "char" then
-    local charRoot = type(transferRoots) == "table" and transferRoots.charRoot or nil
-    envelope.char = CopySerializable(charRoot) or {}
+    if type(transferRoots.charRoot) ~= "table" then
+      return nil, "Character SavedVariables could not be copied for export."
+    end
+    envelope.char = transferRoots.charRoot
   end
 
   return envelope
@@ -216,7 +222,12 @@ function transfer.Export(mode)
   if not normalizedMode then
     return nil, ("Unknown export mode '%s'."):format(tostring(mode))
   end
-  return SerializeEnvelope(BuildExportEnvelope(normalizedMode))
+
+  local envelope, buildError = BuildExportEnvelope(normalizedMode)
+  if not envelope then
+    return nil, buildError
+  end
+  return SerializeEnvelope(envelope)
 end
 
 function transfer.Import(mode, text)
@@ -253,8 +264,9 @@ function transfer.Import(mode, text)
   end
 
   if next(replacePayload) ~= nil then
-    if ApplyTransferRoots(replacePayload) ~= true then
-      return false, "Controlled persistence root replacement is unavailable."
+    local applied, applyError = ApplyTransferRoots(replacePayload)
+    if applied ~= true then
+      return false, applyError or "Controlled persistence root replacement failed."
     end
   end
 

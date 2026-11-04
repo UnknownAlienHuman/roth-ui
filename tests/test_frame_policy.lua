@@ -75,15 +75,33 @@ expect(policy.SetSuppressed(region, false) == true, "second restore failed")
 expect(region.alpha == 0.45 and region.mouse == false,
   "second restore replayed a stale suppression snapshot")
 
+-- Suppression is transactional. A failed second setter must roll back the
+-- successful first setter instead of leaving a foreign frame half-hidden.
 local partial = NewRegion()
 local mouseSetter = partial.EnableMouse
 partial.EnableMouse = function() error("temporary setter failure") end
 expect(policy.SetSuppressed(partial, true) == false, "partial failure was reported as success")
-expect(partial.alpha == 0, "partial setter setup did not exercise alpha mutation")
+expect(partial.alpha == 0.75 and partial.mouse == true,
+  "partial suppression failure did not roll back ordinary frame state")
+expect(policy.GetSuppressionState(partial) == false,
+  "partial suppression failure published a suppressed state")
 partial.EnableMouse = mouseSetter
 expect(policy.SetSuppressed(partial, true) == true, "later explicit suppression failed")
 expect(policy.SetSuppressed(partial, false) == true, "partial cycle did not restore")
 expect(partial.alpha == 0.75 and partial.mouse == true, "partial retry lost the original snapshot")
+
+-- A setter can mutate and then raise. The policy must detect and roll that
+-- change back through the getter rather than assuming no write occurred.
+local mutateThenFail = NewRegion()
+local originalMouseSetter = mutateThenFail.EnableMouse
+mutateThenFail.EnableMouse = function(self, value)
+  originalMouseSetter(self, value)
+  error("failed after mutation")
+end
+expect(policy.SetSuppressed(mutateThenFail, true) == false,
+  "mutating setter failure was reported as success")
+expect(mutateThenFail.alpha == 0.75 and mutateThenFail.mouse == true,
+  "mutating setter failure escaped transactional rollback")
 
 local partialRestore = NewRegion()
 expect(policy.SetSuppressed(partialRestore, true) == true, "partial restore setup failed")
