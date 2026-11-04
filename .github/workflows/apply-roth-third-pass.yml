@@ -1,0 +1,106 @@
+name: Apply Roth UI third-pass audit
+
+on:
+  push:
+    branches:
+      - audit/persistence-runtime-3.4.3
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: contains(github.event.head_commit.message, '[apply-roth-third-pass]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out staging commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct and apply audit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          fetch_blob() {
+            gh api "repos/${GITHUB_REPOSITORY}/git/blobs/$1" --jq -r .content \
+              | tr -d '\n' \
+              | base64 --decode
+          }
+          {
+            fetch_blob 6e0d9cc88504d0885e39d40880c5e77db8a663cf
+            fetch_blob 2b76a3562903ac895303424a7cb5d71d19c7aaf0
+            fetch_blob 29b82070c8f918a6839cba38487aa7cb9097c771
+            fetch_blob 564aae4a91aecf03c891626c499366ad2390ea98
+            fetch_blob 4f610140345d239ba2e82598e48ed304224a1a84
+            fetch_blob 80db13d7d59b755061d1f310ba9a58c5ed72570d
+            fetch_blob 3315a2131b8b9a2894462ba9f4fb9112053f2054
+            fetch_blob c2a3d99183e8b4e24b0a5f92f5d97bf9ee32f0f7
+            fetch_blob 50a273abc7c55d1ff36b27280fb6848ba92944c9
+            fetch_blob 5b5250c85480f76c3d91f5455c38ac34bc0e633a
+            fetch_blob 8e53b857f39590db66afdc795dd0c301e3423641
+            fetch_blob 9e8bfab7ac6cd97536a42c39d308fe88a6a7fa0d
+            fetch_blob 48ba585b838b474d73394551b01c192c7436bd0f
+            fetch_blob f2cdf7c8d2a5b54661bacf0891516eee322213c0
+            fetch_blob 8902c004d6ebc121c11b65ec97b3331080094fd3
+            fetch_blob 9a79340ea16910ffd7e821c0263c71e114c42a9b
+            fetch_blob 7489959b207230163f4ca3ea6c238f128587c04e
+            fetch_blob 5ace65a341f1872ffab9d2108ae3b79af6766f6f
+            fetch_blob 1bc57424b346a78726fcd14f3f94b51c0a8355c3
+            fetch_blob 23fc3ba638f20cae1cf47242b12b02d8e515777f
+            fetch_blob 2ec111f4ec0bb2bdef3fc8e9ccb41853aa097056
+            fetch_blob c30fb1e964535935b69ab738262cfd8f45e2b1dd
+            fetch_blob 769e6abeb7c91fd20ee71f84576dadecab13163b
+            fetch_blob ebe4b6c2a5aac6f753118c1a168f1dafa8ad3ca9
+            fetch_blob 6e264affb41a8f07eb54671b56e3fbef3f6baa60
+            fetch_blob e76764b606b38d7e7c1d0aba8703d55ddfb5aba6
+            fetch_blob e454a259707aef9b654f49760b049fae2610e24c
+            fetch_blob ff8096687cfbcb5a34ef2fbea70e6a60bbe8c9fe
+            fetch_blob 408da5884ac6d25be4df6a8fd14e1ebed5eb969a
+            fetch_blob 83d5e56c4784b26a51340488f7ad4af61688554a
+            fetch_blob 77338de1734242bd2f3ca00589b3d321735497a6
+            fetch_blob b3df978df4eed38f89cdb107552c9413265c8289
+          } > /tmp/pass.b64
+          base64 --decode /tmp/pass.b64 > /tmp/pass.tar.xz
+          echo "27c19431b16fa29bb55418cf2619e3ba0c28d325efc272e691204261b1a1d090  /tmp/pass.tar.xz" | sha256sum -c -
+          mkdir -p /tmp/pass
+          tar -xJf /tmp/pass.tar.xz -C /tmp/pass
+          python3 /tmp/pass/base-overlay/apply_overlay.py . --force
+          python3 /tmp/pass/third_pass.py .
+          git diff --check
+
+      - name: Install Lua 5.1
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes lua5.1
+
+      - name: Commit candidate locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Complete Roth UI 3.4.3 ownership and scheduler hardening"
+
+      - name: Validate exact committed source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_repository_text.py
+          python3 tools/validate_addon.py
+          python3 tools/validate_group_visibility.py
+          python3 tools/validate_runtime_hardening.py
+          python3 tools/run_lua_tests.py --lua lua5.1 --luac luac5.1
+          version="$(sed -n 's/^## Version:[[:space:]]*//p' Roth_UI.toc)"
+          mkdir -p /tmp/dist-a /tmp/dist-b
+          python3 tools/package_release.py "/tmp/dist-a/Roth_UI-${version}.zip"
+          python3 tools/package_release.py "/tmp/dist-b/Roth_UI-${version}.zip"
+          cmp "/tmp/dist-a/Roth_UI-${version}.zip" "/tmp/dist-b/Roth_UI-${version}.zip"
+
+      - name: Push verified source
+        shell: bash
+        run: git push origin HEAD:audit/persistence-runtime-3.4.3
