@@ -1,35 +1,33 @@
-# Current status — Roth UI 3.4.4
+# Current status — Roth UI 3.4.5
 
 ## Source and scope
 
-- Base: released `3.4.3`, source `ee13d71dd94d44a93df50b0689a94459a570ae9c`.
+- Base: `3.4.4`, `7008e17e3cc048652b82fc4076249b1bd0da21c9`.
 - Selected source: Retail `12.1.5.70688`, Interface `120105`, Blizzard `d07eb00237d8891f153215db98a5df880a26cfe5`.
 - External oUF: `14.2.1+`; inspected `c5ff6e4a09bfaf2186e205777e0fab964b5cddc1`.
 - KB: `UnknownAlienHuman/wow-addon-engineering-kb@c2a630aa186de401262663cc8568a77988be69df`.
 - `70783` remains reviewed post-selected evidence, not a new selected pin.
 
-This is a focused contract audit of persistence, serialization and managed-aura lifecycle, not certification of every subsystem or runtime scenario.
+This pass covers combat deferral, suppression/font ownership, late portrait initialization and ordinary cast-color caching. It is not certification of all subsystems or real-client behavior. Persistence schema, media, vendored libraries, managed-aura adoption and secure-header structures are unchanged.
 
 ## Contract-to-regression coverage
 
-| Contract and inspected authority | Correction | Regression |
+| Authority and contract | Correction | Regression |
 |---|---|---|
-| KB `KB/addon/Addon_SavedVariables.md`: export must not mutate authoritative state; validate detached schema | Read-only root acquisition bypasses ensure/migration; exports use the import validator and reject missing selected roots | `test_persistence_export_integration.lua` loads actual config/root/control-plane owners |
-| KB `KB/deep/WoWDevSecretValue_KB_12.1.5.md`: value and table access are separate; gate before traversal. SavedVariables guide: portable documents exclude metatables | `canaccesstable` gates traversal; strict copy rejects root/nested/protected metatables without invoking them | `test_strict_serialization_access.lua` |
-| KB SavedVariables and `KB/core/BlizzardUI_EventPatterns.md`: establish transaction/reentrancy and cleanup ownership before callbacks | One exclusive import/reset transaction; no intermediate export/public reconcile; error releases lock | `test_persistence_reentrancy.lua` loads actual root owners |
-| KB `KB/nodes/BlizzardUI_Auras.md` and second-pass overlay: current-context access, one-time adoption and native update ownership | Recheck visible/current owner, idempotent attachment, isolate failed adoption without retry, gate filter setter | `test_aura_lifecycle_failures.lua`; updated `test_aura_lazy.lua` |
-| oUF `elements/auras.lua:Create/Enable/Update` and `ouf.lua:EnableElement/AddMetaElement` at the pin above: creation, activation and unit assignment are distinct | Enable new late containers; one `UpdateAllElements` after a successful creation batch; no raw aura scan or extra candidate-filter refresh | Lazy-aura and lifecycle regressions model the inspected split |
-
-The inspected security, lifecycle and unit-frame guides preserve the separation between source review and real client permission. No stock-frame suppression, secure-header structure, cast timing, library or media changes are part of this patch.
+| KB `KB/core/BlizzardUI_EventPatterns.md`, terminal completion/deferred work: cancel stale work inside delivery and reject callback reentry | New immediate requests invalidate pending and draining work; object keys obey the same rule; combat is checked before every callback and unrun work is retained | `test_frame_policy_generations.lua` |
+| KB event ownership/compare-and-restore and `KB/nodes/BlizzardUI_UnitFrames.md`, stock-frame suppression boundary | Reacquisition captures a newer foreign property; unchanged suppression retains restoration ownership without repeating setters; failed writes still roll back | `test_frame_policy_reacquire.lua`, existing frame-policy regression |
+| Same compare-and-restore rule applied to the atomic font tuple | Foreign path, size or flag changes retire the previous snapshot before another Roth override | `test_font_policy_reacquire.lua` |
+| oUF `elements/portrait.lua:Enable/ForceUpdate` and `ouf.lua:EnableElement` at the pin above: activation does not populate the model | Attach once; request one element-only update after late activation, without a full unit-frame refresh | `test_portrait_initial_update.lua` |
+| KB `KB/core/BlizzardUI_Performance_Modules.md`: targeted updates and allocation-aware ordinary caches | Compare cached RGBA scalars directly; remove per-callback fingerprint table/string construction while preserving invalidation and direct opaque sinks | `test_target_castbar_cache.lua` |
 
 ## Automated acceptance
 
-The ordinary repository workflow owns the complete Lua 5.1 syntax/regression suite, repository text policy, TOC/XML order, ownership/Retail boundaries, secure-header semantics and two deterministic package builds. Its result applies to its exact commit, not a prior green head.
+All five new regression scripts were run against the verified 3.4.4 CI runtime first and failed at the intended boundaries. The missing portrait assignment was also reproduced independently of duplicate attachment. The corrected code passes the five new scripts and twelve locally retained regressions under Lua 5.3 with explicit compatibility aliases. That local subset is not the complete Lua 5.1 gate.
 
-New regressions were reproduced against the released 3.4.3 runtime before applying the fixes. Local compatibility checks use Lua 5.3 with Lua 5.1 aliases; they are not the authoritative Lua 5.1 gate. CI must validate the complete repository rather than the locally retained test subset.
+The ordinary repository CI remains authoritative for the exact commit: all existing and new Lua regressions, Lua 5.1 syntax, repository text, TOC/XML/load-order and ownership guards, secure-header semantics, runtime hardening and two deterministic packages. Merge requires that complete gate, followed by main readback and post-merge validation. The PR records exact run IDs and artifact digests rather than attributing an older green result to a later tree.
 
-## Remaining client acceptance
+The focused operation-count tests assert zero extra suppression setters across 50 unchanged requests and zero fingerprint concatenations across 100 unchanged cast callbacks. These are controlled stub observations, not CPU, memory, FPS or native rendering measurements.
 
-`NOT-RUN`: actual `GetBuildInfo()`, fresh/migrated/malformed SavedVariables login/reload, combat lockdown and taint, managed aura rendering/access transitions, casts/channels/empower, party/raid secure transitions, vehicle/override states, movers, Settings, fonts, resolutions, coexistence with other addons and `C_AddOnProfiler` measurements.
+## Remaining acceptance
 
-A protected-call exception guard is not permission. A stub access predicate does not emulate Blizzard restrictions. No measured CPU, memory, FPS or blanket compatibility claim is made.
+`NOT-RUN`: actual `GetBuildInfo()`, login/reload and migrations in WoW, combat lockdown/taint, native script-object access, model rendering, aura/cast/secure-header/vehicle transitions, interaction, another addon's font/frame overrides, representative resolutions and `C_AddOnProfiler` measurements. An exception guard does not grant protected-call permission; a stub does not emulate Blizzard security.

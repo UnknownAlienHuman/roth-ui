@@ -15,6 +15,7 @@ local TryMethod = assert(safety.TryMethod, "Roth_UI: safety.TryMethod is require
 local InCombatLockdown = InCombatLockdown
 local CreateFrame = CreateFrame
 local pairs = pairs
+local next = next
 local type = type
 local setmetatable = setmetatable
 
@@ -27,6 +28,7 @@ local frameState = setmetatable({}, { __mode = "k" })
 local deferredObjectKeys = setmetatable({}, { __mode = "k" })
 local nextDeferredObjectKey = 0
 local pending = {}
+local draining
 local regenFrame
 
 local function IsForbidden(frame)
@@ -36,24 +38,26 @@ end
 local function CaptureFrameState(frame)
   if not CanUseRegion(frame) then return nil end
 
-  local state = frameState[frame]
-  if state then
-    return state
-  end
-
   local gotAlpha, alpha = TryMethod(frame, "GetAlpha")
   local gotMouse, enabled = TryMethod(frame, "IsMouseEnabled")
   if gotAlpha ~= true or not CanAccess(alpha) or type(alpha) ~= "number"
       or gotMouse ~= true or not CanAccess(enabled) or type(enabled) ~= "boolean" then
     return nil
   end
-  state = {
-    alpha = alpha,
-    mouse = enabled,
-    suppressed = false,
-  }
-  frameState[frame] = state
-  return state
+  local state = frameState[frame]
+  if not state then
+    state = { suppressed = false }
+    frameState[frame] = state
+  end
+  -- A property changed by another owner is a new restore baseline. Retain the
+  -- old baseline only while the current property is still exactly our write.
+  if state.appliedAlpha == nil or alpha ~= state.appliedAlpha then
+    state.alpha, state.appliedAlpha = alpha, nil
+  end
+  if state.appliedMouse == nil or enabled ~= state.appliedMouse then
+    state.mouse, state.appliedMouse = enabled, nil
+  end
+  return state, alpha, enabled
 end
 
 local function RestoreProperty(frame, getter, setter, original, applied)
@@ -89,9 +93,9 @@ local function RestoreTrackedState(frame, state)
   return false
 end
 
-local function ApplyProperty(frame, getter, setter, original, desired)
-  if original == desired then
-    return true, nil
+local function ApplyProperty(frame, getter, setter, current, desired, applied)
+  if current == desired then
+    return true, applied
   end
 
   if TryMethod(frame, setter, desired) == true then
@@ -100,8 +104,8 @@ local function ApplyProperty(frame, getter, setter, original, desired)
 
   -- A setter may mutate before raising. Detect that ordinary state so the
   -- rollback path still owns and restores it.
-  local ok, current = TryMethod(frame, getter)
-  if ok == true and CanAccess(current) and type(current) == type(desired) and current == desired then
+  local ok, observed = TryMethod(frame, getter)
+  if ok == true and CanAccess(observed) and type(observed) == type(desired) and observed == desired then
     return false, desired
   end
   return false, nil
@@ -110,9 +114,9 @@ end
 local function ApplySuppressed(frame, suppressed)
   if not frame or IsForbidden(frame) then return false end
 
-  local state
+  local state, alpha, mouse
   if suppressed then
-    state = CaptureFrameState(frame)
+    state, alpha, mouse = CaptureFrameState(frame)
     if not state then return false end
   else
     state = frameState[frame]
@@ -125,7 +129,7 @@ local function ApplySuppressed(frame, suppressed)
 
   local alphaApplied
   local alphaOk
-  alphaOk, alphaApplied = ApplyProperty(frame, "GetAlpha", "SetAlpha", state.alpha, 0)
+  alphaOk, alphaApplied = ApplyProperty(frame, "GetAlpha", "SetAlpha", alpha, 0, state.appliedAlpha)
   state.appliedAlpha = alphaApplied
   if not alphaOk then
     RestoreTrackedState(frame, state)
@@ -134,7 +138,7 @@ local function ApplySuppressed(frame, suppressed)
 
   local mouseApplied
   local mouseOk
-  mouseOk, mouseApplied = ApplyProperty(frame, "IsMouseEnabled", "EnableMouse", state.mouse, false)
+  mouseOk, mouseApplied = ApplyProperty(frame, "IsMouseEnabled", "EnableMouse", mouse, false, state.appliedMouse)
   state.appliedMouse = mouseApplied
   if not mouseOk then
     RestoreTrackedState(frame, state)
@@ -146,12 +150,24 @@ local function ApplySuppressed(frame, suppressed)
 end
 
 local function FlushPending(self)
-  if InCombatLockdown and InCombatLockdown() then return false end
+  if draining or (InCombatLockdown and InCombatLockdown()) then return false end
   if self then self:UnregisterEvent("PLAYER_REGEN_ENABLED") end
   local work = pending
   pending = {}
-  for _, callback in pairs(work) do
-    TryCall(callback)
+  draining = work
+  for key, callback in pairs(work) do
+    work[key] = nil
+    if InCombatLockdown and InCombatLockdown() then
+      -- A reentrant callback may change the execution boundary. Preserve only
+      -- unrun work; a newer request for this key has already removed the old one.
+      pending[key] = pending[key] or callback
+    else
+      TryCall(callback)
+    end
+  end
+  draining = nil
+  if self and next(pending) ~= nil then
+    self:RegisterEvent("PLAYER_REGEN_ENABLED")
   end
   return true
 end
@@ -168,7 +184,16 @@ local function DeferUntilOutOfCombat(key, callback)
       or not CanAccess(callback) or type(callback) ~= "function" then
     return false
   end
-  if not (InCombatLockdown and InCombatLockdown()) then return false end
+  -- The newest request supersedes both queued and already-detached work,
+  -- including when the caller can now apply its request immediately.
+  if draining then draining[key] = nil end
+  if not (InCombatLockdown and InCombatLockdown()) then
+    pending[key] = nil
+    if regenFrame and next(pending) == nil then
+      regenFrame:UnregisterEvent("PLAYER_REGEN_ENABLED")
+    end
+    return false
+  end
 
   pending[key] = callback
   EnsureRegenFrame():RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -182,12 +207,9 @@ local function DeferForObject(scope, object, callback)
       or not CanAccess(callback) or type(callback) ~= "function" then
     return false
   end
-  if not (InCombatLockdown and InCombatLockdown()) then
-    return false
-  end
-
   local key = deferredObjectKeys[object]
   if not key then
+    if not (InCombatLockdown and InCombatLockdown()) then return false end
     nextDeferredObjectKey = nextDeferredObjectKey + 1
     key = nextDeferredObjectKey
     deferredObjectKeys[object] = key
