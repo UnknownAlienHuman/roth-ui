@@ -1,32 +1,30 @@
-# Current status — Roth UI 3.4.6
+# Current status — Roth UI 3.4.7
 
 ## Source and scope
 
-- Base: `3.4.5`, `d994b2bd28b117abdd1f7d9b41e8a873e7890396`.
+- Base: `3.4.6`, `6fb1f54403fcc707a95e90dd515cc7802139f3ae`.
 - Selected source: Retail `12.1.5.70688`, Interface `120105`, Blizzard `d07eb00237d8891f153215db98a5df880a26cfe5`.
 - External oUF: `14.2.1+`; inspected `c5ff6e4a09bfaf2186e205777e0fab964b5cddc1`.
 - KB: `UnknownAlienHuman/wow-addon-engineering-kb@c2a630aa186de401262663cc8568a77988be69df`.
 - `70783` remains reviewed post-selected evidence, not a selected-pin promotion.
 
-This pass covers Settings startup/readiness, registration failure recovery and managed-aura appearance settings. No persistence schema, secure-header, cast, managed-aura runtime, library, media or workflow changes are included.
+This pass covers persisted mover geometry and completed-addon readiness for reversible Blizzard-frame policy. No persistence schema, Settings, secure-header, aura, cast, library, media or workflow changes are included.
 
 ## Contract-to-regression coverage
 
 | Authority and contract | Correction | Regression |
 |---|---|---|
-| KB `KB/addon/Addon_SavedVariables.md`: pre-file SavedVariables does not mean addon initialization completed; register settings once after required initialization | Wait for Roth's completed load, then completed Blizzard_Settings load; explicit open cannot bypass unfinished builders | `test_settings_readiness.lua` covers preloaded, absent and partially loaded Settings with EventUtil and native-event fallback |
-| Blizzard `Interface/AddOns/Blizzard_SharedXML/EventUtil.lua:ContinueOnAddOnLoaded` at the selected pin: use the second IsAddOnLoaded result, not the loading-inclusive first result | Fallback distinguishes loading from finished and detaches before callback delivery | Same readiness test; existing `test_settings_lifecycle.lua` now delivers Roth completion before opening |
-| KB `KB/core/BlizzardUI_EventPatterns.md`: terminal state and cleanup before reentrant callbacks; no duplicate native registrations | Release registration lock after failed loading; allow a later explicit retry only before registration; partial native registration fails closed until reload | `test_settings_registration_failure.lua` injects native-load and builder errors |
-| KB `KB/nodes/BlizzardUI_Auras.md`: initializeFrame is one-time adoption; no later child mutation. oUF `elements/auras.lua:CreateButton`; Roth `core/aura_runtime.lua:CreateAuraRegion/StyleManagedAuraButton` | Duration/cooldown widgets and aura fonts explicitly require reload. Keep ordinary font refresh and live candidate-filter changes; remove appearance-only filter scans | `test_settings_aura_appearance.lua` exercises real Settings proxy setters and stored reload flags, with refresh counters |
+| KB Secret Value guide: gate before conversion, comparison, table traversal or storage; KB SavedVariables guide: imported/persisted documents are bounded ordinary data | Mover point/size/scale reads gate values and tables before `tonumber`, indexing or comparison; reject secret/inaccessible, forbidden-table and non-finite values | `test_mover_input_safety.lua`; `test_mover_source_contract.lua` |
+| KB Aura/layout guidance and selected ForbiddenAspect docs: `UntrustedLayoutScriptExecution` propagates to objects anchored to a restricted object | Validate standard anchor points and bounded names; reject self/restricted anchors and resolve unsafe/missing names to independent `UIParent` | Same mover safety regression |
+| KB transaction/cleanup rule: establish rollback before mutation and do not leave partial state after a failed callback/API call | Capture the existing single point before `ClearAllPoints`; on failed `SetPoint`, restore the exact captured tuple. Multi-anchor frames are left unchanged | Same mover safety regression plus existing mover interaction test |
+| Blizzard selected `EventUtil.ContinueOnAddOnLoaded`: first `IsAddOnLoaded` result includes loading; second means completed. KB one-shot rule: detach before feature code | Bootstrap uses the second result, retains a bounded named fallback until completion, removes delivery ownership before policy invocation and drops the dead unit-policy branch | `test_frame_policy_bootstrap_readiness.lua`, updated existing bootstrap regression |
 
 ## Automated acceptance
 
-All three new regression scripts failed at their intended boundaries against the unchanged 3.4.5 runtime before fixes. Focused local checks use Lua 5.3 with explicit compatibility aliases; they are not the authoritative Lua 5.1 suite.
+All three new regression scripts fail at their intended boundaries against unchanged 3.4.6. The corrected runtime passes them plus the existing mover and bootstrap regressions under the explicitly separate Lua 5.3 compatibility runner. Local parsing covers all available runtime/test Lua files; complete Lua 5.1 CI remains authoritative.
 
-The existing repository workflow remains the full gate: all isolated regressions, Lua 5.1 syntax, repository text, load-order/ownership/Retail-boundary, secure-header and runtime-hardening checks, plus two deterministic packages. The PR receipt records exact final-head and merged-main runs and package digests after validation. No earlier green commit is attributed to this tree.
-
-Appearance-only setters no longer scan aura candidate filters in the controlled regression. This is an operation-count observation, not a native CPU, allocation or FPS measurement.
+The repository workflow must pass on the exact candidate: all regressions, Lua 5.1 syntax, repository text, TOC/XML/load-order and ownership/Retail-boundary guards, secure-header semantics, runtime hardening and two deterministic packages. Merge and publication require exact-head CI, artifact/source parity, main readback and post-merge CI.
 
 ## Remaining acceptance
 
-`NOT-RUN`: actual GetBuildInfo, login/reload with the real addon stack, native Settings interaction/load order, combat/taint, managed aura rendering/access, secure group/vehicle transitions, cast/model rendering, other-addon coexistence and C_AddOnProfiler measurements. Exception handling does not grant protected-call permission. This focused patch does not certify every subsystem.
+`NOT-RUN`: actual `GetBuildInfo`, login/reload with real SavedVariables, mover drag/resize at representative resolutions and UI scales, restricted anchor behavior in the native client, Blizzard-frame load timing, combat/taint, secure transitions, rendering, coexistence and `C_AddOnProfiler` measurements. Stub operation counts and exception guards do not establish client permission or performance.

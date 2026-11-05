@@ -9,7 +9,13 @@ _G.IsControlKeyDown = function() return ctrlDown end
 _G.IsAltKeyDown = function() return altDown end
 _G.GameTooltip = nil
 _G.floor = math.floor
+_G.unpack = table.unpack or unpack
 _G.LibStub = nil -- the runtime must work without the dormant rLib bridge
+_G.Enum = { ForbiddenAspect = { UntrustedLayoutScriptExecution = 8 } }
+_G.issecretvalue = function() return false end
+_G.canaccessvalue = function() return true end
+_G.canaccessallvalues = function() return true end
+_G.canaccesstable = function() return true end
 
 local store = {}
 local function keyPath(path)
@@ -59,6 +65,10 @@ local function makeFrame(name, parent)
     mouseWheel = false,
     shown = true,
   }
+  function frame:HasAccessConstraints() return false end
+  function frame:CanBeAccessedInContext() return true end
+  function frame:IsForbidden() return false end
+  function frame:HasAnyForbiddenAspects() return false end
   function frame:GetName() return self.name end
   function frame:GetParent() return self.parent end
   function frame:SetAllPoints(target) self.allPoints = target end
@@ -92,6 +102,7 @@ local function makeFrame(name, parent)
   function frame:IsMovable() return self.movable end
   function frame:IsResizable() return self.resizable or false end
   function frame:SetUserPlaced(value) self.userPlaced = value end
+  function frame:GetNumPoints() return self.point and 1 or (#self.points > 0 and #self.points or 0) end
   function frame:GetPoint() local p = self.points[1]; if p then return unpack(p) end end
   function frame:ClearAllPoints() self.points = {} end
   function frame:SetPoint(...) self.points[#self.points + 1] = { ... } end
@@ -117,6 +128,8 @@ local ns = {
     DeferForObject = function() return false end,
   },
 }
+assert(loadfile("core/safety.lua"))("Roth_UI", ns)
+assert(loadfile("core/safety_aspects.lua"))("Roth_UI", ns)
 assert(loadfile("core/mover_runtime.lua"))("Roth_UI", ns)
 
 local function createMovable(name, category)
@@ -208,8 +221,6 @@ expect(ns.func.SetMoverUnlocked(frame, false) == true, "lock failed")
 expect(not handle.shown and not handle.mouse and not handle.mouseWheel,
   "locked handle remained interactive")
 
--- A power/alternate-power frame uses the same mover registration path and is
--- discoverable by the shared runtime iteration API.
 local altPower = makeFrame("Roth_AltPower", _G.UIParent)
 altPower:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 0)
 ns.func.applyDragFunctionality(altPower, "orb")
