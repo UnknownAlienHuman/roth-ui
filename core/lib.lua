@@ -340,11 +340,16 @@ local function EnsureLazyPortrait(frame)
       and type(frame.EnableElement) == "function"
       and not frame:IsElementEnabled("Portrait") then
     frame:EnableElement("Portrait")
+    -- oUF Enable installs the element's ForceUpdate but does not assign its
+    -- model. OnShow already ran before this late-creation hook.
+    if type(portrait.ForceUpdate) == "function" then
+      portrait:ForceUpdate()
+    end
   end
 end
 
 local function AttachLazyPortraitLifecycle(frame)
-  if type(frame.__rothPortraitFactory) ~= "function" then
+  if frame.__rothPortraitLifecycleReady or type(frame.__rothPortraitFactory) ~= "function" then
     return
   end
   frame.__rothPortraitLifecycleReady = true

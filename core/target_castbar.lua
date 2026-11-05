@@ -53,14 +53,15 @@ local function ResolveColorObject(bar, key)
   bar.__rothCastColors = bar.__rothCastColors or {}
   local cache = bar.__rothCastColors
   local r, g, b, a = ResolveRGBA(bar, key)
-  local fingerprint = table.concat({ r, g, b, a }, ":")
   local record = cache[key]
-  if record and record.fingerprint == fingerprint then
+  -- These are ordinary configuration components, not cast payloads. Compare
+  -- them directly instead of allocating a table/string on every callback.
+  if record and record.r == r and record.g == g and record.b == b and record.a == a then
     return record.color
   end
 
   local color = CreateColor(r, g, b, a)
-  cache[key] = { fingerprint = fingerprint, color = color }
+  cache[key] = { r = r, g = g, b = b, a = a, color = color }
   return color
 end
 

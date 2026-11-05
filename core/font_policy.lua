@@ -55,14 +55,19 @@ local function ApplyBlizzardFonts(fontPath)
   for index = 1, #FONT_NAMES do
     local object = rawget(_G, FONT_NAMES[index])
     local current, size, flags = ReadFont(object)
-    if current and current ~= fontPath then
+    if current then
       local state = originals[object]
-      if not state then
-        state = { path = current, size = size, flags = flags }
+      if state and (current ~= state.appliedPath or size ~= state.appliedSize or flags ~= state.appliedFlags) then
+        -- A foreign write ends our old ownership even when it kept the path.
+        -- A later Roth write must restore this new tuple, not the first one.
+        originals[object], state = nil, nil
       end
-      if WriteFont(object, fontPath, size, flags) then
-        state.appliedPath, state.appliedSize, state.appliedFlags = fontPath, size, flags
-        originals[object] = state
+      if current ~= fontPath then
+        state = state or { path = current, size = size, flags = flags }
+        if WriteFont(object, fontPath, size, flags) then
+          state.appliedPath, state.appliedSize, state.appliedFlags = fontPath, size, flags
+          originals[object] = state
+        end
       end
     end
   end

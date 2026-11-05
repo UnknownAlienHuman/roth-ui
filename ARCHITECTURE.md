@@ -1,4 +1,4 @@
-# Roth UI architecture — 3.4.4
+# Roth UI architecture — 3.4.5
 
 ## Boundaries
 
@@ -36,14 +36,18 @@ Raw root getters/writers are captured by their owner and removed from shared nam
 
 ## Scheduling
 
-`framePolicy.DeferUntilOutOfCombat` is the single keyed combat-exit queue. `framePolicy.DeferForObject` assigns weak-key object identities instead of deriving keys with `tostring(frame)`. `deferred_scheduler.RunNextFrame` is the sole next-frame queue. It coalesces all keys into one timer per generation, swaps generations before callback execution and isolates callback failures. Action-bar artwork has no parallel queue state or timer fallback.
+`framePolicy.DeferUntilOutOfCombat` is the single keyed combat-exit queue. A newer request cancels an older pending or draining callback even when the newer request can run immediately. Drains reject recursive entry and preserve unrun work if combat resumes. `framePolicy.DeferForObject` assigns weak-key object identities instead of deriving keys with `tostring(frame)`.
+
+`deferred_scheduler.RunNextFrame` is the sole next-frame queue. It coalesces all keys into one timer per generation, swaps generations before callback execution and isolates callback failures. Action-bar artwork has no parallel queue state or timer fallback.
 
 ## Secure/UI rules
 
 - Never reparent protected Blizzard frames, replace Blizzard action-button ownership, unregister Blizzard events, write CVars or mutate addon enable state.
 - Party/raid secure headers are created once per session; structural changes require reload.
 - Managed auras recheck owner visibility/access when deferred work runs, isolate partial adoption failure without retry, and issue one oUF unit-assignment update after a successful creation batch. Filter refresh checks current container access. No raw aura scanner or parallel `UNIT_AURA` state.
-- Foreign-frame suppression is transactional: a setter that mutates and then throws is detected and rolled back.
+- Foreign-frame suppression is transactional: a setter that mutates and then throws is detected and rolled back. Reacquisition captures newer foreign properties; unchanged suppression keeps restore ownership without repeating native setters.
+- Global fonts use compare-and-restore on the complete font tuple; a foreign write ends the old ownership before any new override.
+- Lazy portraits attach once and request their first update through the oUF Portrait element after late activation. Cast colors cache ordinary RGBA configuration, never cast payloads.
 - First-party `OnUpdate` loops are prohibited.
 
 ## Compatibility evidence

@@ -1,4 +1,4 @@
-# Roth UI dependency graph — 3.4.4
+# Roth UI dependency graph — 3.4.5
 
 ```text
 safety
@@ -22,8 +22,9 @@ import text
 
 combat-sensitive request
   -> frame_policy keyed queue
-  -> PLAYER_REGEN_ENABLED drain
-  -> listener removed
+  -> newest request invalidates older pending or draining work
+  -> PLAYER_REGEN_ENABLED drain rechecks combat before each callback
+  -> listener removed when no pending work remains
 
 layout refresh requests
   -> deferred_scheduler keyed generation
