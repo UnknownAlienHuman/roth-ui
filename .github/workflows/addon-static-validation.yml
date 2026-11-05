@@ -1,6 +1,12 @@
 name: Addon validation and package
 
 on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       publish_release:
@@ -8,6 +14,10 @@ on:
         required: false
         default: false
         type: boolean
+
+concurrency:
+  group: addon-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

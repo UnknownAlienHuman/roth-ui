@@ -1,4 +1,4 @@
-local addonName, ns = ...
+local _, ns = ...
 
 local func = assert(ns and ns.func, "Roth_UI: ns.func is required by combat_fader.lua")
 local CreateFrame = CreateFrame
@@ -109,8 +109,3 @@ function func.DetachCombatFader(frame)
   end
   return true
 end
-
--- Legacy Roth class-bar builders call this addon-owned name. Preserve it as a
--- thin alias to the sole event-driven fader owner; the retired rLib fader does
--- not return.
-_G.rCombatFrameFader = func.AttachCombatFader

@@ -5,7 +5,7 @@
 -- CVars. The policy applies ordinary visual/input state outside combat and owns
 -- the single coalescing PLAYER_REGEN_ENABLED queue used by runtime services.
 
-local addonName, ns = ...
+local _, ns = ...
 
 local safety = assert(ns and ns.safety, "Roth_UI: safety is required by frame_policy.lua")
 local CanAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by frame_policy.lua")
@@ -16,16 +16,16 @@ local InCombatLockdown = InCombatLockdown
 local CreateFrame = CreateFrame
 local pairs = pairs
 local type = type
-local tostring = tostring
 local setmetatable = setmetatable
 
 local policy = ns.framePolicy or {}
 ns.framePolicy = policy
 
--- State exists only while a foreign frame is suppressed. Once restored, the
--- record is removed so the next suppression cycle captures Blizzard's current
--- alpha/input state rather than replaying a stale login-time snapshot.
+-- State exists only while a foreign frame is suppressed or while a failed
+-- transition still owns one ordinary property that must be restored.
 local frameState = setmetatable({}, { __mode = "k" })
+local deferredObjectKeys = setmetatable({}, { __mode = "k" })
+local nextDeferredObjectKey = 0
 local pending = {}
 local regenFrame
 
@@ -38,8 +38,6 @@ local function CaptureFrameState(frame)
 
   local state = frameState[frame]
   if state then
-    -- A partial setter failure still owns the original snapshot. Do not capture
-    -- our already-applied alpha as Blizzard's state on the next attempt.
     return state
   end
 
@@ -66,13 +64,47 @@ local function RestoreProperty(frame, getter, setter, original, applied)
     return false, applied
   end
   if current ~= applied then
-    -- Another owner changed this property after Roth suppressed it.
+    -- Another owner changed this property after Roth wrote it.
     return true, nil
   end
   if TryMethod(frame, setter, original) ~= true then
     return false, applied
   end
   return true, nil
+end
+
+local function RestoreTrackedState(frame, state)
+  local alphaResolved, appliedAlpha = RestoreProperty(
+    frame, "GetAlpha", "SetAlpha", state.alpha, state.appliedAlpha)
+  local mouseResolved, appliedMouse = RestoreProperty(
+    frame, "IsMouseEnabled", "EnableMouse", state.mouse, state.appliedMouse)
+  state.appliedAlpha = appliedAlpha
+  state.appliedMouse = appliedMouse
+  state.suppressed = false
+
+  if alphaResolved and mouseResolved then
+    frameState[frame] = nil
+    return true
+  end
+  return false
+end
+
+local function ApplyProperty(frame, getter, setter, original, desired)
+  if original == desired then
+    return true, nil
+  end
+
+  if TryMethod(frame, setter, desired) == true then
+    return true, desired
+  end
+
+  -- A setter may mutate before raising. Detect that ordinary state so the
+  -- rollback path still owns and restores it.
+  local ok, current = TryMethod(frame, getter)
+  if ok == true and CanAccess(current) and type(current) == type(desired) and current == desired then
+    return false, desired
+  end
+  return false, nil
 end
 
 local function ApplySuppressed(frame, suppressed)
@@ -87,36 +119,29 @@ local function ApplySuppressed(frame, suppressed)
     if not state then return true end
   end
 
-  if suppressed then
-    local alphaApplied = TryMethod(frame, "SetAlpha", 0) == true
-    if alphaApplied then
-      state.appliedAlpha = 0
-    end
+  if not suppressed then
+    return RestoreTrackedState(frame, state)
+  end
 
-    local mouseApplied = TryMethod(frame, "EnableMouse", false) == true
-    if mouseApplied then
-      state.appliedMouse = false
-    end
-
-    if alphaApplied and mouseApplied then
-      state.suppressed = true
-      return true
-    end
+  local alphaApplied
+  local alphaOk
+  alphaOk, alphaApplied = ApplyProperty(frame, "GetAlpha", "SetAlpha", state.alpha, 0)
+  state.appliedAlpha = alphaApplied
+  if not alphaOk then
+    RestoreTrackedState(frame, state)
     return false
   end
 
-  local alphaResolved, appliedAlpha = RestoreProperty(
-    frame, "GetAlpha", "SetAlpha", state.alpha, state.appliedAlpha)
-  local mouseResolved, appliedMouse = RestoreProperty(
-    frame, "IsMouseEnabled", "EnableMouse", state.mouse, state.appliedMouse)
-  state.appliedAlpha = appliedAlpha
-  state.appliedMouse = appliedMouse
-
-  if not (alphaResolved and mouseResolved) then
+  local mouseApplied
+  local mouseOk
+  mouseOk, mouseApplied = ApplyProperty(frame, "IsMouseEnabled", "EnableMouse", state.mouse, false)
+  state.appliedMouse = mouseApplied
+  if not mouseOk then
+    RestoreTrackedState(frame, state)
     return false
   end
 
-  frameState[frame] = nil
+  state.suppressed = true
   return true
 end
 
@@ -139,7 +164,10 @@ local function EnsureRegenFrame()
 end
 
 local function DeferUntilOutOfCombat(key, callback)
-  if type(key) ~= "string" or key == "" or type(callback) ~= "function" then return false end
+  if not CanAccess(key) or type(key) ~= "string" or key == ""
+      or not CanAccess(callback) or type(callback) ~= "function" then
+    return false
+  end
   if not (InCombatLockdown and InCombatLockdown()) then return false end
 
   pending[key] = callback
@@ -147,7 +175,29 @@ local function DeferUntilOutOfCombat(key, callback)
   return true
 end
 
+local function DeferForObject(scope, object, callback)
+  local objectType = type(object)
+  if not CanAccess(scope) or type(scope) ~= "string" or scope == ""
+      or not CanAccess(object) or (objectType ~= "table" and objectType ~= "userdata")
+      or not CanAccess(callback) or type(callback) ~= "function" then
+    return false
+  end
+  if not (InCombatLockdown and InCombatLockdown()) then
+    return false
+  end
+
+  local key = deferredObjectKeys[object]
+  if not key then
+    nextDeferredObjectKey = nextDeferredObjectKey + 1
+    key = nextDeferredObjectKey
+    deferredObjectKeys[object] = key
+  end
+
+  return DeferUntilOutOfCombat(scope .. ":" .. key, callback)
+end
+
 local function IsRothEnabled(value)
+  if not CanAccess(value) then return false end
   if value == nil then return true end
   if type(value) == "boolean" then return value end
   if type(value) == "number" then return value ~= 0 end
@@ -160,7 +210,14 @@ local function IsRothEnabled(value)
 end
 
 local function SetSuppressed(frame, suppressed)
-  if DeferUntilOutOfCombat("frame:" .. tostring(frame), function()
+  -- Validate the foreign object and requested state before branching, deriving
+  -- queue identity or retaining either value in a deferred closure.
+  if not CanAccess(suppressed) or type(suppressed) ~= "boolean"
+      or not frame or IsForbidden(frame) then
+    return false
+  end
+
+  if DeferForObject("frame-suppression", frame, function()
     ApplySuppressed(frame, suppressed)
   end) then
     return false
@@ -172,8 +229,10 @@ policy.IsForbidden = IsForbidden
 policy.IsRothEnabled = IsRothEnabled
 policy.SetSuppressed = SetSuppressed
 policy.DeferUntilOutOfCombat = DeferUntilOutOfCombat
+policy.DeferForObject = DeferForObject
 policy.FlushPending = function() return FlushPending(regenFrame) end
 policy.GetSuppressionState = function(frame)
+  if not CanAccess(frame) then return false end
   local state = frame and frameState[frame]
   return state and state.suppressed == true or false
 end

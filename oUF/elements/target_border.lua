@@ -1,7 +1,7 @@
 -- Roth_UI custom oUF element: RareIcon / target border.
 -- Needed when using external oUF, because this element is not part of upstream oUF.
 
-local addon, ns = ...
+local _, ns = ...
 local oUF = (ns and (ns.oUF or _G.oUF)) or _G.oUF
 if not oUF then return end
 

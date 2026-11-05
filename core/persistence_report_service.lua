@@ -1,5 +1,5 @@
-local addonName = ...
-local ns = assert(_G.Roth_UI, "Roth_UI_Options: Roth_UI namespace is required")
+local _, private = ...
+local ns = assert(private or _G.Roth_UI, "Roth_UI: main namespace is required")
 
 -- Own persistence schema/drift reporting separately from SV scanning and reconcile orchestration.
 local GetPersistenceSchemaInfo = assert(ns and ns.GetPersistenceSchemaInfo, "Roth_UI: ns.GetPersistenceSchemaInfo is required by persistence_report_service.lua")
@@ -134,5 +134,3 @@ function reportApi.Report(verbose)
   end
   return report
 end
-
-ns.PersistenceSchemaReport = reportApi.Report

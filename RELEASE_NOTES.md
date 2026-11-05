@@ -1,22 +1,25 @@
-# Roth UI 3.4.2
+# Roth UI 3.4.3
 
-Configuration startup and lifecycle fixes. The target remains Retail **12.1.5.70688**, Interface **120105**, with external **oUF 14.1.1+**. Source pins remain unchanged; local evidence date: **2026-11-03**.
+Target: Retail `12.1.5.70688`, Interface `120105`, external oUF `14.2.1+`.
 
 ## Changes
 
-- Enabled `LoadSavedVariablesFirst: 1`. Roth constructs unit frames during file loading, so saved settings must be available before configuration views are captured. This prevents frames retaining default configuration after the loader supplies saved data. The static validator now requires this contract.
-- Sanitized configuration before recursive migration and repaired malformed table shapes. Existing castbar enable flags and legacy party/raid provider choices are preserved. Unreadable config roots recover through complete defaults.
-- Removed the redundant mover traversal from Reset All. A failed persistence reset leaves mover positions intact; successful canonical reset already clears those settings before reload.
-- Made restoration of Blizzard-frame alpha and mouse state independent. Roth restores only properties that still match its last successful writes and preserves changes made by other owners. A partial failure retains only unresolved restoration work.
-- Released completed load callbacks and removed completed persistence load/login listeners. Logout sanitation remains registered.
-- Removed repeated configuration commentary and made the Lua test runner usable with a Lua 5.1 interpreter even when the standalone compiler is absent.
-
-## Installation
-
-Install the ZIP's `Roth_UI` folder into `_retail_/Interface/AddOns/` with compatible oUF installed separately. Keep existing SavedVariables. Open Settings with `/roth options`.
+- Made import/reset atomic with strict staging, exact-reference rollback and reload inside the transaction boundary.
+- Made export immutable and rejected cycles, aliases, inaccessible values, unsupported values, non-finite numbers and oversized trees.
+- Preserved recovery when existing legacy SavedVariables are malformed.
+- Closed raw live-root access after owner capture and removed unused compatibility aliases.
+- Rolled back partial Blizzard-frame suppression writes.
+- Replaced frame-string queue keys with weak object identity.
+- Consolidated all next-frame refresh work onto one timer per generation; action-art no longer has an optional/fallback scheduler.
+- Removed the global combat-fader alias and the duplicate persistence rebuild command.
+- Removed 18 one-use locals and two inert configuration-time lookups.
+- Moved orb migration to the pre-file SavedVariables boundary and removed its redundant load-event owner.
+- Clear transfer-dialog strings and closures on hide to release large export/import buffers.
+- Raised the external oUF minimum to `14.2.1` for current secret/tag/event fixes.
+- Removed 84 unowned or duplicate media files (7,026,025 bytes uncompressed).
 
 ## Validation
 
-The suite contains 34 isolated regression scripts, including configuration startup with real persistence modules, malformed data recovery, failed reset, bootstrap cleanup and partial frame-state restoration. Final source and extracted-package checks are recorded in [CURRENT_STATUS.md](CURRENT_STATUS.md).
+Audit-candidate local checks: 75 packaged Lua files parsed, 12 focused regressions passed, deterministic ZIP reproduced byte-for-byte, extracted package validated (199 files; 76 TOC/XML graph entries). Full Lua 5.1 GitHub CI and Retail client acceptance for this exact overlay remain `NOT-RUN` until the overlay is pushed.
 
-Game-client startup order, combat, taint, visual behavior and profiling remain **NOT-RUN**. Local tests exercise addon logic and simulated API contracts, not the client's secure execution engine. The loading directive's source evidence is linked in [MIGRATION_12_1_5.md](MIGRATION_12_1_5.md).
+Install the ZIP's `Roth_UI` folder and keep existing SavedVariables.

@@ -1,4 +1,4 @@
-local addonName, ns = ...
+local _, ns = ...
 
 local oUF = (ns and (ns.oUF or _G.oUF)) or _G.oUF
 if not oUF then
@@ -6,7 +6,6 @@ if not oUF then
 end
 
 local type = type
-local math_min = math.min
 local UnitHasVehicleUI = UnitHasVehicleUI
 local CanAccess = assert(ns.safety and ns.safety.CanAccess, "Roth_UI: value access guard is required")
 

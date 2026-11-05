@@ -1,6 +1,6 @@
 -- Optional character-specific overrides.
 -- Disabled by default to avoid silently overriding SavedVariables.
-local addon, ns = ...
+local _, ns = ...
 
 local cfg = ns.cfg
 if not (cfg and cfg._allowCharSpecific) then

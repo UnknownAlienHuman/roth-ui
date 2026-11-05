@@ -3,7 +3,7 @@
 -- Centralizes Secret/Forbidden/access/serialization guards used across runtime,
 -- settings, and SavedVariables logic.
 
-local addonName, ns = ...
+local _, ns = ...
 
 ns.safety = ns.safety or {}
 local safety = ns.safety
@@ -262,14 +262,23 @@ function safety.CanUseRegion(region)
   return true
 end
 
-local function CopySerializable(source, stack, memo, depth, strict)
+local function ConsumeStrictStringBudget(budget, value)
+  if not budget or type(value) ~= "string" then
+    return true
+  end
+  budget.stringBytes = budget.stringBytes + #value
+  return budget.stringBytes <= budget.maxStringBytes
+end
+
+local function CopySerializable(source, stack, memo, depth, strict, budget)
   if not safety.CanAccess(source) or safety.IsSecret(source) then
     return nil
   end
 
   local valueType = type(source)
   if valueType ~= "table" then
-    if safety.IsSerializablePrimitive(source) then
+    if safety.IsSerializablePrimitive(source)
+        and (not strict or ConsumeStrictStringBudget(budget, source)) then
       return source
     end
     return nil
@@ -282,8 +291,14 @@ local function CopySerializable(source, stack, memo, depth, strict)
   stack = stack or {}
   memo = memo or {}
   depth = depth or 0
-  if depth > 64 then
+  if depth > (budget and budget.maxDepth or 64) then
     return nil
+  end
+  if strict and budget then
+    budget.tables = budget.tables + 1
+    if budget.tables > budget.maxTables then
+      return nil
+    end
   end
   if stack[source] then
     -- SavedVariables cannot safely persist cyclic tables. Reject the branch
@@ -291,6 +306,12 @@ local function CopySerializable(source, stack, memo, depth, strict)
     return nil
   end
   if memo[source] then
+    -- A canonical import/export document is a tree. Shared-reference graphs
+    -- are rejected in strict mode because object identity is not part of the
+    -- portable schema and can hide cycles or alias unrelated roots.
+    if strict then
+      return nil
+    end
     return memo[source]
   end
   stack[source] = true
@@ -298,8 +319,17 @@ local function CopySerializable(source, stack, memo, depth, strict)
   local destination = {}
   memo[source] = destination
   for key, child in pairs(source) do
+    if strict and budget then
+      budget.entries = budget.entries + 1
+      if budget.entries > budget.maxEntries then
+        stack[source] = nil
+        memo[source] = nil
+        return nil
+      end
+    end
     if not safety.CanAccess(key) then
       stack[source] = nil
+      memo[source] = nil
       return nil
     end
 
@@ -312,8 +342,9 @@ local function CopySerializable(source, stack, memo, depth, strict)
     else
       local keyType = type(key)
       if (keyType == "string" or keyType == "number")
-          and (not strict or safety.IsSerializablePrimitive(key)) then
-        local copy = CopySerializable(child, stack, memo, depth + 1, strict)
+          and (not strict or safety.IsSerializablePrimitive(key))
+          and (not strict or ConsumeStrictStringBudget(budget, key)) then
+        local copy = CopySerializable(child, stack, memo, depth + 1, strict, budget)
         if copy ~= nil then
           destination[key] = copy
         elseif strict then
@@ -334,12 +365,31 @@ local function CopySerializable(source, stack, memo, depth, strict)
 end
 
 function safety.CopySerializable(source, stack, memo, depth)
-  return CopySerializable(source, stack, memo, depth, false)
+  return CopySerializable(source, stack, memo, depth, false, nil)
 end
 
--- Validate and copy a complete serializable tree. Unlike CopySerializable's
--- migration-oriented sanitizer, this rejects the entire input when any nested
--- value is secret, inaccessible, unsupported, cyclic, or beyond the depth cap.
-function safety.CopySerializableStrict(source)
-  return CopySerializable(source, nil, nil, 0, true)
+local function PositiveIntegerOption(opts, key, fallback)
+  local value = type(opts) == "table" and opts[key] or nil
+  if type(value) ~= "number" or value ~= value or value < 1 or value % 1 ~= 0 then
+    return fallback
+  end
+  return value
+end
+
+-- Validate and copy a complete, bounded serializable tree. Unlike
+-- CopySerializable's migration-oriented sanitizer, this rejects the entire
+-- input when any nested value is secret, inaccessible, unsupported, cyclic,
+-- aliased, too deep, or exceeds the table/entry/string budgets. A depth limit
+-- alone is not a size bound.
+function safety.CopySerializableStrict(source, opts)
+  local budget = {
+    maxDepth = PositiveIntegerOption(opts, "maxDepth", 64),
+    maxTables = PositiveIntegerOption(opts, "maxTables", 8192),
+    maxEntries = PositiveIntegerOption(opts, "maxEntries", 65536),
+    maxStringBytes = PositiveIntegerOption(opts, "maxStringBytes", 4 * 1024 * 1024),
+    tables = 0,
+    entries = 0,
+    stringBytes = 0,
+  }
+  return CopySerializable(source, nil, nil, 0, true, budget)
 end

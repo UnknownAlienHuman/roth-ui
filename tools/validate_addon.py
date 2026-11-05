@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 ROOT = Path(__file__).resolve().parents[1]
 INTERFACE = "120105"
 TARGET_BUILD = "12.1.5.70688"
-OUF_MIN = "14.1.1"
+OUF_MIN = "14.2.1"
 MAIN_TOC = ROOT / "Roth_UI.toc"
 # The TOC owns the release version used by packages and workflow artifacts.
 _versions = re.findall(r"^## Version:\s*(\S+)\s*$", MAIN_TOC.read_text(), re.MULTILINE)
@@ -333,7 +333,7 @@ def assert_runtime_boundaries(graph: list[Entry]) -> None:
             fail(f"forbidden-aspect boundary missing: {token}")
 
     contract = sources.get("core/ouf_contract.lua", "")
-    for token in ("14.1.1", "AddElement", "RegisterStyle", "SpawnHeader", "AuraContainerSortMethod"):
+    for token in (OUF_MIN, "AddElement", "RegisterStyle", "SpawnHeader", "AuraContainerSortMethod"):
         if token not in contract:
             fail(f"oUF contract missing: {token}")
 
@@ -382,15 +382,16 @@ def assert_runtime_boundaries(graph: list[Entry]) -> None:
             fail(f"secure structural setting must not have a live apply callback: {variable}")
 
     bars = sources.get("core/bars.lua", "")
-    if "AttachCombatFader(" not in bars and "rCombatFrameFader(" not in bars:
+    if "AttachCombatFader(" not in bars:
         fail("class bars must attach through the combat-fader owner")
     combat = sources.get("core/combat_fader.lua", "")
+    if "_G.rCombatFrameFader" in combat:
+        fail("combat fader must not publish the retired global alias")
     for token in (
         "PLAYER_REGEN_DISABLED",
         "PLAYER_REGEN_ENABLED",
         "func.AttachCombatFader",
         "func.DetachCombatFader",
-        "_G.rCombatFrameFader",
     ):
         if token not in combat:
             fail(f"combat fader contract missing: {token}")

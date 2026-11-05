@@ -4,7 +4,7 @@
 -- Development builds with an unexpanded version token are accepted only when
 -- the complete capability surface used by Roth UI is present.
 
-local addonName, ns = ...
+local _, ns = ...
 
 local oUF = assert(ns and ns.oUF, "Roth_UI: oUF is required by ouf_contract.lua")
 local C_AddOns = C_AddOns
@@ -12,7 +12,7 @@ local CanAccess = assert(ns.safety and ns.safety.CanAccess, "Roth_UI: safety.Can
 local type = type
 local tonumber = tonumber
 
-local MIN_MAJOR, MIN_MINOR, MIN_PATCH = 14, 1, 1
+local MIN_MAJOR, MIN_MINOR, MIN_PATCH = 14, 2, 1
 
 local REQUIRED_METHODS = {
   "AddElement",
@@ -62,12 +62,12 @@ if type(C_AddOns) == "table" and type(C_AddOns.GetAddOnMetadata) == "function" t
 end
 local major, minor, patch = ParseVersion(version)
 if major and IsOlder(major, minor, patch) then
-  error(("Roth_UI: oUF %d.%d.%d is too old; version 14.1.1 or newer is required")
+  error(("Roth_UI: oUF %d.%d.%d is too old; version 14.2.1 or newer is required")
     :format(major, minor, patch), 0)
 end
 
 ns.oUFContract = {
-  minimumVersion = "14.1.1",
+  minimumVersion = "14.2.1",
   detectedVersion = version,
   managedAuras = "validated-on-create", -- public AuraContainer methods are checked when created
   nativeInterpolation = true,

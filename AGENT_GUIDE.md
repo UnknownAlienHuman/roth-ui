@@ -1,56 +1,32 @@
 # Roth UI agent guide
 
-## Current target
+Target: addon `3.4.3`, Retail `12.1.5`, Interface `120105`, selected source build `12.1.5.70688`, reviewed post-selected source `12.1.5.70783`, oUF `14.2.1+`.
 
-Addon `3.4.2` targets Retail `12.1.5`, Interface `120105`, target source build `12.1.5.70688`. Source references checked `2026-11-02`: Blizzard UI source `d07eb00237d8891f153215db98a5df880a26cfe5` and oUF `14.1.1` at `8f37c36e3ed37d2fcfca2f3690f5e37e52b758c7`. Live client build, combat, taint, visual, and performance verification have not been run; do not describe the addon as client-certified.
+Before editing, read `README.md`, `ARCHITECTURE.md`, `CURRENT_STATUS.md`, `CODE_INDEX.md`, `CODE_GRAPH.md`, the TOC and the applicable contracts in `UnknownAlienHuman/wow-addon-engineering-kb`.
 
-Before editing, read `README.md`, `ARCHITECTURE.md`, `CODE_INDEX.md`, `CODE_GRAPH.md`, the current status and migration notes, the TOC, and applicable local policy guides. Treat current repository code and explicit project instructions as authoritative. Check pinned framework/platform source for API contracts when needed; distinguish source review from client evidence.
+## Workflow
 
-## Ownership boundaries
+- One dedicated Git worktree per manager/agent. Never share a dirty worktree between managers.
+- Preserve unrelated edits; do not restore deleted legacy files.
+- Keep source evidence, local tests, CI and in-client evidence separate.
+- Do not publish or merge until the complete repository gate passes on the exact commit.
 
-- `core/safety.lua` owns access, secret/forbidden, and serializable-copy guards; `core/safety_aspects.lua` owns operation-specific forbidden-aspect checks.
-- `core/config_persistence_owner.lua` is the only SavedVariables root writer. `core/settings_main.lua` is the only Blizzard Settings category owner.
-- `core/aura_runtime.lua` is the sole managed-aura lifecycle owner. Do not enumerate raw aura data or create separate `UNIT_AURA` state.
-- oUF owns unit-frame lifecycle, secure party/raid headers, unit elements, cast discovery, and managed aura events. Do not poll casts outside oUF.
-- `core/frame_policy.lua` owns reversible Blizzard-frame suppression and the single keyed out-of-combat queue. `core/deferred_scheduler.lua` owns keyed next-frame coalescing. Do not add parallel permanent combat-exit listeners.
-- `core/mover_runtime.lua` owns mover creation and saved frame point/scale/size. Use it for every frame that needs movement; keep layout defaults current and preserve saved overrides.
-- `core/font_policy.lua` owns Roth font updates and optional reversible Blizzard font changes. Restore only a snapshot that still matches the exact state Roth applied.
-- `units/mini_target_scaffold.lua` is the shared builder for mini target layouts. Individual styles must continue supplying their own settings and optional elements.
-- The oUF Experience element owns rested XP updates. Avoid adding a second rested-bar updater through `Experience.PostUpdate`.
-- Blizzard action buttons, secure state, paging, bindings, vehicle/override state, and visibility remain Blizzard-owned. Roth skins are additive; action-bar artwork stays `UIParent`-owned.
-- Retired embedded mover helper files and obsolete unit policy files must remain absent.
+## Non-negotiable ownership
 
-## Security and runtime rules
+- Persistence root mutation: `persistence_control_plane` transaction only.
+- No raw root getter/writer exported after owner capture.
+- Combat deferral: `frame_policy` only.
+- Next-frame scheduling: `deferred_scheduler` only; one timer drains each coalesced generation.
+- Managed auras, movers, fonts and Settings keep one owner each.
+- oUF owns unit frames and secure group headers; Blizzard owns secure action state.
 
-- Gate secret-capable or inaccessible values before comparison, formatting, conversion, serialization, retention, or indexing.
-- Never reparent protected Blizzard frames, override Blizzard globals, unregister Blizzard events, change addon enable state, or write Blizzard CVars.
-- Party and raid headers are session-owned. Never respawn or rebuild their child structure during combat; structural settings require reload.
-- Keep bookkeeping for foreign frames in addon-owned weak-key tables, not fields added to Blizzard or oUF objects.
-- Keep Settings registration lazy; normal login must not force `Blizzard_Settings` to load.
-- Keep bootstrap listeners bounded and remove them when their work completes.
-- Do not add first-party `OnUpdate` loops.
-- Maintain the Diablo-inspired visual language while preserving each unit's established geometry, tags, and optional elements during shared-builder changes.
+## Safety
 
-## Shared checkout workflow
-
-Work in the existing shared `main` checkout. Do not create branches or worktrees, or commit/publish changes, unless the repository owner explicitly requests that action. Preserve other contributors' edits and avoid restoring deleted files from the baseline.
+- Gate inaccessible/secret-capable values before comparison, formatting, indexing, storage or retention.
+- Portable documents are bounded trees, not arbitrary graphs.
+- Never reparent protected frames, override Blizzard globals, unregister Blizzard events, write CVars or add first-party `OnUpdate` loops.
+- Structural party/raid changes require reload.
 
 ## Validation
 
-Run the complete isolated Lua suite with the discovered Lua 5.1 interpreter:
-
-```bash
-python3 tools/run_lua_tests.py
-```
-
-The current tree contains 34 isolated test scripts and 109 Lua files total (75 addon Lua files plus the tests). The runner accepts `--lua PATH` or `LUA_BIN` and checks syntax with native `loadfile` when a standalone Lua 5.1 compiler is unavailable. When available, also run:
-
-```bash
-python3 tools/validate_repository_text.py
-python3 tools/validate_addon.py
-python3 tools/validate_group_visibility.py
-python3 tools/validate_runtime_hardening.py
-find . -type f -name '*.lua' -not -path './.git/*' -print0 | xargs -0 -n1 luac5.1 -p
-```
-
-Report missing tools or unavailable client checks as `NOT-RUN`; never infer a pass from source inspection. Release validation also requires in-client login/reload, secure-header transitions, casts, auras, vehicle/action-bar states, Settings, and persistence checks, plus taint and profiler evidence. Those target-client checks have not been run for this target.
+Run all repository validators, Lua 5.1 syntax/tests and deterministic packaging. Report unavailable WoW checks as `NOT-RUN`; never infer taint/combat/visual/performance acceptance from stubs.

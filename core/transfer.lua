@@ -1,15 +1,14 @@
-local addonName = ...
-local ns = assert(_G.Roth_UI, "Roth_UI: main namespace is required")
+local _, private = ...
+local ns = assert(private or _G.Roth_UI, "Roth_UI: main namespace is required")
 
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by transfer.lua")
-local CopySerializable = assert(safety.CopySerializable, "Roth_UI: safety.CopySerializable is required by transfer.lua")
 local CopySerializableStrict = assert(safety.CopySerializableStrict,
   "Roth_UI: safety.CopySerializableStrict is required by transfer.lua")
 local TryCall = assert(safety.TryCall, "Roth_UI: safety.TryCall is required by transfer.lua")
 local persistence = assert(ns and ns.persistence, "Roth_UI: persistence service is required by transfer.lua")
 local GetTransferRoots = assert(persistence.GetTransferRoots, "Roth_UI: persistence.GetTransferRoots is required by transfer.lua")
-local ApplyTransferRoots = assert(persistence.ApplyTransferRoots, "Roth_UI: persistence.ApplyTransferRoots is required by transfer.lua")
-local ReloadPersistenceUI = assert(persistence.ReloadUI, "Roth_UI: persistence.ReloadUI is required by transfer.lua")
+local ApplyTransferRootsAndReload = assert(persistence.ApplyTransferRootsAndReload,
+  "Roth_UI: persistence.ApplyTransferRootsAndReload is required by transfer.lua")
 
 local transfer = ns.transfer or {}
 ns.transfer = transfer
@@ -33,6 +32,15 @@ local MODE_LABELS = {
   full = "Full",
   account = "Account",
   char = "Character",
+}
+
+local ALLOWED_ENVELOPE_KEYS = {
+  kind = true,
+  version = true,
+  mode = true,
+  exportedAt = true,
+  account = true,
+  char = true,
 }
 
 local function NormalizeMode(mode)
@@ -66,7 +74,10 @@ local function StripWhitespace(text)
 end
 
 local function BuildExportEnvelope(mode)
-  local transferRoots = GetTransferRoots(mode)
+  local transferRoots, rootsError = GetTransferRoots(mode)
+  if type(transferRoots) ~= "table" then
+    return nil, rootsError or "SavedVariables could not be copied for export."
+  end
 
   local envelope = {
     kind = EXPORT_KIND,
@@ -76,13 +87,17 @@ local function BuildExportEnvelope(mode)
   }
 
   if mode == "full" or mode == "account" then
-    local accountRoot = type(transferRoots) == "table" and transferRoots.accountRoot or nil
-    envelope.account = CopySerializable(accountRoot) or {}
+    if type(transferRoots.accountRoot) ~= "table" then
+      return nil, "Account SavedVariables could not be copied for export."
+    end
+    envelope.account = transferRoots.accountRoot
   end
 
   if mode == "full" or mode == "char" then
-    local charRoot = type(transferRoots) == "table" and transferRoots.charRoot or nil
-    envelope.char = CopySerializable(charRoot) or {}
+    if type(transferRoots.charRoot) ~= "table" then
+      return nil, "Character SavedVariables could not be copied for export."
+    end
+    envelope.char = transferRoots.charRoot
   end
 
   return envelope
@@ -172,43 +187,43 @@ local function DeserializeEnvelope(text)
     return nil, "Import text did not decode into a table payload."
   end
 
+  -- Validate the whole envelope as one tree before inspecting individual roots.
+  -- Copying roots separately would launder aliases shared across account/char.
+  envelope = CopySerializableStrict(envelope)
+  if type(envelope) ~= "table" then
+    return nil, "Import payload is not a complete serializable tree."
+  end
+  for key in pairs(envelope) do
+    if ALLOWED_ENVELOPE_KEYS[key] ~= true then
+      return nil, "Import payload contains an unsupported envelope field."
+    end
+  end
+
   if envelope.kind ~= EXPORT_KIND then
     return nil, "Import payload is not a Roth_UI settings export."
   end
-
-  if tonumber(envelope.version) ~= EXPORT_VERSION then
+  if type(envelope.version) ~= "number" or envelope.version ~= EXPORT_VERSION then
     return nil, ("Import payload version '%s' is not supported by this build."):format(tostring(envelope.version))
+  end
+  if MODE_LABELS[envelope.mode] == nil then
+    return nil, "Import payload has an unsupported transfer mode."
+  end
+  if envelope.exportedAt ~= nil and type(envelope.exportedAt) ~= "number" then
+    return nil, "Import payload has an invalid export timestamp."
+  end
+  if envelope.mode == "full" then
+    if type(envelope.account) ~= "table" or type(envelope.char) ~= "table" then
+      return nil, "Full import payload is missing an account or character root."
+    end
+  elseif envelope.mode == "account" then
+    if type(envelope.account) ~= "table" or envelope.char ~= nil then
+      return nil, "Account import payload has inconsistent roots."
+    end
+  elseif type(envelope.char) ~= "table" or envelope.account ~= nil then
+    return nil, "Character import payload has inconsistent roots."
   end
 
   return envelope
-end
-
-local function ValidateAccountRoot(root)
-  local copy = CopySerializableStrict(root)
-  if type(copy) ~= "table" then
-    return nil, "Account payload is missing or invalid."
-  end
-  if type(copy.account) ~= "table" then
-    return nil, "Account payload is missing the account table."
-  end
-  if type(copy.account.settings) ~= "table" then
-    return nil, "Account payload is missing account.settings."
-  end
-  if type(copy.account.templates) ~= "table" then
-    return nil, "Account payload is missing account.templates."
-  end
-  return copy
-end
-
-local function ValidateCharRoot(root)
-  local copy = CopySerializableStrict(root)
-  if type(copy) ~= "table" then
-    return nil, "Character payload is missing or invalid."
-  end
-  if type(copy.orbs) ~= "table" then
-    return nil, "Character payload is missing Roth_UI_DB_Char.orbs."
-  end
-  return copy
 end
 
 function transfer.Export(mode)
@@ -216,7 +231,12 @@ function transfer.Export(mode)
   if not normalizedMode then
     return nil, ("Unknown export mode '%s'."):format(tostring(mode))
   end
-  return SerializeEnvelope(BuildExportEnvelope(normalizedMode))
+
+  local envelope, buildError = BuildExportEnvelope(normalizedMode)
+  if not envelope then
+    return nil, buildError
+  end
+  return SerializeEnvelope(envelope)
 end
 
 function transfer.Import(mode, text)
@@ -233,28 +253,25 @@ function transfer.Import(mode, text)
   if not envelope then
     return false, err
   end
+  if envelope.mode ~= normalizedMode then
+    return false, ("Import mode mismatch: selected '%s', payload is '%s'."):format(
+      normalizedMode, envelope.mode)
+  end
 
   local replacePayload = {}
 
   if normalizedMode == "account" or normalizedMode == "full" then
-    local accountRoot, accountErr = ValidateAccountRoot(envelope.account)
-    if not accountRoot then
-      return false, accountErr
-    end
-    replacePayload.accountRoot = accountRoot
+    replacePayload.accountRoot = envelope.account
   end
 
   if normalizedMode == "char" or normalizedMode == "full" then
-    local charRoot, charErr = ValidateCharRoot(envelope.char)
-    if not charRoot then
-      return false, charErr
-    end
-    replacePayload.charRoot = charRoot
+    replacePayload.charRoot = envelope.char
   end
 
   if next(replacePayload) ~= nil then
-    if ApplyTransferRoots(replacePayload) ~= true then
-      return false, "Controlled persistence root replacement is unavailable."
+    local applied, applyError = ApplyTransferRootsAndReload(replacePayload)
+    if applied ~= true then
+      return false, applyError or "Controlled persistence root replacement failed."
     end
   end
 
@@ -286,6 +303,20 @@ local function SetDialogTitle(dialog, text)
   if title and title.SetText then
     title:SetText(text or "")
   end
+end
+
+local function ClearDialogState(dialog)
+  if not dialog then return end
+  dialog.operation = nil
+  dialog.mode = nil
+  dialog.RunPrimary = nil
+  dialog.RunSecondary = nil
+  if dialog.EditBox then
+    dialog.EditBox:ClearFocus()
+    dialog.EditBox:SetText("")
+  end
+  if dialog.Status then dialog.Status:SetText("") end
+  if dialog.Subtitle then dialog.Subtitle:SetText("") end
 end
 
 local function EnsureDialog()
@@ -382,6 +413,7 @@ local function EnsureDialog()
     end
   end)
 
+  dialog:SetScript("OnHide", ClearDialogState)
   transfer.dialog = dialog
   UpdateEditBoxLayout(dialog)
   return dialog
@@ -471,12 +503,7 @@ function transfer.ShowImportDialog(mode)
       return
     end
 
-    print(("Roth_UI: %s Reloading UI."):format(result))
-    if ReloadPersistenceUI() ~= true then
-      local reloadErr = "Import applied, but UI reload is not available."
-      self.Status:SetText(reloadErr)
-      print("Roth_UI: " .. reloadErr)
-    end
+    print(("Roth_UI: %s"):format(result))
   end
 
   dialog.RunSecondary = function(self)

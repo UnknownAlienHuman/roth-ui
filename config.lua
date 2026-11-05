@@ -8,18 +8,16 @@
   ---------------------------------------------
 
   --get the addon namespace
-  local addon, ns = ...
+  local _, ns = ...
   local oUF = ns.oUF or _G.oUF
   ns.oUF = oUF
   local mediapath = "Interface\\AddOns\\Roth_UI\\media\\"
   ns.mediapath = mediapath
-  local LSM = LibStub("LibSharedMedia-3.0")
 
   --object container
   local cfg = {}
   ns.cfg = cfg
   cfg.__version = 63
-  local locale = GetLocale()
   ---------------------------------------------
   -- // CONFIG // --
   ---------------------------------------------

@@ -1,5 +1,5 @@
   --get the addon namespace
-  local addon, ns = ...
+  local _, ns = ...
 
   --get oUF namespace (just in case needed)
   local oUF = ns.oUF or oUF
@@ -15,6 +15,8 @@
   local framePolicy = assert(ns and ns.framePolicy, "Roth_UI: framePolicy is required by units/party.lua")
   local DeferUntilOutOfCombat = assert(framePolicy.DeferUntilOutOfCombat,
     "Roth_UI: framePolicy.DeferUntilOutOfCombat is required by units/party.lua")
+  local DeferForObject = assert(framePolicy.DeferForObject,
+    "Roth_UI: framePolicy.DeferForObject is required by units/party.lua")
 
   --get the unit container
   local unit = ns.unit
@@ -57,7 +59,7 @@
       t:SetPoint("RIGHT",10,0)
       t:SetPoint("BOTTOM",0,-20)
     end
-    t:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget")
+    t:SetTexture("Interface\\AddOns\\Roth_UI\\media\\target")
   end
 
   --create health frames
@@ -209,10 +211,14 @@
           -- style has replaced this frame's portrait holder in the meantime.
           if self.PortraitHolder ~= portraitHolder then return end
           if InCombatLockdown and InCombatLockdown() then
-            DeferUntilOutOfCombat("party-portrait-hitrect:" .. tostring(self), function()
+            if DeferForObject("party-portrait-hitrect", self, function()
               ApplyPortraitHitRect(true)
-            end)
-            return
+            end) then
+              return
+            end
+            if InCombatLockdown and InCombatLockdown() then
+              return
+            end
           end
           if afterCombat or self.cfg.vertical then
             self:SetHitRectInsets(0, 0, 0, 0)

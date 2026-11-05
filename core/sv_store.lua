@@ -4,12 +4,12 @@
 --   * config_persistence_owner.lua owns config reconcile/schema/proxy policy
 --     using defaults declared in config.lua.
 --   * persistence_runtime_state.lua owns volatile runtime-state buckets + legacy migration.
---   * persistence_root_store.lua owns canonical roots/domain access:
---       store.GetDomainRoot / store.SetDomainRoot / store.ReplaceRoots / store.ResetRoots
---       store.GetConfigRoot / store.GetOrbCharRoot / store.GetOrbGlobalRoot
---   * persistence_control_plane.lua owns the public ns.persistence facade + lifecycle bootstrap.
+--   * persistence_root_store.lua owns canonical roots/domain access. Its raw
+--     commit/reset/restore closures are captured and hidden by the control plane.
+--   * persistence_control_plane.lua owns the public ns.persistence facade,
+--     root transactions and lifecycle bootstrap.
 --   * sv_store.lua owns low-level path/value access used by modules:
---       ns.SVGet / ns.SVSet / ns.SVRebuildRuntime / ns.store.*
+--       ns.SVGet / ns.SVSet / ns.store.*
 
 local _, ns = ...
 
@@ -271,38 +271,6 @@ storeApi.SetOrbGlobalValue = function(path, value)
   return SetDomainValue("orbGlobal", path, value)
 end
 
-function ns.GetOrbCharStore()
-  return storeApi.GetOrbCharRoot()
-end
-
-function ns.SetOrbCharStore(store)
-  return storeApi.SetOrbCharRoot(store)
-end
-
-function ns.GetOrbGlobalStore()
-  return storeApi.GetOrbGlobalRoot()
-end
-
-function ns.SetOrbGlobalStore(store)
-  return storeApi.SetOrbGlobalRoot(store)
-end
-
-function ns.GetOrbCharValue(orbType, path, default)
-  return storeApi.GetOrbCharValue(orbType, path, default)
-end
-
-function ns.SetOrbCharValue(orbType, path, value)
-  return storeApi.SetOrbCharValue(orbType, path, value)
-end
-
-function ns.GetOrbGlobalValue(path, default)
-  return storeApi.GetOrbGlobalValue(path, default)
-end
-
-function ns.SetOrbGlobalValue(path, value)
-  return storeApi.SetOrbGlobalValue(path, value)
-end
-
 function ns.SVSet(path, value, opts)
   if not IsValidPath(path, false) then
     return false
@@ -334,9 +302,3 @@ function ns.SVSet(path, value, opts)
   persistenceState.lastChangePath = table.concat(path, ".")
   return true
 end
-
-function ns.SVRebuildRuntime()
-  GetConfigRoot()
-  return true
-end
-storeApi.RebuildRuntime = ns.SVRebuildRuntime

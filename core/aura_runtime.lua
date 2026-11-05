@@ -6,7 +6,7 @@
 -- Blizzard's mandatory AuraButton batch allocation for frames that never become
 -- visible while leaving filtering, sorting, durations and cooldowns native.
 
-local addonName, ns = ...
+local _, ns = ...
 
 local func = assert(ns and ns.func, "Roth_UI: ns.func is required by aura_runtime.lua")
 local oUF = assert(ns.oUF or _G.oUF, "Roth_UI: oUF is required by aura_runtime.lua")
@@ -21,6 +21,8 @@ local next = next
 local UnitClass = UnitClass
 local DoesSpellExist = C_Spell and C_Spell.DoesSpellExist
 local safety = assert(ns.safety, "Roth_UI: safety is required by aura_runtime.lua")
+local DeferForObject = assert(ns.framePolicy and ns.framePolicy.DeferForObject,
+  "Roth_UI: framePolicy.DeferForObject is required by aura_runtime.lua")
 
 local HORIZONTAL_AXIS = assert(AnchorUtil and AnchorUtil.FlowLayoutAxis and AnchorUtil.FlowLayoutAxis.Horizontal,
   "Roth_UI: AnchorUtil.FlowLayoutAxis.Horizontal is required")
@@ -302,14 +304,15 @@ function func.EnsureAuraRegions(frame)
   if InCombatLockdown and InCombatLockdown() then
     if frame and not frame.__rothAuraDeferred then
       frame.__rothAuraDeferred = true
-      local policy = ns.framePolicy
-      if policy and type(policy.DeferUntilOutOfCombat) == "function" then
-        policy.DeferUntilOutOfCombat("auras:" .. tostring(frame), function()
-          frame.__rothAuraDeferred = nil
-          func.EnsureAuraRegions(frame)
-        end)
-      else
+      local deferred = DeferForObject("aura-create", frame, function()
         frame.__rothAuraDeferred = nil
+        func.EnsureAuraRegions(frame)
+      end)
+      if not deferred then
+        frame.__rothAuraDeferred = nil
+        if not (InCombatLockdown and InCombatLockdown()) then
+          return func.EnsureAuraRegions(frame)
+        end
       end
     end
     return false
@@ -683,7 +686,7 @@ end
 oUF:RegisterInitCallback(AttachAuraLifecycle)
 
 ns.auraRuntime = {
-  requiredOUFVersion = "14.1.1",
+  requiredOUFVersion = "14.2.1",
   usesManagedContainers = true,
   lazyGroupRegistration = true,
   rawAuraScanning = false,

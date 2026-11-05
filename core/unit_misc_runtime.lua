@@ -2,7 +2,7 @@
 -- Aura scanning and dispel-state inference are intentionally absent: Retail
 -- 12.1 managed AuraContainers own that state.
 
-local addonName, ns = ...
+local _, ns = ...
 
 local func = assert(ns and ns.func, "Roth_UI: ns.func is required by unit_misc_runtime.lua")
 local floor = math.floor
@@ -68,11 +68,4 @@ func.numFormat = function(value)
     return tostring(number)
   end
   return FormatOneDecimal(number)
-end
-
-func.round = function(value)
-  if not Accessible(value) or type(value) ~= "number" then
-    return nil
-  end
-  return floor(value * 1000) / 1000
 end

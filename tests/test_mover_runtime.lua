@@ -112,7 +112,10 @@ local ns = {
   func = { IsSecretValue = function() return false end },
   store = { GetConfigValue = function(path) return getPath(path) end, SetConfigValue = function(path, value) setPath(path, value) end },
   frameRegistry = frameRegistry,
-  framePolicy = { DeferUntilOutOfCombat = function() return false end },
+  framePolicy = {
+    DeferUntilOutOfCombat = function() return false end,
+    DeferForObject = function() return false end,
+  },
 }
 assert(loadfile("core/mover_runtime.lua"))("Roth_UI", ns)
 

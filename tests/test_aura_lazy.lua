@@ -35,6 +35,10 @@ local ns = {
       deferred = callback
       return true
     end,
+    DeferForObject = function(scope, object, callback)
+      deferred = callback
+      return true
+    end,
   },
   safety = {
     CanAccess = function() return true end,

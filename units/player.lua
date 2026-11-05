@@ -1,5 +1,5 @@
 --get the addon namespace
-local addon, ns = ...
+local _, ns = ...
 
 --get oUF namespace (just in case needed)
 local oUF = ns.oUF or oUF
@@ -41,7 +41,6 @@ local UnitPowerType = UnitPowerType
 local UnitIsDeadOrGhost = UnitIsDeadOrGhost
 local UnitIsConnected = UnitIsConnected
 local tinsert = tinsert
-local INTERRUPTED_TEXT = _G.INTERRUPTED or "Interrupted"
 local CASTBAR_INTERRUPT_HOLD = 0.8
 
 local function ResolveOrbConfig(orbType)
@@ -125,7 +124,7 @@ end
 -- when both numbers are NOT secret; otherwise we pass the raw Secret Value to
 -- FontString:SetText.
 assert(
-  func and func.IsSecretValue and func.GetScaleTo100Curve and func.SafeUnitHealthPercent and func.SafeUnitPowerPercent
+  func and func.IsSecretValue and func.SafeUnitHealthPercent and func.SafeUnitPowerPercent
     and func.CoerceAccessibleNumber and func.SafeSetText and func.SetPercentText
     and ns.safety and ns.safety.CanAccess,
   "Roth_UI: units/player.lua requires core/lib helpers")

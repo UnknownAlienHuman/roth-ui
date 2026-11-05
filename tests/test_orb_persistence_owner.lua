@@ -59,13 +59,21 @@ local ns = {
     GetTemplateListDefaults = function() return {} end,
   },
 }
+local createFrameCalls = 0
 _G.CreateFrame = function()
-  return { RegisterEvent = function() end, SetScript = function() end }
+  createFrameCalls = createFrameCalls + 1
+  error("orb persistence must not allocate an ADDON_LOADED frame")
 end
 _G.InCombatLockdown = function() return false end
 
 assert(loadfile("core/orb_persistence_owner.lua"))("Roth_UI", ns)
 local owner = ns.orbPersistence
+expect(ns.store.GetOrbCharRoot == nil and ns.store.SetOrbCharRoot == nil
+    and ns.store.GetOrbGlobalRoot == nil and ns.store.SetOrbGlobalRoot == nil,
+  "orb owner left raw whole-root access on the shared store API")
+expect(owner.GetStores == nil, "orb owner exposed live canonical roots")
+expect(createFrameCalls == 0,
+  "LoadSavedVariablesFirst orb migration retained a second addon-load owner")
 for _, reserved in ipairs({ "TEMPLATE_LIST", "__selection", "__schemaPatch", "reset" }) do
   expect(owner.SaveTemplate(reserved, "HEALTH") == false,
     "template save accepted reserved metadata key " .. reserved)
@@ -118,4 +126,7 @@ expect(owner.LoadTemplate("clean", "HEALTH") == false and charRoot == previousCh
 expect(owner.ResetOrbToDefaults("HEALTH") == false and charRoot == previousCharRoot,
   "rejected character reset mutated or replaced the live character root")
 
-print("orb persistence template key validation test: OK")
+expect(createFrameCalls == 0,
+  "orb persistence created a bootstrap frame after file-scope initialization")
+
+print("orb persistence template key and file-scope lifecycle test: OK")

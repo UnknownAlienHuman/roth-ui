@@ -2,7 +2,7 @@
 --  Roth_UI - slashcmd
 ---------------------------------------------
 
-local addon, ns = ...
+local _, ns = ...
 local InCombatLockdown = InCombatLockdown
 
 local function GetDebugCommands()
@@ -151,9 +151,6 @@ AddCommand({ "^svreconcile$", "^reconcile$" }, "|c00FF3300/roth svreconcile|r, r
   RunDebug("RunSVReconcile", "Roth_UI: persistence reconcile is not available.")
 end, "debug")
 
-AddCommand({ "^svrebuild$" }, "|c00FF3300/roth svrebuild|r, rebuild runtime config from SavedVariables", function()
-  RunDebug("RunSVRebuild", "Roth_UI: SVRebuildRuntime is not available.")
-end, "debug")
 
 AddCommand({ "^svreset$", "^factoryreset$" }, "|c00FF3300/roth svreset|r, wipe Roth_UI SavedVariables and reload", function()
   RunSettings("ResetAll", "Roth_UI: settings reset is not available.")

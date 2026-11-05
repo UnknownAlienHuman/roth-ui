@@ -46,7 +46,14 @@ _G.CreateFrame = function(_, name, parent)
   return frame
 end
 
-local ns = {}
+local ns = {
+  safety = {
+    TryCall = function(callback, ...)
+      local ok, value = pcall(callback, ...)
+      return ok, value
+    end,
+  },
+}
 assert(loadfile("core/deferred_scheduler.lua"))("Roth_UI", ns)
 assert(loadfile("core/movegrid.lua"))("Roth_UI", ns)
 expect(#frames == 0, "move grid was not lazy")

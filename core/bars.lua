@@ -1,12 +1,14 @@
 --get the addon namespace
-local addon, ns = ...
+local _, ns = ...
 
 -- Constructor namespace; it has no visual or event behavior of its own.
 local bars = {}
 ns.bars = bars
 
 --get the functions
-local func = ns.func
+local func = assert(ns and ns.func, "Roth_UI: ns.func is required by bars.lua")
+local AttachCombatFader = assert(func.AttachCombatFader,
+  "Roth_UI: func.AttachCombatFader is required by bars.lua")
 local cfg = ns.cfg
 local mediapath = ns.mediapath or "Interface\\AddOns\\Roth_UI\\media\\"
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by bars.lua")
@@ -467,7 +469,7 @@ local function CreateResourceBar(self, key)
   if not spec.scaleBeforePips then bar:SetScale(config.scale) end
   func.applyDragFunctionality(bar)
   if config.combat.enable then
-    rCombatFrameFader(bar, config.combat.fadeIn, config.combat.fadeOut)
+    AttachCombatFader(bar, config.combat.fadeIn, config.combat.fadeOut)
   end
 
   if spec.classPower then

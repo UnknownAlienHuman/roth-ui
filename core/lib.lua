@@ -1,10 +1,12 @@
 --get the addon namespace
-local addon, ns = ...
+local _, ns = ...
 
 --get oUF namespace (just in case needed)
 local oUF = ns.oUF or _G["oUF"]
 local LSM = LibStub("LibSharedMedia-3.0")
 local frameRegistry = assert(ns and ns.frameRegistry, "Roth_UI: frameRegistry is required by lib.lua")
+local DeferForObject = assert(ns.framePolicy and ns.framePolicy.DeferForObject,
+  "Roth_UI: framePolicy.DeferForObject is required by lib.lua")
 
 --get the config
 local cfg = ns.cfg
@@ -260,11 +262,7 @@ end
 func.createDebuffGlow = function(self)
   local style = ResolveUnitStyle(self)
   local t = self:CreateTexture(nil, "BACKGROUND", nil, -5)
-  if style == "target" then
-    t:SetTexture(mediapath .. "target_debuffglow")
-  else
-    t:SetTexture(mediapath .. "targettarget_debuffglow")
-  end
+  t:SetTexture(mediapath .. "target_debuffglow")
   if style == "party" then
     if cfg.units.party.vertical == true then
       t:SetPoint("TOP", 0, 29)
@@ -320,14 +318,15 @@ local function EnsureLazyPortrait(frame)
   if InCombatLockdown and InCombatLockdown() then
     if not frame.__rothPortraitDeferred then
       frame.__rothPortraitDeferred = true
-      local policy = ns.framePolicy
-      if policy and type(policy.DeferUntilOutOfCombat) == "function" then
-        policy.DeferUntilOutOfCombat("portrait:" .. tostring(frame), function()
-          frame.__rothPortraitDeferred = nil
-          EnsureLazyPortrait(frame)
-        end)
-      else
+      local deferred = DeferForObject("portrait-create", frame, function()
         frame.__rothPortraitDeferred = nil
+        EnsureLazyPortrait(frame)
+      end)
+      if not deferred then
+        frame.__rothPortraitDeferred = nil
+        if not (InCombatLockdown and InCombatLockdown()) then
+          return EnsureLazyPortrait(frame)
+        end
       end
     end
     return

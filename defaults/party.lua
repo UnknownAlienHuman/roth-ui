@@ -1,6 +1,6 @@
 -- Party defaults extracted from config.lua to keep module settings modular.
 -- Pure data: safe to load before the rest of the addon.
-local addon, ns = ...
+local _, ns = ...
 
 local mediapath = ns.mediapath or "Interface\\AddOns\\Roth_UI\\media\\"
 

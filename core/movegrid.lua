@@ -14,7 +14,7 @@
   - Hidden by default.
 --]]
 
-local addon, ns = ...
+local _, ns = ...
 
 ns = ns or {}
 

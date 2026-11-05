@@ -1,5 +1,5 @@
   --get the addon namespace
-  local addon, ns = ...
+  local _, ns = ...
 
   --get oUF namespace (just in case needed)
   local oUF = ns.oUF or oUF
@@ -51,7 +51,7 @@
   local createArtwork = function(self)
     local t = self:CreateTexture(nil,"BACKGROUND",nil,-8)
     t:SetAllPoints(self)
-    t:SetTexture("Interface\\AddOns\\Roth_UI\\media\\targettarget")
+    t:SetTexture("Interface\\AddOns\\Roth_UI\\media\\target")
 
     if self.cfg.special.chains then
       local c1 = self:CreateTexture(nil,"BACKGROUND",nil,-7)
