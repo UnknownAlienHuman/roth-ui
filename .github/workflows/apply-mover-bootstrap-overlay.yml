@@ -1,0 +1,63 @@
+name: Apply mover bootstrap overlay
+
+on:
+  push:
+    branches:
+      - audit/mover-bootstrap-3.4.7
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: contains(github.event.head_commit.message, '[apply-mover-bootstrap-overlay]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out staging commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct verified overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .overlay_parts/part-*.b64 | base64 --decode > /tmp/Roth_UI-3.4.7-overlay.tar.gz
+          echo "2c402b1eec872eccc1dd92d940890570f4d1170bb79b31377f4813ecdfbdc934  /tmp/Roth_UI-3.4.7-overlay.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/Roth_UI-3.4.7-overlay.tar.gz -C .
+          rm -rf .overlay_parts .github/workflows/apply-mover-bootstrap-overlay.yml
+          git diff --check
+
+      - name: Install Lua 5.1
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes lua5.1
+
+      - name: Run complete repository gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/validate_repository_text.py
+          python3 tools/validate_addon.py
+          python3 tools/validate_group_visibility.py
+          python3 tools/validate_runtime_hardening.py
+          python3 tools/run_lua_tests.py --lua lua5.1 --luac luac5.1
+          git diff --check
+          version="$(sed -n 's/^## Version:[[:space:]]*//p' Roth_UI.toc)"
+          test "$version" = "3.4.7"
+          mkdir -p /tmp/dist-a /tmp/dist-b
+          python3 tools/package_release.py "/tmp/dist-a/Roth_UI-${version}.zip"
+          python3 tools/package_release.py "/tmp/dist-b/Roth_UI-${version}.zip"
+          cmp "/tmp/dist-a/Roth_UI-${version}.zip" "/tmp/dist-b/Roth_UI-${version}.zip"
+
+      - name: Commit verified source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "No overlay changes to commit." >&2; exit 1; }
+          git commit -m "Apply Roth UI 3.4.7 mover and bootstrap hardening"
+          git push origin HEAD:refs/heads/audit/mover-bootstrap-3.4.7
