@@ -8,7 +8,7 @@ Evidence date: **2026-11-04**.
 - Retail family: `12.1.5`, Interface `120105`.
 - Selected source: `12.1.5.70688`; post-selected `12.1.5.70783` was reviewed and its changed surfaces are outside Roth UI's loaded graph.
 - Required external dependency: oUF `14.2.1+`.
-- Pull request: #16. Merge is allowed only after the complete repository workflow passes on the exact final head.
+- PR #16 was squash-merged to `main` as `d31ec7d8bf3273f3f2bb7896a04ab2e10fb2edfb` after the exact final PR head passed the complete repository workflow.
 
 ## Implemented
 
@@ -26,9 +26,19 @@ Evidence date: **2026-11-04**.
 
 ## Automated validation
 
-The authoritative `Addon validation and package` workflow runs repository policy guards, TOC/XML/load-order validation, Lua 5.1 syntax, all isolated Lua regressions and two deterministic package builds. A workflow result applies only to its exact commit; a previous green head is not evidence for a later head.
+The authoritative `Addon validation and package` workflow passed on exact PR head `00122dc1133937da9d9404e635336a1156f02115` and on merged `main` commit `d31ec7d8bf3273f3f2bb7896a04ab2e10fb2edfb`.
 
-The audit application run exposed and corrected stale test fixtures after production contracts were tightened. The complete gate passed on the source tree containing the media-contract correction; PR #16 still requires the ordinary workflow to pass on the exact final connector-authored head before merge, and `main` must pass its push workflow after merge.
+Executed gates:
+
+- repository text policy;
+- 76-entry TOC/XML load graph, ownership and Retail boundaries;
+- exact secure-header visibility semantics;
+- runtime-hardening guards;
+- Lua 5.1 parsing of 116 files and 41 isolated regressions;
+- whitespace and merge-conflict checks;
+- two byte-identical 199-file release builds.
+
+Verified package SHA-256: `80e3bc35e5f25c10e4f8f64a3aa28f73d66a6ccd0a2b440fe417bcbb0b690369`.
 
 ## Client acceptance
 

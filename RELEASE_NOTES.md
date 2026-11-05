@@ -20,6 +20,10 @@ Target: Retail `12.1.5.70688`, Interface `120105`, external oUF `14.2.1+`.
 
 ## Validation
 
-Audit-candidate local checks: 75 packaged Lua files parsed, 12 focused regressions passed, deterministic ZIP reproduced byte-for-byte, extracted package validated (199 files; 76 TOC/XML graph entries). Full Lua 5.1 GitHub CI and Retail client acceptance for this exact overlay remain `NOT-RUN` until the overlay is pushed.
+GitHub Actions passed on the exact final PR head and again after merge to `main`: repository text policy, 76-entry TOC/XML load graph, ownership and Retail-boundary checks, secure-header semantics, runtime hardening, Lua 5.1 parsing of 116 files, all 41 isolated regressions, whitespace/conflict checks and two byte-identical release builds.
+
+The verified package contains 199 files under one `Roth_UI/` root. `Roth_UI-3.4.3.zip` SHA-256: `80e3bc35e5f25c10e4f8f64a3aa28f73d66a6ccd0a2b440fe417bcbb0b690369`.
+
+WoW-client combat, taint, secure-frame, cast, aura, visual and profiler acceptance remains `NOT-RUN`.
 
 Install the ZIP's `Roth_UI` folder and keep existing SavedVariables.
