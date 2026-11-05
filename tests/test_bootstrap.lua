@@ -24,6 +24,7 @@ _G.InCombatLockdown = function() return false end
 local ns = {
   safety = {
     CopySerializableStrict = copyStrict,
+    CanAccess = function() return true end,
     TryCall = function(fn, ...)
       local ok, result = pcall(fn, ...)
       return ok, result
@@ -33,7 +34,10 @@ local ns = {
   GetPersistenceSchemaNodeKeys = function() return {} end,
   RefreshOrbsVisual = function() calls.visuals = calls.visuals + 1 end,
 }
-for _, name in ipairs({ "GetPersistenceDescriptors", "GetPersistenceStores", "ReplaceRoots", "ResetRoots" }) do
+for _, name in ipairs({
+  "GetPersistenceDescriptors", "GetPersistenceStores", "CommitRoots",
+  "ResetRoots", "RestoreRoots",
+}) do
   ns.store[name] = noop
 end
 ns.store.GetCanonicalStores = function()
