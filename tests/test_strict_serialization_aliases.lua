@@ -4,7 +4,7 @@ end
 
 _G.issecretvalue = function() return false end
 local blockedKey
-_G.canaccessvalue = function(value) return value ~= blockedKey end
+_G.canaccessvalue = function(value) return blockedKey == nil or value ~= blockedKey end
 _G.canaccessallvalues = function() return true end
 
 local ns = {}

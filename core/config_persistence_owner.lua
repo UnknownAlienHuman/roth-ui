@@ -98,7 +98,15 @@ local function ResetCanonicalRoots()
   return true
 end
 
-local function GetCanonicalStores()
+local function GetCanonicalStores(ensure)
+  if ensure == false then
+    -- Export reads raw roots before validation; a read must not migrate, seed
+    -- or repair live SavedVariables, including malformed legacy shapes.
+    local accountRoot = rawget(_G, ACCOUNT_DB_VAR)
+    local charRoot = rawget(_G, CHAR_DB_VAR)
+    if not safety.CanAccess(accountRoot) or not safety.CanAccess(charRoot) then return nil end
+    return { accountRoot = accountRoot, charRoot = charRoot }
+  end
   local accountRoot, charRoot = EnsureCanonicalRootTables()
   return {
     accountRoot = accountRoot,

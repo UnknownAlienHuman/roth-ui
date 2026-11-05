@@ -1,4 +1,4 @@
-# Roth UI architecture — 3.4.3
+# Roth UI architecture — 3.4.4
 
 ## Boundaries
 
@@ -30,7 +30,7 @@ untrusted transfer envelope
   -> rollback exact references on false/throw/reload failure
 ```
 
-Strict copies reject inaccessible/secret values, unsupported types, non-finite numbers, cycles, aliases, excessive depth, excessive tables/entries and excessive aggregate string bytes. Export copies first and never sanitizes live roots. Malformed legacy roots do not block reset/import recovery because rollback authority is the exact pre-transaction references; the detached snapshot is only a fallback.
+Strict copies reject inaccessible/secret values, unsupported types, non-finite numbers, cycles, aliases, excessive depth, excessive tables/entries and excessive aggregate string bytes. Export reads roots without ensure/migration side effects, then shares the import schema validator. A reentrancy lock prevents nested import/reset and intermediate export/reconcile until cleanup. Strict copies also reject metatables and gate table contents with canaccesstable before traversal. Malformed legacy roots do not block reset/import recovery because rollback authority is the exact pre-transaction references; the detached snapshot is only a fallback.
 
 Raw root getters/writers are captured by their owner and removed from shared namespace tables after load. Diagnostics retain only bounded read closures.
 
@@ -42,7 +42,7 @@ Raw root getters/writers are captured by their owner and removed from shared nam
 
 - Never reparent protected Blizzard frames, replace Blizzard action-button ownership, unregister Blizzard events, write CVars or mutate addon enable state.
 - Party/raid secure headers are created once per session; structural changes require reload.
-- Managed auras use the native container contract; no raw aura scanner or parallel `UNIT_AURA` state.
+- Managed auras recheck owner visibility/access when deferred work runs, isolate partial adoption failure without retry, and issue one oUF unit-assignment update after a successful creation batch. Filter refresh checks current container access. No raw aura scanner or parallel `UNIT_AURA` state.
 - Foreign-frame suppression is transactional: a setter that mutates and then throws is detected and rolled back.
 - First-party `OnUpdate` loops are prohibited.
 
