@@ -13,7 +13,6 @@ local type = type
 
 local function ApplyPolicies()
   if type(func.ApplyGroupFramePolicy) == "function" then func:ApplyGroupFramePolicy() end
-  if type(func.ApplyUnitFramePolicy) == "function" then func:ApplyUnitFramePolicy() end
 end
 
 local loginFrame = CreateFrame("Frame")
@@ -38,27 +37,35 @@ local function EnsureFallbackFrame()
   fallbackFrame:SetScript("OnEvent", function(self, _, loadedAddon)
     if not watchedAddons[loadedAddon] then return end
     watchedAddons[loadedAddon] = nil
-    ApplyPolicies()
     if next(watchedAddons) == nil then
       self:UnregisterEvent("ADDON_LOADED")
       self:SetScript("OnEvent", nil)
     end
+    ApplyPolicies()
   end)
   return fallbackFrame
 end
 
+local function FinishWatchedAddon(addonNameToWatch)
+  if not watchedAddons[addonNameToWatch] then return end
+  watchedAddons[addonNameToWatch] = nil
+  ApplyPolicies()
+end
+
 local function WatchBlizzardAddon(addonNameToWatch)
   if EventUtil and type(EventUtil.ContinueOnAddOnLoaded) == "function" then
-    EventUtil.ContinueOnAddOnLoaded(addonNameToWatch, ApplyPolicies)
-    watchedAddons[addonNameToWatch] = nil
+    EventUtil.ContinueOnAddOnLoaded(addonNameToWatch, function()
+      FinishWatchedAddon(addonNameToWatch)
+    end)
     return
   end
 
-  if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function"
-      and C_AddOns.IsAddOnLoaded(addonNameToWatch) == true then
-    watchedAddons[addonNameToWatch] = nil
-    ApplyPolicies()
-    return
+  if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" then
+    local _, isLoaded = C_AddOns.IsAddOnLoaded(addonNameToWatch)
+    if isLoaded == true then
+      FinishWatchedAddon(addonNameToWatch)
+      return
+    end
   end
 
   EnsureFallbackFrame()

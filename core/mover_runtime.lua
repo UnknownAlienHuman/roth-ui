@@ -6,6 +6,16 @@ local GetConfigValue = assert(storeApi.GetConfigValue, "Roth_UI: store GetConfig
 local SetConfigValue = assert(storeApi.SetConfigValue, "Roth_UI: store SetConfigValue is required by mover_runtime.lua")
 local DeferForObject = assert(ns.framePolicy and ns.framePolicy.DeferForObject,
   "Roth_UI: object-scoped frame policy is required by mover_runtime.lua")
+local safety = assert(ns and ns.safety, "Roth_UI: safety is required by mover_runtime.lua")
+local CanAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by mover_runtime.lua")
+local CanAccessAll = assert(safety.CanAccessAll, "Roth_UI: safety.CanAccessAll is required by mover_runtime.lua")
+local CanUseRegion = assert(safety.CanUseRegion, "Roth_UI: safety.CanUseRegion is required by mover_runtime.lua")
+local CanUseRegionFor = assert(safety.CanUseRegionFor,
+  "Roth_UI: safety.CanUseRegionFor is required by mover_runtime.lua")
+local IsForbiddenTable = assert(safety.IsForbiddenTable,
+  "Roth_UI: safety.IsForbiddenTable is required by mover_runtime.lua")
+local TryGet = assert(safety.TryGet, "Roth_UI: safety.TryGet is required by mover_runtime.lua")
+local TryMethod = assert(safety.TryMethod, "Roth_UI: safety.TryMethod is required by mover_runtime.lua")
 
 local cfg = ns and ns.cfg or {}
 local floor = floor
@@ -14,7 +24,11 @@ local CreateFrame = CreateFrame
 local InCombatLockdown = InCombatLockdown
 local IsSecretValue = func.IsSecretValue
 local pairs = pairs
+local pcall = pcall
+local rawget = rawget
 local setmetatable = setmetatable
+local type = type
+local huge = math.huge
 
 local moverRuntime = ns.moverRuntime or {}
 ns.moverRuntime = moverRuntime
@@ -29,23 +43,63 @@ local MOVER_SCALE_STEP = 0.03
 local MOVER_SCALE_FINE_STEP = 0.01
 local MOVER_SIZE_MIN = 24
 local MOVER_SIZE_MAX = 4096
+local MOVER_ANCHOR_NAME_MAX = 128
 
-local function NormalizeMoverScale(v)
-  if type(v) ~= "number" then return nil end
-  if IsSecretValue and IsSecretValue(v) then return nil end
-  if v < MOVER_SCALE_MIN then
-    v = MOVER_SCALE_MIN
-  elseif v > MOVER_SCALE_MAX then
-    v = MOVER_SCALE_MAX
-  end
-  return floor((v * 100) + 0.5) / 100
+local VALID_ANCHOR_POINTS = {
+  TOPLEFT = true, TOP = true, TOPRIGHT = true,
+  LEFT = true, CENTER = true, RIGHT = true,
+  BOTTOMLEFT = true, BOTTOM = true, BOTTOMRIGHT = true,
+}
+
+local LAYOUT_RESTRICTION = type(Enum) == "table"
+  and type(Enum.ForbiddenAspect) == "table"
+  and Enum.ForbiddenAspect.UntrustedLayoutScriptExecution
+  or nil
+
+local function IsOrdinaryValue(value)
+  if not CanAccess(value) then return false end
+  if IsSecretValue and IsSecretValue(value) then return false end
+  return true
 end
 
-local function GetMoverFrameName(f)
-  if not (f and f.GetName) then return nil end
-  local n = f:GetName()
-  if type(n) ~= "string" or n == "" then return nil end
-  return n
+local function NormalizeFiniteNumber(value, allowString)
+  if not IsOrdinaryValue(value) then return nil end
+
+  local valueType = type(value)
+  if valueType == "number" then
+    -- Already normalized below.
+  elseif allowString and valueType == "string" then
+    value = tonumber(value)
+  else
+    return nil
+  end
+
+  if not IsOrdinaryValue(value) or type(value) ~= "number"
+      or value ~= value or value == huge or value == -huge then
+    return nil
+  end
+  return value
+end
+
+local function NormalizeMoverScale(value)
+  value = NormalizeFiniteNumber(value, false)
+  if not value then return nil end
+  if value < MOVER_SCALE_MIN then
+    value = MOVER_SCALE_MIN
+  elseif value > MOVER_SCALE_MAX then
+    value = MOVER_SCALE_MAX
+  end
+  return floor((value * 100) + 0.5) / 100
+end
+
+local function GetMoverFrameName(frame)
+  if not CanUseRegion(frame) then return nil end
+  local gotName, name = TryMethod(frame, "GetName")
+  if gotName ~= true or not IsOrdinaryValue(name)
+      or type(name) ~= "string" or name == "" then
+    return nil
+  end
+  return name
 end
 
 local function ResolveMoverDragHandle(frame)
@@ -219,34 +273,53 @@ ns.GetMoverDragHandle = moverRuntime.GetDragHandle
 ns.RegisterMoverFrame = moverRuntime.RegisterFrame
 func.RegisterMoverFrame = RegisterMoverFrame
 
-local function NormalizeMoverOffset(v)
-  v = tonumber(v)
-  if not v then return nil end
-  if IsSecretValue and IsSecretValue(v) then return nil end
-  return floor((v * 100) + 0.5) / 100
+local function NormalizeMoverOffset(value)
+  value = NormalizeFiniteNumber(value, true)
+  if not value then return nil end
+  return floor((value * 100) + 0.5) / 100
 end
 
-local function NormalizeMoverDimension(v)
-  v = tonumber(v)
-  if not v then return nil end
-  if IsSecretValue and IsSecretValue(v) then return nil end
-  if v < MOVER_SIZE_MIN then
-    v = MOVER_SIZE_MIN
-  elseif v > MOVER_SIZE_MAX then
-    v = MOVER_SIZE_MAX
+local function NormalizeMoverDimension(value)
+  value = NormalizeFiniteNumber(value, true)
+  if not value then return nil end
+  if value < MOVER_SIZE_MIN then
+    value = MOVER_SIZE_MIN
+  elseif value > MOVER_SIZE_MAX then
+    value = MOVER_SIZE_MAX
   end
-  return floor(v + 0.5)
+  return floor(value + 0.5)
+end
+
+local function NormalizeAnchorPoint(value, fallback)
+  if not IsOrdinaryValue(value) then return nil end
+  if value == nil then return fallback end
+  if type(value) ~= "string" or not VALID_ANCHOR_POINTS[value] then
+    return nil
+  end
+  return value
+end
+
+local function NormalizeAnchorName(value)
+  if not IsOrdinaryValue(value) then return nil end
+  if value == nil or value == "" then return "UIParent" end
+  if type(value) ~= "string" or #value > MOVER_ANCHOR_NAME_MAX
+      or not value:match("^[%a_][%w_]*$") then
+    return nil
+  end
+  return value
 end
 
 local function NormalizeMoverPointData(point)
-  if type(point) ~= "table" then return nil end
+  if not IsOrdinaryValue(point) or type(point) ~= "table" or IsForbiddenTable(point) then
+    return nil
+  end
 
-  local a1 = type(point.a1) == "string" and point.a1 or "CENTER"
-  local af = type(point.af) == "string" and point.af or "UIParent"
-  local a2 = type(point.a2) == "string" and point.a2 or a1
+  local a1 = NormalizeAnchorPoint(point.a1, "CENTER")
+  local af = NormalizeAnchorName(point.af)
+  local a2 = NormalizeAnchorPoint(point.a2, a1)
   local x = NormalizeMoverOffset(point.x)
   local y = NormalizeMoverOffset(point.y)
-  if not x or not y then
+  if not a1 or not af or not a2 or not x or not y then
     return nil
   end
 
@@ -259,11 +332,23 @@ local function NormalizeMoverPointData(point)
   }
 end
 
-local function NormalizeMoverSizeData(size)
-  if type(size) ~= "table" then return nil end
+local function PreferredMoverValue(container, field, index)
+  local value = container[field]
+  if not IsOrdinaryValue(value) then return nil end
+  if value ~= nil then return value end
 
-  local w = NormalizeMoverDimension(size.w or size[1])
-  local h = NormalizeMoverDimension(size.h or size[2])
+  value = container[index]
+  if not IsOrdinaryValue(value) then return nil end
+  return value
+end
+
+local function NormalizeMoverSizeData(size)
+  if not IsOrdinaryValue(size) or type(size) ~= "table" or IsForbiddenTable(size) then
+    return nil
+  end
+
+  local w = NormalizeMoverDimension(PreferredMoverValue(size, "w", 1))
+  local h = NormalizeMoverDimension(PreferredMoverValue(size, "h", 2))
   if not w or not h then
     return nil
   end
@@ -275,18 +360,95 @@ local function NormalizeMoverSizeData(size)
 end
 
 local function GetMoverAnchorName(anchor)
-  if type(anchor) == "string" and anchor ~= "" then
-    return anchor
+  if not IsOrdinaryValue(anchor) then return "UIParent" end
+  if type(anchor) == "string" then
+    return NormalizeAnchorName(anchor) or "UIParent"
   end
 
-  if type(anchor) == "table" and anchor.GetName then
-    local name = anchor:GetName()
-    if type(name) == "string" and name ~= "" then
-      return name
+  local gotName, name = TryMethod(anchor, "GetName")
+  if gotName == true then
+    return NormalizeAnchorName(name) or "UIParent"
+  end
+  return "UIParent"
+end
+
+local function CanUseMoverAnchor(frame, anchor)
+  if not CanAccess(anchor) then return false end
+  if anchor == nil or anchor == frame or not CanUseRegion(anchor) then
+    return false
+  end
+  if LAYOUT_RESTRICTION ~= nil and not CanUseRegionFor(anchor, LAYOUT_RESTRICTION) then
+    return false
+  end
+  return true
+end
+
+local function ResolveMoverAnchorFrame(frame, anchorName)
+  local anchor = anchorName == "UIParent" and UIParent or rawget(_G, anchorName)
+  if CanUseMoverAnchor(frame, anchor) then return anchor end
+  if CanUseMoverAnchor(frame, UIParent) then return UIParent end
+  return nil
+end
+
+local function ReadMoverPoint(frame)
+  local gotCount, pointCount = TryMethod(frame, "GetNumPoints")
+  if gotCount == true then
+    pointCount = NormalizeFiniteNumber(pointCount, false)
+    if not pointCount or pointCount < 0 or pointCount > 1 then
+      return false, nil
     end
   end
 
-  return "UIParent"
+  local gotMethod, method = TryGet(frame, "GetPoint")
+  if gotMethod ~= true or not IsOrdinaryValue(method) or type(method) ~= "function" then
+    return false, nil
+  end
+
+  local ok, a1, anchor, a2, x, y = pcall(method, frame)
+  if ok ~= true or not CanAccessAll(a1, anchor, a2, x, y) then
+    return false, nil
+  end
+  if a1 == nil then return true, nil end
+  if not NormalizeAnchorPoint(a1) or not NormalizeAnchorPoint(a2, a1)
+      or not NormalizeFiniteNumber(x, false) or not NormalizeFiniteNumber(y, false) then
+    return false, nil
+  end
+  return true, { a1, anchor, a2, x, y }
+end
+
+local function ReadMoverSize(frame)
+  local gotMethod, method = TryGet(frame, "GetSize")
+  if gotMethod ~= true or not IsOrdinaryValue(method) or type(method) ~= "function" then
+    return false, nil, nil
+  end
+
+  local ok, width, height = pcall(method, frame)
+  if ok ~= true or not CanAccessAll(width, height) then
+    return false, nil, nil
+  end
+  return true, width, height
+end
+
+local function SetMoverPointTransactional(frame, point, anchor)
+  if not CanUseRegion(frame) or not CanUseMoverAnchor(frame, anchor) then
+    return false
+  end
+
+  local captured, previous = ReadMoverPoint(frame)
+  if captured ~= true then return false end
+  if previous and not CanUseMoverAnchor(frame, previous[2]) then return false end
+  if TryMethod(frame, "ClearAllPoints") ~= true then
+    return false
+  end
+  if TryMethod(frame, "SetPoint", point.a1, anchor, point.a2, point.x, point.y) == true then
+    return true
+  end
+
+  TryMethod(frame, "ClearAllPoints")
+  if captured and previous then
+    TryMethod(frame, "SetPoint", previous[1], previous[2], previous[3], previous[4], previous[5])
+  end
+  return false
 end
 
 local function GetMoverStorePath(key, frameName)
@@ -296,7 +458,9 @@ end
 local function SaveMoverScale(f)
   local frameName = GetMoverFrameName(f)
   if not frameName then return end
-  local scale = NormalizeMoverScale(f:GetScale())
+  local gotScale, rawScale = TryMethod(f, "GetScale")
+  if gotScale ~= true then return end
+  local scale = NormalizeMoverScale(rawScale)
   if not scale then return end
   SetConfigValue(GetMoverStorePath("scale", frameName), scale)
 end
@@ -309,26 +473,25 @@ end
 
 local function ApplySavedMoverScale(f)
   local frameName = GetMoverFrameName(f)
-  if not frameName then return end
+  if not frameName or not CanUseRegion(f) then return end
   local scale = GetConfigValue(GetMoverStorePath("scale", frameName), nil)
   scale = NormalizeMoverScale(scale)
   if not scale then return end
-  f:SetScale(scale)
+  TryMethod(f, "SetScale", scale)
 end
 
 local function SaveMoverPoint(f)
-  if not (f and f.GetPoint) then return end
-
   local frameName = GetMoverFrameName(f)
   if not frameName then return end
 
-  local a1, af, a2, x, y = f:GetPoint()
+  local gotPoint, current = ReadMoverPoint(f)
+  if gotPoint ~= true or not current then return end
   local point = NormalizeMoverPointData({
-    a1 = a1,
-    af = GetMoverAnchorName(af),
-    a2 = a2,
-    x = x,
-    y = y,
+    a1 = current[1],
+    af = GetMoverAnchorName(current[2]),
+    a2 = current[3],
+    x = current[4],
+    y = current[5],
   })
   if not point then return end
 
@@ -342,27 +505,24 @@ local function ClearMoverPoint(f)
 end
 
 local function ApplySavedMoverPoint(f)
-  if not (f and f.SetPoint and f.ClearAllPoints) then return end
-
   local frameName = GetMoverFrameName(f)
   if not frameName then return end
 
   local point = NormalizeMoverPointData(GetConfigValue(GetMoverStorePath("point", frameName), nil))
   if not point then return end
 
-  local anchorFrame = _G[point.af] or UIParent
-  f:ClearAllPoints()
-  f:SetPoint(point.a1, anchorFrame, point.a2, point.x, point.y)
+  local anchorFrame = ResolveMoverAnchorFrame(f, point.af)
+  if not anchorFrame then return end
+  SetMoverPointTransactional(f, point, anchorFrame)
 end
 
 local function SaveMoverSize(f)
-  if not (f and f.GetSize and f.SetSize) then return end
-
   local frameName = GetMoverFrameName(f)
   if not frameName then return end
 
-  local w, h = f:GetSize()
-  local size = NormalizeMoverSizeData({ w = w, h = h })
+  local gotSize, width, height = ReadMoverSize(f)
+  if gotSize ~= true then return end
+  local size = NormalizeMoverSizeData({ w = width, h = height })
   if not size then return end
 
   SetConfigValue(GetMoverStorePath("size", frameName), size)
@@ -375,14 +535,12 @@ local function ClearMoverSize(f)
 end
 
 local function ApplySavedMoverSize(f)
-  if not (f and f.SetSize) then return end
-
   local frameName = GetMoverFrameName(f)
-  if not frameName then return end
+  if not frameName or not CanUseRegion(f) then return end
 
   local size = NormalizeMoverSizeData(GetConfigValue(GetMoverStorePath("size", frameName), nil))
   if not size then return end
-  f:SetSize(size.w, size.h)
+  TryMethod(f, "SetSize", size.w, size.h)
 end
 
 local function SaveMoverLayout(f, opts)

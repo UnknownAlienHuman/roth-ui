@@ -1,6 +1,6 @@
 # Roth UI agent guide
 
-Target: addon `3.4.6`, Retail `12.1.5`, Interface `120105`, selected source build `12.1.5.70688`, reviewed post-selected source `12.1.5.70783`, oUF `14.2.1+`.
+Target: addon `3.4.7`, Retail `12.1.5`, Interface `120105`, selected source build `12.1.5.70688`, reviewed post-selected source `12.1.5.70783`, oUF `14.2.1+`.
 
 Before editing, read `README.md`, `ARCHITECTURE.md`, `CURRENT_STATUS.md`, `CODE_INDEX.md`, `CODE_GRAPH.md`, the TOC and the applicable contracts in `UnknownAlienHuman/wow-addon-engineering-kb`.
 
@@ -15,15 +15,17 @@ Before editing, read `README.md`, `ARCHITECTURE.md`, `CURRENT_STATUS.md`, `CODE_
 
 - Persistence root mutation: `persistence_control_plane` transaction only.
 - No raw root getter/writer exported after owner capture.
-- Combat deferral: `frame_policy` only.
+- Combat deferral and foreign-frame suppression: `frame_policy` only.
 - Next-frame scheduling: `deferred_scheduler` only; one timer drains each coalesced generation.
+- Mover geometry persistence: `mover_runtime` only; persisted anchors are bounded ordinary data and apply transactionally.
 - Managed auras, movers, fonts and Settings keep one owner each.
 - oUF owns unit frames and secure group headers; Blizzard owns secure action state.
 
 ## Safety
 
-- Gate inaccessible/secret-capable values before comparison, formatting, indexing, storage or retention.
+- Gate inaccessible/secret-capable values before comparison, formatting, conversion, indexing, storage or retention.
 - Portable documents are bounded trees, not arbitrary graphs.
+- Never anchor addon layout to a region carrying `UntrustedLayoutScriptExecution`; fall back to an independent ordinary root.
 - Never reparent protected frames, override Blizzard globals, unregister Blizzard events, write CVars or add first-party `OnUpdate` loops.
 - Structural party/raid changes require reload.
 

@@ -1,4 +1,4 @@
-# Roth UI architecture — 3.4.6
+# Roth UI architecture — 3.4.7
 
 ## Boundaries
 
@@ -9,8 +9,9 @@
 | Import/export/reset transaction | `core/persistence_control_plane.lua`, `core/transfer.lua` |
 | Orb persistence | `core/orb_persistence_owner.lua` |
 | Combat deferral / foreign-frame state | `core/frame_policy.lua` |
+| Blizzard-frame load readiness | `core/frame_policy_bootstrap.lua` |
 | Next-frame coalescing | `core/deferred_scheduler.lua` |
-| Movers | `core/mover_runtime.lua` |
+| Movers and persisted geometry | `core/mover_runtime.lua` |
 | Fonts | `core/font_policy.lua` |
 | Managed auras | `core/aura_runtime.lua` |
 | Settings category | `core/settings_main.lua` |
@@ -30,35 +31,42 @@ untrusted transfer envelope
   -> rollback exact references on false/throw/reload failure
 ```
 
-Strict copies reject inaccessible/secret values, unsupported types, non-finite numbers, cycles, aliases, excessive depth, excessive tables/entries and excessive aggregate string bytes. Export reads roots without ensure/migration side effects, then shares the import schema validator. A reentrancy lock prevents nested import/reset and intermediate export/reconcile until cleanup. Strict copies also reject metatables and gate table contents with canaccesstable before traversal. Malformed legacy roots do not block reset/import recovery because rollback authority is the exact pre-transaction references; the detached snapshot is only a fallback.
+Strict copies reject inaccessible/secret values, unsupported types, non-finite numbers, cycles, aliases, excessive depth, excessive tables/entries and excessive aggregate string bytes. Export reads roots without ensure/migration side effects, then shares the import schema validator. A reentrancy lock prevents nested import/reset and intermediate export/reconcile until cleanup. Strict copies reject metatables and gate table contents before traversal.
 
-Raw root getters/writers are captured by their owner and removed from shared namespace tables after load. Diagnostics retain only bounded read closures.
+## Mover geometry
 
-## Scheduling
+Mover persistence is a narrow data contract, not permission to mutate an arbitrary frame graph:
 
-`framePolicy.DeferUntilOutOfCombat` is the single keyed combat-exit queue. A newer request cancels an older pending or draining callback even when the newer request can run immediately. Drains reject recursive entry and preserve unrun work if combat resumes. `framePolicy.DeferForObject` assigns weak-key object identities instead of deriving keys with `tostring(frame)`.
+```text
+stored point/size/scale
+  -> gate root and each consumed value
+  -> reject forbidden tables, secret/inaccessible values and NaN/Infinity
+  -> validate standard anchor points and bounded global anchor names
+  -> reject self anchors and layout-restricted/forbidden anchor objects
+  -> fall back to UIParent when a named anchor is unavailable or unsafe
+  -> snapshot the current single-anchor point
+  -> apply one mutation transaction
+  -> restore the snapshot if SetPoint throws or returns failure
+```
 
-`deferred_scheduler.RunNextFrame` is the sole next-frame queue. It coalesces all keys into one timer per generation, swaps generations before callback execution and isolates callback failures. Action-bar artwork has no parallel queue state or timer fallback.
+A frame with multiple anchors is not rewritten from a one-point persistence record. Mover code does not infer permission from a global name and does not anchor ordinary layout to an object carrying `UntrustedLayoutScriptExecution`.
+
+## Scheduling and readiness
+
+`framePolicy.DeferUntilOutOfCombat` is the single keyed combat-exit queue. A newer request cancels older pending or draining work. `deferred_scheduler.RunNextFrame` is the sole next-frame queue.
+
+`frame_policy_bootstrap` distinguishes `IsAddOnLoaded`'s loading-inclusive first return from its completed second return. Named fallback listeners remove their ownership before invoking policy code, so reentry cannot duplicate delivery. The retired `ApplyUnitFramePolicy` compatibility branch is absent.
 
 ## Secure/UI rules
 
 - Never reparent protected Blizzard frames, replace Blizzard action-button ownership, unregister Blizzard events, write CVars or mutate addon enable state.
 - Party/raid secure headers are created once per session; structural changes require reload.
-- Managed auras recheck owner visibility/access when deferred work runs, isolate partial adoption failure without retry, and issue one oUF unit-assignment update after a successful creation batch. Filter refresh checks current container access. No raw aura scanner or parallel `UNIT_AURA` state.
-- Foreign-frame suppression is transactional: a setter that mutates and then throws is detected and rolled back. Reacquisition captures newer foreign properties; unchanged suppression keeps restore ownership without repeating native setters.
-- Global fonts use compare-and-restore on the complete font tuple; a foreign write ends the old ownership before any new override.
-- Lazy portraits attach once and request their first update through the oUF Portrait element after late activation. Cast colors cache ordinary RGBA configuration, never cast payloads.
+- Managed auras recheck owner visibility/access when deferred work runs and do not expose a raw aura scanner.
+- Foreign-frame suppression and global fonts use compare-and-restore ownership.
+- Lazy portraits attach once and request their first update through oUF.
 - First-party `OnUpdate` loops are prohibited.
-
-## Settings lifecycle
-
-Settings registration waits for both this addon's completed file load and completed Blizzard_Settings load. Presence of the global Settings table or the first IsAddOnLoaded return is not completion. Explicit opening may lazily load Blizzard_Settings after Roth's builders are ready.
-
-A failed load before native registration releases the lock and permits a later explicit open. Once native control registration has begun, an exception is terminal until reload: partial controls are not replayed and the root category is not intentionally published before its builders complete.
-
-Managed aura duration widgets, cooldown widgets and their font are construction-time presentation. Their settings mark reload required; ordinary Roth fonts still refresh immediately. Candidate-filter changes remain live and do not recreate or inspect adopted children. Appearance-only changes do not trigger candidate-filter scans.
 
 ## Compatibility evidence
 
-- KB-selected Blizzard source remains `12.1.5.70688`; the reviewed `12.1.5.70783` delta changes Roleset restrictions, Battle.net/title-icon metadata and `UNIT_COMBAT.amount` secrecy, none of which is consumed by Roth's loaded graph.
-- External oUF minimum is `14.2.1`, pinned at `c5ff6e4a09bfaf2186e205777e0fab964b5cddc1`, to retain current secret-scrubbing, tag and event fixes.
+- KB-selected Blizzard source remains `12.1.5.70688`; reviewed `12.1.5.70783` changes no loaded Roth surface.
+- External oUF minimum is `14.2.1`, pinned at `c5ff6e4a09bfaf2186e205777e0fab964b5cddc1`.

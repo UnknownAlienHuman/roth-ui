@@ -32,7 +32,10 @@ local function NewEnvironment(useEventUtil)
     _G.EventUtil = nil
     _G.C_AddOns = {
       IsAddOnLoaded = function(addonName)
-        return addonName == "Blizzard_UnitFrame"
+        if addonName == "Blizzard_UnitFrame" then
+          return true, true
+        end
+        return false, false
       end,
     }
   end
