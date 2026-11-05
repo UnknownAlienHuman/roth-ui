@@ -22,12 +22,13 @@ Evidence date: **2026-11-04**.
 - Orb migration runs at the `LoadSavedVariablesFirst` boundary without a redundant own-addon `ADDON_LOADED` owner.
 - Transfer UI releases imported/exported text and active closures when hidden.
 - Media ownership was re-audited by exact runtime references and SHA-256: 84 unused or duplicate files, totaling 7,026,025 bytes, were removed; 120 owned media files remain.
+- The target-of-target layout uses canonical `media/target.tga`; the removed `targettarget.tga` had the same Git blob and the regression retains all geometry, layer and anchor checks.
 
 ## Automated validation
 
 The authoritative `Addon validation and package` workflow runs repository policy guards, TOC/XML/load-order validation, Lua 5.1 syntax, all isolated Lua regressions and two deterministic package builds. A workflow result applies only to its exact commit; a previous green head is not evidence for a later head.
 
-The audit application run exposed and corrected stale test fixtures after production contracts were tightened. PR #16 must be green on the final non-bot-authored head before merge, and `main` must pass its push workflow after merge.
+The audit application run exposed and corrected stale test fixtures after production contracts were tightened. The complete gate passed on the source tree containing the media-contract correction; PR #16 still requires the ordinary workflow to pass on the exact final connector-authored head before merge, and `main` must pass its push workflow after merge.
 
 ## Client acceptance
 
