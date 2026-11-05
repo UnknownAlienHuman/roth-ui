@@ -4,7 +4,7 @@ Diablo-inspired World of Warcraft Retail interface built on Blizzard-owned actio
 
 ## Compatibility
 
-- Addon: `3.4.7`
+- Addon: `3.4.8`
 - Retail target: `12.1.5`, Interface `120105`
 - Selected Blizzard source: `12.1.5.70688` (`d07eb00237d8891f153215db98a5df880a26cfe5`)
 - Reviewed post-selected delta: `12.1.5.70783` (`297d7aaaa736f346b3e036f38ee088eaf7f8c07f`); no loaded Roth surface changed
