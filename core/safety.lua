@@ -17,6 +17,7 @@ local tostring = tostring
 
 local IsSecretValue = _G.issecretvalue or _G.IsSecretValue
 local CanAccessValue = _G.canaccessvalue
+local CanAccessTable = _G.canaccesstable
 local CanAccessAllValues = _G.canaccessallvalues
 
 assert(type(IsSecretValue) == "function", "Roth_UI: issecretvalue is required on Retail 12.1")
@@ -111,6 +112,9 @@ function safety.IsForbiddenTable(value)
   end
   if type(value) ~= "table" then
     return false
+  end
+  if type(CanAccessTable) == "function" then
+    return CanAccessTable(value) ~= true
   end
   local ok = pcall(next, value)
   return not ok
@@ -286,6 +290,14 @@ local function CopySerializable(source, stack, memo, depth, strict, budget)
 
   if safety.IsForbiddenTable(source) then
     return nil
+  end
+  if strict then
+    -- Portable documents contain data only. Even an empty runtime proxy or a
+    -- table with a protected metatable is not a serializable product record.
+    local metatable = getmetatable(source)
+    if not safety.CanAccess(metatable) or metatable ~= nil then
+      return nil
+    end
   end
 
   stack = stack or {}

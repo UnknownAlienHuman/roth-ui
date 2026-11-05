@@ -240,6 +240,21 @@ local function RestoreSnapshot(snapshot)
   return accepted == true
 end
 
+local transactionActive = false
+
+local function RunExclusiveTransaction(operation, ...)
+  if transactionActive then
+    return false, "A persistence transaction is already active."
+  end
+  transactionActive = true
+  -- The operation owns snapshot/rollback. This boundary always releases the
+  -- reentrancy lock, including unexpected setup errors, without leaking them.
+  local ok, result, reason = pcall(operation, ...)
+  transactionActive = false
+  if not ok then return false, "Persistence transaction failed." end
+  return result, reason
+end
+
 local function CommitTransferRoots(staged)
   local snapshot = SnapshotCanonicalRoots()
   if not snapshot then
@@ -296,37 +311,37 @@ persistenceApi.GetStorageLabels = function()
 end
 
 persistenceApi.GetTransferRoots = function(mode)
+  if transactionActive then return nil, "A persistence transaction is already active." end
   if mode ~= "full" and mode ~= "account" and mode ~= "char" then
     return nil, "Unknown persistence transfer mode."
   end
 
-  local canonical = GetCanonicalStores()
+  local canonical = GetCanonicalStores(false)
   if type(canonical) ~= "table" then
     return nil, "Canonical persistence stores are unavailable."
   end
 
   local source = {}
   if mode == "full" or mode == "account" then
+    if not CanAccess(canonical.accountRoot) or type(canonical.accountRoot) ~= "table" then
+      return nil, "Account SavedVariables are unavailable."
+    end
     source.accountRoot = canonical.accountRoot
   end
   if mode == "full" or mode == "char" then
+    if not CanAccess(canonical.charRoot) or type(canonical.charRoot) ~= "table" then
+      return nil, "Character SavedVariables are unavailable."
+    end
     source.charRoot = canonical.charRoot
   end
 
-  local payload = CopySerializableStrict(source)
-  if type(payload) ~= "table" then
-    return nil, "SavedVariables contain unsupported, cyclic or aliased data."
-  end
-  if source.accountRoot ~= nil and type(payload.accountRoot) ~= "table" then
-    return nil, "Account SavedVariables could not be copied completely."
-  end
-  if source.charRoot ~= nil and type(payload.charRoot) ~= "table" then
-    return nil, "Character SavedVariables could not be copied completely."
-  end
-  return payload
+  -- Share the portable schema validator with imports; do not export a
+  -- structurally invalid or unsupported document merely because it can copy.
+  return ValidateTransferPayload(source)
 end
 
 local function ApplyTransferRootsAndReload(payload)
+  if transactionActive then return false, "A persistence transaction is already active." end
   -- Root replacement changes live authoritative state. Reject in combat and
   -- commit only a detached, complete document with an owned rollback snapshot.
   if InCombatLockdown and InCombatLockdown() then
@@ -338,7 +353,7 @@ local function ApplyTransferRootsAndReload(payload)
     return false, validationError
   end
 
-  return CommitTransferRoots(staged)
+  return RunExclusiveTransaction(CommitTransferRoots, staged)
 end
 
 persistenceApi.ApplyTransferRootsAndReload = ApplyTransferRootsAndReload
@@ -371,7 +386,7 @@ end
 
 persistenceApi.ReloadUI = ReloadInterface
 
-persistenceApi.ResetAndReload = function()
+local function ResetAndReload()
   if InCombatLockdown and InCombatLockdown() then
     return false
   end
@@ -395,7 +410,12 @@ persistenceApi.ResetAndReload = function()
   return false
 end
 
+persistenceApi.ResetAndReload = function()
+  return RunExclusiveTransaction(ResetAndReload)
+end
+
 persistenceApi.Reconcile = function()
+  if transactionActive then return nil end
   return ReconcilePersistenceStores()
 end
 

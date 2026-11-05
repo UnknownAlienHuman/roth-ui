@@ -21,6 +21,7 @@ local next = next
 local UnitClass = UnitClass
 local DoesSpellExist = C_Spell and C_Spell.DoesSpellExist
 local safety = assert(ns.safety, "Roth_UI: safety is required by aura_runtime.lua")
+local deferredFrames = setmetatable({}, { __mode = "k" })
 local DeferForObject = assert(ns.framePolicy and ns.framePolicy.DeferForObject,
   "Roth_UI: framePolicy.DeferForObject is required by aura_runtime.lua")
 
@@ -48,6 +49,7 @@ local function WarnOnce(key, message)
 end
 
 local function IsFrameVisible(frame)
+  if not safety.CanUseRegion(frame) then return false end
   local ok, visible = safety.TryMethod(frame, "IsVisible")
   return ok == true and safety.CanAccess(visible) and visible == true
 end
@@ -219,14 +221,14 @@ local function CreateAuraRegion(frame, spec)
     growthX = spec.growthX or "RIGHT",
     growthY = spec.growthY or "DOWN",
   })
-  if created ~= true or not safety.CanAccess(element) or element == nil then
+  if created ~= true or not safety.CanUseRegion(element) then
     WarnOnce("createAurasFailed", "oUF failed to create a managed aura container.")
     return nil
   end
 
   -- Validate only the public AuraContainer methods Roth uses. This also
   -- protects development builds with an unexpanded oUF version token.
-  local required = { "SetSize", "SetPoint", type(spec.spellSlots) == "table" and "AddSlot" or "AddGroup" }
+  local required = { "SetSize", "SetPoint", "SetEnabled", type(spec.spellSlots) == "table" and "AddSlot" or "AddGroup" }
   if spec.alpha then required[#required + 1] = "SetAlpha" end
   if type(spec.candidateFilters) == "function" then
     required[#required + 1] = "SetAuraGroupCandidateFilters"
@@ -292,6 +294,12 @@ local function CreateAuraRegion(frame, spec)
     })
     spec.candidateFingerprint = fingerprint
   end
+  -- EnableElement is a no-op once Auras is active. A container added later
+  -- needs its own activation; oUF still owns unit assignment and updates.
+  local enabledOK, enabled = safety.TryMethod(frame, "IsElementEnabled", "Auras")
+  if enabledOK == true and safety.CanAccess(enabled) and enabled == true then
+    element:SetEnabled(true)
+  end
   spec.element = element
 
   if type(spec.exportField) == "string" and spec.exportField ~= "" then
@@ -301,24 +309,23 @@ local function CreateAuraRegion(frame, spec)
 end
 
 function func.EnsureAuraRegions(frame)
-  if InCombatLockdown and InCombatLockdown() then
-    if frame and not frame.__rothAuraDeferred then
-      frame.__rothAuraDeferred = true
-      local deferred = DeferForObject("aura-create", frame, function()
-        frame.__rothAuraDeferred = nil
-        func.EnsureAuraRegions(frame)
-      end)
-      if not deferred then
-        frame.__rothAuraDeferred = nil
-        if not (InCombatLockdown and InCombatLockdown()) then
-          return func.EnsureAuraRegions(frame)
-        end
-      end
-    end
-    return false
-  end
+  -- Recheck the ordinary owner at execution, not only when work was queued.
+  -- Hidden or currently inaccessible owners must not allocate managed objects.
+  if not IsFrameVisible(frame) then return false end
   local specs = frame and frame.__rothAuraSpecs
   if type(specs) ~= "table" or frame.__rothAuraRegionsCreated or frame.__rothAuraRegionsCreating then
+    return false
+  end
+  if InCombatLockdown and InCombatLockdown() then
+    if not deferredFrames[frame] then
+      deferredFrames[frame] = true
+      if not DeferForObject("aura-create", frame, function()
+        deferredFrames[frame] = nil
+        func.EnsureAuraRegions(frame)
+      end) then
+        deferredFrames[frame] = nil
+      end
+    end
     return false
   end
 
@@ -326,11 +333,20 @@ function func.EnsureAuraRegions(frame)
   local created = false
   local complete = true
   for i = 1, #specs do
-    if CreateAuraRegion(frame, specs[i]) then
-      created = true
-    else
-      complete = false
+    local spec = specs[i]
+    if not spec.element and not spec.creationFailed then
+      local ok, element = safety.TryCall(CreateAuraRegion, frame, spec)
+      if ok and element then
+        created = true
+      else
+        -- Native adoption may already have partially happened. Do not retry
+        -- it or allocate another container on the next OnShow; reload is the
+        -- recovery boundary. A failed region must not block healthy siblings.
+        spec.creationFailed = true
+        WarnOnce("auraCreationFailed", "A managed aura region failed to initialize; reload after correcting the error.")
+      end
     end
+    if not spec.element then complete = false end
   end
   frame.__rothAuraRegionsCreating = nil
   frame.__rothAuraRegionsCreated = created and complete
@@ -340,6 +356,9 @@ function func.EnsureAuraRegions(frame)
     if enabledOK == true and safety.CanAccess(enabled) and enabled ~= true then
       safety.TryMethod(frame, "EnableElement", "Auras")
     end
+    -- oUF Enable only activates containers; Update assigns their current unit.
+    -- This runs once per successful creation batch, never from UNIT_AURA.
+    safety.TryMethod(frame, "UpdateAllElements", "RothAuraCreated")
   end
   return created
 end
@@ -349,7 +368,7 @@ local function EnsureAuraRegionsOnShow(frame)
 end
 
 function func.QueueAuraRegion(frame, spec)
-  if not frame or type(spec) ~= "table" or type(spec.id) ~= "string" or spec.id == "" then
+  if not safety.CanUseRegion(frame) or type(spec) ~= "table" or type(spec.id) ~= "string" or spec.id == "" then
     return false
   end
   if spec.filter ~= "HELPFUL" and spec.filter ~= "HARMFUL" then
@@ -363,6 +382,7 @@ function func.QueueAuraRegion(frame, spec)
     end
   end
   frame.__rothAuraSpecs[#frame.__rothAuraSpecs + 1] = spec
+  frame.__rothAuraRegionsCreated = nil
 
   if frame.__rothAuraLifecycleReady and IsFrameVisible(frame) then
     func.EnsureAuraRegions(frame)
@@ -371,7 +391,8 @@ function func.QueueAuraRegion(frame, spec)
 end
 
 function func.RefreshAuraFilters(frame)
-  local specs = frame and frame.__rothAuraSpecs
+  if not safety.CanUseRegion(frame) then return false end
+  local specs = frame.__rothAuraSpecs
   if type(specs) ~= "table" then
     return false
   end
@@ -380,7 +401,7 @@ function func.RefreshAuraFilters(frame)
   for i = 1, #specs do
     local spec = specs[i]
     local element = spec.element
-    if element and spec.groupKey then
+    if element and spec.groupKey and safety.CanUseRegion(element) then
       local filters, fingerprint = BuildCandidateFilters(frame, spec)
       if fingerprint ~= spec.candidateFingerprint then
         local updated = safety.TryMethod(element, "SetAuraGroupCandidateFilters", spec.groupKey, filters)
@@ -672,6 +693,7 @@ function func.QueueHealerAuraWatch(frame)
 end
 
 local function AttachAuraLifecycle(frame)
+  if not safety.CanUseRegion(frame) or frame.__rothAuraLifecycleReady then return end
   if type(frame.__rothAuraSpecs) ~= "table" or #frame.__rothAuraSpecs == 0 then
     return
   end

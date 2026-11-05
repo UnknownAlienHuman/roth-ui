@@ -45,8 +45,8 @@ configOwner.AttachCfgProxy = nil
 configOwner.RefreshRuntimeConfig = nil
 configOwner.InitializeConfigDefaults = nil
 
-local function GetCanonicalStores()
-  return EnsureCanonicalPersistenceStores()
+local function GetCanonicalStores(ensure)
+  return EnsureCanonicalPersistenceStores(ensure)
 end
 
 local function SetCanonicalConfigRoot(store)
