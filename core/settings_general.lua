@@ -208,17 +208,16 @@ ui:RegisterBuilder("general", function()
     variable = "ROTH_UI_FONT_PATH",
     label = "UI Font",
     tooltip =
-    "Applies the selected font to Roth UI fontstrings immediately. Global Blizzard font replacement remains controlled by the separate checkbox.",
+    "Applies the font to ordinary Roth UI text immediately. Managed aura text requires /reload. Global Blizzard fonts use the separate checkbox.",
     path = { "font" },
     defaultValue = ui:GetConfigDefault({ "font" }, STANDARD_TEXT_FONT),
-    reloadRequired = false,
+    reloadRequired = true,
     options = BuildFontOptions,
     apply = function()
       QueueFontPolicyRefresh("settings_font_policy", function()
         if ns and type(ns.RefreshOrbsVisual) == "function" then
           ns.RefreshOrbsVisual()
         end
-        RefreshAuraFilters()
       end)
     end,
   })
@@ -240,7 +239,6 @@ ui:RegisterBuilder("general", function()
             if ns and type(ns.RefreshOrbsVisual) == "function" then
               ns.RefreshOrbsVisual()
             end
-            RefreshAuraFilters()
           end)
         end,
       })
@@ -251,22 +249,20 @@ ui:RegisterBuilder("general", function()
     category = "root",
     variable = "ROTH_UI_AURA_DURATION_TEXT",
     label = "Aura Duration Text",
-    tooltip = "Shows or hides duration text on simple aura icons. The visible icons are refreshed immediately.",
+    tooltip = "Shows or hides duration text on managed aura icons after /reload.",
     path = { "simpleAuras", "durationText" },
     defaultValue = ui:GetConfigDefault({ "simpleAuras", "durationText" }, false),
-    reloadRequired = false,
-    apply = RefreshAuraFilters,
+    reloadRequired = true,
   })
 
   ui:AddCheckbox({
     category = "root",
     variable = "ROTH_UI_AURA_COOLDOWN_SWIPE",
     label = "Aura Cooldown Swipe",
-    tooltip = "Shows or hides the cooldown spiral on simple aura icons. The visible icons are refreshed immediately.",
+    tooltip = "Shows or hides the cooldown spiral on managed aura icons after /reload.",
     path = { "simpleAuras", "cooldownSwipe" },
     defaultValue = ui:GetConfigDefault({ "simpleAuras", "cooldownSwipe" }, true),
-    reloadRequired = false,
-    apply = RefreshAuraFilters,
+    reloadRequired = true,
   })
 
   ui:AddCheckbox({

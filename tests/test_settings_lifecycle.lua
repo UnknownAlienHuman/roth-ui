@@ -20,11 +20,15 @@ _G.CreateFrame = function()
   return frame
 end
 
-local settingsLoadCallback
+local ownLoadCallback, settingsLoadCallback
 _G.EventUtil = {
   ContinueOnAddOnLoaded = function(addonName, callback)
-    expect(addonName == "Blizzard_Settings", "settings lifecycle watched the wrong addon")
-    settingsLoadCallback = callback
+    if addonName == "Roth_UI" then
+      ownLoadCallback = callback
+    else
+      expect(addonName == "Blizzard_Settings", "settings lifecycle watched the wrong addon")
+      settingsLoadCallback = callback
+    end
   end,
 }
 
@@ -104,7 +108,8 @@ local framePolicy = assert(ns.framePolicy)
 
 assert(loadfile("core/settings_main.lua"))("Roth_UI")
 local ui = assert(ns.SettingsUI)
-expect(type(settingsLoadCallback) == "function", "Blizzard Settings load callback was not registered")
+expect(type(ownLoadCallback) == "function" and settingsLoadCallback == nil,
+  "settings did not wait for Roth file completion")
 expect(loadCalls == 0, "Blizzard_Settings was forced to load at Roth login")
 expect(ui.registered == false, "settings registered before Blizzard_Settings loaded")
 expect(#createdFrames == 0, "eager settings lifecycle created a frame")
@@ -114,6 +119,8 @@ expect(ui:RegisterBuilder("test", function()
   builderCalls = builderCalls + 1
 end) == true, "test builder registration failed")
 
+ownLoadCallback()
+expect(type(settingsLoadCallback) == "function", "Blizzard Settings load callback was not registered")
 expect(ui:Open("root") == true, "explicit settings open failed")
 expect(loadCalls == 1, "explicit open did not load Blizzard_Settings exactly once")
 expect(ui.registered == true and ui.registering == false, "settings registration state is inconsistent")
