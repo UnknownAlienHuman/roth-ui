@@ -227,7 +227,8 @@ end
 local targetTarget = unitFrames.targettarget
 same(targetTarget.textures[1].layer, "BORDER", "targettarget artwork draw layer")
 same(targetTarget.textures[1].sublevel, -8, "targettarget artwork sublevel")
-same(targetTarget.textures[1].texture, "Interface\\AddOns\\Roth_UI\\media\\targettarget",
+-- targettarget.tga was byte-identical to target.tga; retain the canonical asset.
+same(targetTarget.textures[1].texture, "Interface\\AddOns\\Roth_UI\\media\\target",
   "targettarget artwork texture")
 same(targetTarget.Health.points[1][1], "TOP", "targettarget health top anchor")
 same(targetTarget.Health.points[1][5], -29, "targettarget health top offset")
