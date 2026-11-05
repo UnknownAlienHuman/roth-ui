@@ -1,4 +1,4 @@
-# Roth UI architecture — 3.4.7
+# Roth UI architecture — 3.4.8
 
 ## Boundaries
 
@@ -53,9 +53,9 @@ A frame with multiple anchors is not rewritten from a one-point persistence reco
 
 ## Scheduling and readiness
 
-`framePolicy.DeferUntilOutOfCombat` is the single keyed combat-exit queue. A newer request cancels older pending or draining work. `deferred_scheduler.RunNextFrame` is the sole next-frame queue.
+`framePolicy.DeferUntilOutOfCombat` is the single keyed combat-exit queue. A newer request cancels older pending or draining work. `deferred_scheduler.RunNextFrame` is the sole next-frame queue, swaps generations before delivery and isolates callback failures.
 
-`frame_policy_bootstrap` distinguishes `IsAddOnLoaded`'s loading-inclusive first return from its completed second return. Named fallback listeners remove their ownership before invoking policy code, so reentry cannot duplicate delivery. The retired `ApplyUnitFramePolicy` compatibility branch is absent.
+`frame_policy_bootstrap` distinguishes `IsAddOnLoaded`'s loading-inclusive first return from its completed second return. Named completion callbacks claim their one-shot state before scheduling. Login and Blizzard-addon completion signals share one scheduler key, so equivalent same-frame invalidations produce one group-frame policy pass. The font owner is invoked through the safety boundary and cannot suppress that independent policy invalidation. The retired `ApplyUnitFramePolicy` compatibility branch is absent.
 
 ## Secure/UI rules
 
@@ -65,6 +65,14 @@ A frame with multiple anchors is not rewritten from a one-point persistence reco
 - Foreign-frame suppression and global fonts use compare-and-restore ownership.
 - Lazy portraits attach once and request their first update through oUF.
 - First-party `OnUpdate` loops are prohibited.
+
+## Settings lifecycle
+
+Settings registration waits for both this addon's completed file load and completed Blizzard_Settings load. Presence of the global Settings table or the first IsAddOnLoaded return is not completion. Explicit opening may lazily load Blizzard_Settings after Roth's builders are ready.
+
+A failed load before native registration releases the lock and permits a later explicit open. Once native control registration has begun, an exception is terminal until reload: partial controls are not replayed and the root category is not intentionally published before its builders complete.
+
+Managed aura duration widgets, cooldown widgets and their font are construction-time presentation. Their settings mark reload required; ordinary Roth fonts still refresh immediately. Candidate-filter changes remain live and do not recreate or inspect adopted children. Appearance-only changes do not trigger candidate-filter scans.
 
 ## Compatibility evidence
 

@@ -1,6 +1,6 @@
 # Roth UI agent guide
 
-Target: addon `3.4.7`, Retail `12.1.5`, Interface `120105`, selected source build `12.1.5.70688`, reviewed post-selected source `12.1.5.70783`, oUF `14.2.1+`.
+Target: addon `3.4.8`, Retail `12.1.5`, Interface `120105`, selected source build `12.1.5.70688`, reviewed post-selected source `12.1.5.70783`, oUF `14.2.1+`.
 
 Before editing, read `README.md`, `ARCHITECTURE.md`, `CURRENT_STATUS.md`, `CODE_INDEX.md`, `CODE_GRAPH.md`, the TOC and the applicable contracts in `UnknownAlienHuman/wow-addon-engineering-kb`.
 

@@ -1,18 +1,18 @@
-# Roth UI 3.4.7
+# Roth UI 3.4.8
 
 Target: Retail `12.1.5.70688`, Interface `120105`, external oUF `14.2.1+`.
 
 ## Changes
 
-- Gate persisted mover values and tables before conversion or traversal; reject secrets, inaccessible values, protected tables and NaN/Infinity.
-- Validate mover anchor points and bounded global names. Reject self/layout-restricted anchors and use `UIParent` as the independent fallback.
-- Apply saved points transactionally: capture the current point first and restore it when `SetPoint` fails. Leave multi-anchor frames unchanged rather than performing an incomplete rollback.
-- Use the completed second return from `C_AddOns.IsAddOnLoaded` in Blizzard-frame bootstrap; named fallback listeners detach before policy callbacks.
-- Remove the dead `ApplyUnitFramePolicy` compatibility branch.
-- Add three regressions and update the existing mover/bootstrap fixtures without removing prior interaction, combat or lifecycle assertions.
+- Coalesce login and named Blizzard-addon completion signals into one keyed next-frame group-policy pass.
+- Keep completed-addon one-shot ownership terminal before scheduling and ignore duplicate delivery.
+- Isolate global-font failure so it cannot cancel the independent Blizzard-frame policy invalidation.
+- Require the canonical group-policy and font owners at the documented TOC boundary; retain no unit-frame compatibility route.
+- Expand both bootstrap regressions for same-frame coalescing, immediate EventUtil delivery, repeated callbacks, font failure and cleanup.
+- Restore the verified Settings lifecycle architecture and dependency-graph path without removing the 3.4.7 mover contracts.
 
 ## Verification boundary
 
-The PR receipt records exact Lua 5.1 CI runs and package digests. Local compatibility tests are separate from the complete repository gate. Real WoW mover geometry, restricted objects, addon loading, combat, taint, visuals and profiler checks remain `NOT-RUN`.
+The focused regressions reproduce the new boundaries against 3.4.7. Complete Lua 5.1 repository CI, deterministic package comparison and post-merge main validation remain publication gates. Real WoW addon-load timing, combat, taint, native frame restoration, visuals and profiler checks remain `NOT-RUN`.
 
-Keep existing SavedVariables. Invalid or unsafe stored mover geometry is ignored rather than applied.
+Keep existing SavedVariables. This patch does not change their schema or mover data.
