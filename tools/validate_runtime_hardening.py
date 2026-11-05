@@ -147,10 +147,13 @@ def main() -> int:
         assert_contains(aspects, token, "forbidden-aspect guard")
 
     settings = read("core/settings_main.lua")
-    if "ContinueOnOwnAddonLoaded" in settings:
-        fail("Settings registration must not force eager registration on Roth ADDON_LOADED")
     for token in (
-        "RegisterWhenBlizzardSettingsLoads",
+        "local buildersReady = false",
+        "local settingsReady = false",
+        "ContinueOnAddOnLoaded(addonName",
+        "local _, finished = C_AddOns.IsAddOnLoaded(name)",
+        "self.registrationFailed = true",
+        "TryCall(RegisterControls, self)",
         'ContinueOnAddOnLoaded("Blizzard_Settings"',
         "ui.registering",
         "DeferUntilOutOfCombat",
@@ -336,6 +339,9 @@ def main() -> int:
         "tests/test_safety_aspects.lua",
         "tests/test_frame_policy_bootstrap.lua",
         "tests/test_settings_lifecycle.lua",
+        "tests/test_settings_readiness.lua",
+        "tests/test_settings_registration_failure.lua",
+        "tests/test_settings_aura_appearance.lua",
         "tests/test_action_button_skin.lua",
         "tests/test_frame_policy.lua",
         "tests/test_deferred_scheduler.lua",

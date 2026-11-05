@@ -1,21 +1,18 @@
-# Roth UI 3.4.5
+# Roth UI 3.4.6
 
 Target: Retail `12.1.5.70688`, Interface `120105`, external oUF `14.2.1+`.
 
 ## Changes
 
-- Cancel obsolete combat-exit work when a newer request runs immediately, including replacements made while the old batch is draining.
-- Reject recursive queue drains and preserve unrun work if combat resumes during a callback.
-- Refresh foreign-frame restoration baselines when another owner changes a property before Roth reapplies suppression. Repeated unchanged suppression performs no extra native setters.
-- Preserve newer foreign font tuples across reapplication and restoration, including same-path size/flag changes.
-- Initialize late-created 3D portraits through their oUF element update and prevent duplicate lifecycle attachment.
-- Replace cast-color string fingerprints with ordinary RGBA scalar comparison; unchanged callbacks do not construct fingerprint tables/strings.
-- Add five regression scripts reproduced against the previous verified runtime. No new scheduler, polling loop, SavedVariables migration, library or media payload.
+- Prevent preloaded or partially loaded Blizzard Settings from registering an empty Roth panel before its builder files finish.
+- Gate registration on completion of both addon loads; keep Settings lazy and use the second IsAddOnLoaded return in the fallback.
+- Release registration locks after load errors. A later explicit open may retry a failed load; partial native control registration is terminal until reload, preventing duplicate settings.
+- Mark aura duration text, cooldown swipe and managed-aura font changes as requiring reload. Ordinary font updates remain live.
+- Remove unrelated candidate-filter scans from appearance-only changes; target aura ownership filters still update immediately.
+- Add three executable regressions and extend the existing lifecycle fixture without removing its reentrancy or combat-queue assertions.
 
 ## Verification boundary
 
-The complete Lua 5.1 repository workflow must pass on the exact PR candidate and merged main. `CURRENT_STATUS.md` maps each change to KB/oUF authority and its regression. Operation-count tests are not measured FPS/CPU improvements.
+The PR receipt records the exact Lua 5.1 CI runs and package digests. Local compatibility checks are separate from the complete repository gate. Real WoW-client Settings, aura rendering, combat, taint and profiler checks remain `NOT-RUN`.
 
-Actual WoW-client combat, taint, rendering, interaction and profiler acceptance remains `NOT-RUN`.
-
-Install the ZIP's `Roth_UI` folder and keep existing SavedVariables.
+Keep existing SavedVariables. Managed aura appearance changes take effect after `/reload`; changing candidate filters does not require reloading.

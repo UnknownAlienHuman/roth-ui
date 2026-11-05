@@ -1,4 +1,4 @@
-# Roth UI dependency graph — 3.4.5
+# Roth UI dependency graph — 3.4.6
 
 ```text
 safety
@@ -25,6 +25,12 @@ combat-sensitive request
   -> newest request invalidates older pending or draining work
   -> PLAYER_REGEN_ENABLED drain rechecks combat before each callback
   -> listener removed when no pending work remains
+
+Settings readiness
+  -> Roth ADDON_LOADED after all builders
+  -> Blizzard_Settings completion or explicit lazy load
+  -> register one complete category tree
+  -> partial native registration failure is terminal until reload
 
 layout refresh requests
   -> deferred_scheduler keyed generation

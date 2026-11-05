@@ -1,4 +1,4 @@
-# Roth UI architecture — 3.4.5
+# Roth UI architecture — 3.4.6
 
 ## Boundaries
 
@@ -49,6 +49,14 @@ Raw root getters/writers are captured by their owner and removed from shared nam
 - Global fonts use compare-and-restore on the complete font tuple; a foreign write ends the old ownership before any new override.
 - Lazy portraits attach once and request their first update through the oUF Portrait element after late activation. Cast colors cache ordinary RGBA configuration, never cast payloads.
 - First-party `OnUpdate` loops are prohibited.
+
+## Settings lifecycle
+
+Settings registration waits for both this addon's completed file load and completed Blizzard_Settings load. Presence of the global Settings table or the first IsAddOnLoaded return is not completion. Explicit opening may lazily load Blizzard_Settings after Roth's builders are ready.
+
+A failed load before native registration releases the lock and permits a later explicit open. Once native control registration has begun, an exception is terminal until reload: partial controls are not replayed and the root category is not intentionally published before its builders complete.
+
+Managed aura duration widgets, cooldown widgets and their font are construction-time presentation. Their settings mark reload required; ordinary Roth fonts still refresh immediately. Candidate-filter changes remain live and do not recreate or inspect adopted children. Appearance-only changes do not trigger candidate-filter scans.
 
 ## Compatibility evidence
 

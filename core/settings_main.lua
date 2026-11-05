@@ -1,4 +1,4 @@
-local _, private = ...
+local addonName, private = ...
 local ns = assert(private or _G.Roth_UI, "Roth_UI: main namespace is required")
 
 ns.SettingsUI = ns.SettingsUI or {}
@@ -28,6 +28,9 @@ ui.categorySpecs = ui.categorySpecs or {}
 ui.settings = ui.settings or {}
 ui.registered = ui.registered or false
 ui.registering = false
+
+local buildersReady = false
+local settingsReady = false
 
 local CATEGORY_SPECS = {
   { key = "root",       name = "Roth UI" },
@@ -128,7 +131,7 @@ function ui:RegisterBuilder(name, builder)
 end
 
 function ui:EnsureSettingsLoaded()
-  if _G.Settings then
+  if settingsReady and _G.Settings then
     return true
   end
 
@@ -137,7 +140,7 @@ function ui:EnsureSettingsLoaded()
   end
   C_AddOns.LoadAddOn("Blizzard_Settings")
 
-  return _G.Settings ~= nil
+  return settingsReady and _G.Settings ~= nil
 end
 
 function ui:GetConfigDefault(path, fallback)
@@ -447,20 +450,7 @@ function ui:Open(categoryKey, scrollToElementName)
   return ok == true
 end
 
-function ui:Register()
-  if self.registered then
-    return true
-  end
-  if self.registering then
-    return false
-  end
-
-  self.registering = true
-  if not self:EnsureSettingsLoaded() then
-    self.registering = false
-    return false
-  end
-
+local function RegisterControls(self)
   for i = 1, #CATEGORY_SPECS do
     local spec = CATEGORY_SPECS[i]
     local category
@@ -486,35 +476,55 @@ function ui:Register()
   end
 
   Settings.RegisterAddOnCategory(self.categories.root)
-  self.registered = true
+end
+
+function ui:Register()
+  if self.registered then
+    return true
+  end
+  if not buildersReady or self.registering or self.registrationFailed then
+    return false
+  end
+
+  self.registering = true
+  local loaded, available = TryCall(self.EnsureSettingsLoaded, self)
+  if loaded ~= true or available ~= true then
+    self.registering = false
+    return false
+  end
+
+  local registered = TryCall(RegisterControls, self)
   self.registering = false
+  if registered ~= true then
+    -- Native registrations may already exist; no public rollback is owned here.
+    -- Do not replay a partial builder and register duplicate global variables.
+    self.registrationFailed = true
+    print("Roth_UI: settings registration failed. Reload after correcting the error.")
+    return false
+  end
+  self.registered = true
   return true
 end
 
-local function RegisterWhenBlizzardSettingsLoads()
-  if _G.Settings then
-    ui:Register()
-    return
-  end
-
-  local callback = function()
-    ui:Register()
-  end
-
+local function ContinueOnAddOnLoaded(name, callback)
   if EventUtil and type(EventUtil.ContinueOnAddOnLoaded) == "function" then
-    EventUtil.ContinueOnAddOnLoaded("Blizzard_Settings", callback)
+    EventUtil.ContinueOnAddOnLoaded(name, callback)
     return
   end
 
-  if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("Blizzard_Settings") then
-    callback()
-    return
+  if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" then
+    -- The first return also includes an addon whose files are still executing.
+    local _, finished = C_AddOns.IsAddOnLoaded(name)
+    if finished then
+      callback()
+      return
+    end
   end
 
   local frame = CreateFrame("Frame")
   frame:RegisterEvent("ADDON_LOADED")
   frame:SetScript("OnEvent", function(self, _, loadedAddon)
-    if loadedAddon ~= "Blizzard_Settings" then
+    if loadedAddon ~= name then
       return
     end
     self:UnregisterEvent("ADDON_LOADED")
@@ -523,7 +533,13 @@ local function RegisterWhenBlizzardSettingsLoads()
   end)
 end
 
--- Do not force Blizzard_Settings to load at login. Registration happens when
--- Blizzard opens its Settings addon, or synchronously when Roth's own entry
--- point calls ui:Open().
-RegisterWhenBlizzardSettingsLoads()
+-- Builders are declared in later TOC files. Even preloaded Settings must wait
+-- for this addon's completion; an existing Settings table alone is not readiness.
+-- Keep Blizzard_Settings lazy until its UI or Roth's explicit Open loads it.
+ContinueOnAddOnLoaded(addonName, function()
+  buildersReady = true
+  ContinueOnAddOnLoaded("Blizzard_Settings", function()
+    settingsReady = true
+    ui:Register()
+  end)
+end)
