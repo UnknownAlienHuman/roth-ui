@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply:
-    if: contains(github.event.head_commit.message, '[apply-security-3.4.9]')
+    if: contains(github.event.head_commit.message, '[apply-security-3.4.9-chunks]')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -19,13 +19,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Apply verified overlay
+      - name: Reconstruct and apply verified overlay
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "9b257c4c934e2adff501f9fd4d12d31258ad5691"
-          echo "34cfe527d53244250ec8494ffd8377bfda51bb6f15bbb5e819bb348026ce7bfd  .audit_overlay/payload.tar.xz" | sha256sum -c -
-          tar -xJf .audit_overlay/payload.tar.xz -C .
+          test "$(git rev-parse HEAD^)" = "c03b97543ef33050c2fb42f02085aea0e4ae7548"
+          cat .audit_overlay/parts/part-*.b64 | base64 --decode > /tmp/payload.tar.xz
+          echo "34cfe527d53244250ec8494ffd8377bfda51bb6f15bbb5e819bb348026ce7bfd  /tmp/payload.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/payload.tar.xz -C .
           rm -rf .audit_overlay
           rm -f .github/workflows/apply-security-boundaries-3.4.9.yml
           git add -A
