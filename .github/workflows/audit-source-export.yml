@@ -1,0 +1,29 @@
+name: Audit source export
+
+on:
+  push:
+    branches:
+      - audit/full-contract-3.4.10
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git -czf /tmp/roth-ui-source.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: roth-ui-source
+          path: /tmp/roth-ui-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
