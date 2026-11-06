@@ -1,9 +1,6 @@
 local _, ns = ...
 
-local oUF = (ns and (ns.oUF or _G.oUF)) or _G.oUF
-if not oUF then
-  return
-end
+local oUF = assert(ns and ns.oUF, "Roth_UI: ns.oUF is required by experience.lua")
 
 local type = type
 local math_min = math.min

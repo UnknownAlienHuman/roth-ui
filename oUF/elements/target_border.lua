@@ -2,18 +2,10 @@
 -- Needed when using external oUF, because this element is not part of upstream oUF.
 
 local _, ns = ...
-local oUF = (ns and (ns.oUF or _G.oUF)) or _G.oUF
-if not oUF then return end
-
-local IsSecretValue = (ns and ns.safety and ns.safety.IsSecret) or function(v)
-  local fn = _G.issecretvalue or _G.IsSecretValue
-  return type(fn) == "function" and fn(v) or false
-end
-local CanAccess = (ns and ns.safety and ns.safety.CanAccess) or function(v)
-  local fn = _G.canaccessvalue
-  if type(fn) == "function" then return fn(v) == true end
-  return not IsSecretValue(v)
-end
+local oUF = assert(ns and ns.oUF, "Roth_UI: ns.oUF is required by target_border.lua")
+local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by target_border.lua")
+local IsSecretValue = assert(safety.IsSecret, "Roth_UI: safety.IsSecret is required by target_border.lua")
+local CanAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by target_border.lua")
 
 local function Update(self, event, unit)
   if not CanAccess(unit) then return end

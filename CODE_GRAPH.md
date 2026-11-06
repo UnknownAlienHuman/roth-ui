@@ -1,6 +1,7 @@
-# Roth UI dependency graph — 3.4.8
+# Roth UI dependency graph — 3.4.9
 
 ```text
+init -> canonical ns.oUF
 safety
   -> frame policy / oUF contract
   -> config owner + defaults
@@ -14,6 +15,12 @@ safety
 Critical runtime paths:
 
 ```text
+unit identity value
+  -> immediate access/secret gate
+  -> ordinary normalized presentation state
+  -> native/addon-owned sink
+  -> no generic retention or logging
+
 import text
   -> transfer envelope validation
   -> persistence transaction
@@ -48,10 +55,10 @@ combat-sensitive request
   -> listener removed when no pending work remains
 
 layout refresh requests
-  -> deferred_scheduler keyed generation
+  -> mandatory deferred_scheduler keyed generation
   -> one timer for all keys
   -> newest callback per key runs once
   -> reentrant work enters the next generation
 ```
 
-The TOC is the executable load order. `core/safety.lua` and `core/safety_aspects.lua` precede mover consumers; `core/persistence_control_plane.lua` loads after root/schema services; `core/deferred_scheduler.lua` precedes frame-policy bootstrap and action artwork; `units/mini_target_scaffold.lua` precedes its unit styles.
+The TOC is the executable load order. `init.lua` establishes `ns.oUF`; safety modules precede all value consumers; `core/persistence_control_plane.lua` loads after root/schema services; `core/deferred_scheduler.lua` precedes move-grid, frame-policy bootstrap and action artwork; `units/mini_target_scaffold.lua` precedes its unit styles.

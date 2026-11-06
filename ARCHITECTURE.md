@@ -1,10 +1,11 @@
-# Roth UI architecture — 3.4.8
+# Roth UI architecture — 3.4.9
 
 ## Boundaries
 
 | Concern | Owner |
 |---|---|
 | Secret/access/serialization guards | `core/safety.lua`, `core/safety_aspects.lua` |
+| Canonical external oUF reference | `init.lua` -> `ns.oUF` |
 | Canonical SavedVariables roots | `core/config_persistence_owner.lua`, `core/persistence_root_store.lua` |
 | Import/export/reset transaction | `core/persistence_control_plane.lua`, `core/transfer.lua` |
 | Orb persistence | `core/orb_persistence_owner.lua` |
@@ -15,6 +16,7 @@
 | Fonts | `core/font_policy.lua` |
 | Managed auras | `core/aura_runtime.lua` |
 | Settings category | `core/settings_main.lua` |
+| Session logging / SV diagnostics | `core/logger.lua`, `core/sv_doctor.lua` |
 | Unit/secure-header lifecycle | external oUF |
 | Secure action state | Blizzard UI |
 
@@ -53,9 +55,19 @@ A frame with multiple anchors is not rewritten from a one-point persistence reco
 
 ## Scheduling and readiness
 
-`framePolicy.DeferUntilOutOfCombat` is the single keyed combat-exit queue. A newer request cancels older pending or draining work. `deferred_scheduler.RunNextFrame` is the sole next-frame queue, swaps generations before delivery and isolates callback failures.
+`framePolicy.DeferUntilOutOfCombat` is the single keyed combat-exit queue. A newer request cancels older pending or draining work. `deferred_scheduler.RunNextFrame` is the sole next-frame queue, requires `C_Timer.After`, swaps generations before delivery and isolates callback failures. A missing scheduler dependency is a load-order error, never permission to recurse synchronously.
 
-`frame_policy_bootstrap` distinguishes `IsAddOnLoaded`'s loading-inclusive first return from its completed second return. Named completion callbacks claim their one-shot state before scheduling. Login and Blizzard-addon completion signals share one scheduler key, so equivalent same-frame invalidations produce one group-frame policy pass. The font owner is invoked through the safety boundary and cannot suppress that independent policy invalidation. The retired `ApplyUnitFramePolicy` compatibility branch is absent.
+`frame_policy_bootstrap` distinguishes `IsAddOnLoaded`'s loading-inclusive first return from its completed second return. Named completion callbacks claim their one-shot state before scheduling. Login and Blizzard-addon completion signals share one scheduler key, so equivalent same-frame invalidations produce one group-frame policy pass. The font owner is invoked through the safety boundary and cannot suppress that independent policy invalidation.
+
+## Unit identity and framework ownership
+
+`init.lua` validates the required external oUF version and publishes one namespace reference. All elements, helpers and layouts require `ns.oUF`; no downstream module can silently adopt a different `_G.oUF` instance.
+
+Unit identity, class, reaction and target-state values are gated before comparison, stringification, table indexing or retention. Inaccessible target metadata collapses to a neutral/unavailable presentation. Player runtime identity is retained only when ordinary and type-valid.
+
+## Diagnostic transports
+
+Session logs and SavedVariables reports are ordinary-only transports. They do not stringify, key, compare or retain inaccessible/secret values. Restricted diagnostic input is replaced by fixed ordinary markers such as `<restricted>` and `<restricted-key>`.
 
 ## Secure/UI rules
 

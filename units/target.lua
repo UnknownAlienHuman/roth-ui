@@ -2,14 +2,14 @@
 local _, ns = ...
 
 --get oUF namespace (just in case needed)
-local oUF = ns.oUF or oUF
+local oUF = assert(ns and ns.oUF, "Roth_UI: ns.oUF is required by target.lua")
 
 --get the config
 local cfg = ns.cfg
 
 --get the functions
 local func = ns.func
-local safety = ns and ns.safety
+local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by target.lua")
 
 --get the unit container
 local unit = ns.unit
@@ -27,13 +27,14 @@ local UnitPower = UnitPower
 local UnitPowerMax = UnitPowerMax
 local UnitIsDeadOrGhost = UnitIsDeadOrGhost
 local UnitIsConnected = UnitIsConnected
-local IsSecretValue = (func and func.IsSecretValue) or (safety and safety.IsSecret) or function(v)
-  local fn = _G.issecretvalue or _G.IsSecretValue
-  return type(fn) == "function" and fn(v) or false
+local function CanReadOrdinaryValue(value)
+  local canAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by target.lua")
+  local isSecret = assert(safety.IsSecret, "Roth_UI: safety.IsSecret is required by target.lua")
+  return canAccess(value) and not isSecret(value)
 end
+
 local function AppendClassText(parts, value)
-  if value == nil then return end
-  if IsSecretValue(value) then return end
+  if not CanReadOrdinaryValue(value) or value == nil then return end
   local v = value
   if type(v) ~= "string" then
     v = tostring(v)
@@ -85,23 +86,31 @@ end
 --make a sound when target gets selected
 local playTargetSound = function(self, event)
   if event ~= "PLAYER_TARGET_CHANGED" then return end
-  local unitToken = self.__unit or "target"
+  local unitToken = self.__unit
+  if not CanReadOrdinaryValue(unitToken) then return end
+  if unitToken == nil then
+    unitToken = "target"
+  elseif type(unitToken) ~= "string" or unitToken == "" then
+    return
+  end
   local exists = UnitExists(unitToken)
-  if IsSecretValue(exists) then return end
+  if not CanReadOrdinaryValue(exists) then return end
   if exists ~= true then
     PlaySound(684)
     return
   end
 
   local enemy = UnitIsEnemy(unitToken, "player")
-  if not IsSecretValue(enemy) and enemy == true then
+  local enemyReadable = CanReadOrdinaryValue(enemy)
+  if enemyReadable and enemy == true then
     PlaySound(873)
     return
   end
   local friendly = UnitIsFriend("player", unitToken)
-  if not IsSecretValue(friendly) and friendly == true then
+  local friendlyReadable = CanReadOrdinaryValue(friendly)
+  if friendlyReadable and friendly == true then
     PlaySound(867)
-  elseif not IsSecretValue(enemy) and not IsSecretValue(friendly) then
+  elseif enemyReadable and friendlyReadable then
     PlaySound(871)
   end
 end
@@ -209,10 +218,13 @@ end
 ---------------------------------------------
 
 oUF.Tags.Methods["diablo:classtext"] = function(unit)
+  if not CanReadOrdinaryValue(unit) or type(unit) ~= "string" or unit == "" then
+    return ""
+  end
   local parts = classTextParts
   ResetClassTextParts(parts)
   local level = UnitLevel(unit)
-  if IsSecretValue(level) then
+  if not CanReadOrdinaryValue(level) then
     level = nil
     AppendClassText(parts, "??")
   elseif level == 0 or level == -1 then
@@ -224,7 +236,7 @@ oUF.Tags.Methods["diablo:classtext"] = function(unit)
   local unitrace = UnitRace(unit)
   local creatureType = UnitCreatureType(unit)
   local isPlayer = UnitIsPlayer(unit)
-  if IsSecretValue(isPlayer) then isPlayer = nil end
+  if not CanReadOrdinaryValue(isPlayer) then isPlayer = nil end
   if isPlayer == true then
     AppendClassText(parts, unitrace)
   end
@@ -232,7 +244,7 @@ oUF.Tags.Methods["diablo:classtext"] = function(unit)
     AppendClassText(parts, creatureType)
   end
   local unit_classification = UnitClassification(unit)
-  if IsSecretValue(unit_classification) then unit_classification = nil end
+  if not CanReadOrdinaryValue(unit_classification) then unit_classification = nil end
   local isBossLevel = (level == -1)
   local tmpstring
   if unit_classification == "worldboss" or isBossLevel then

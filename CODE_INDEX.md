@@ -1,11 +1,11 @@
-# Roth UI code index — 3.4.8
+# Roth UI code index — 3.4.9
 
 | Area | Files |
 |---|---|
 | Metadata/bootstrap | `Roth_UI.toc`, `init.lua`, `core/bootstrap.lua` |
 | Safety | `core/safety.lua`, `core/safety_aspects.lua` |
 | Persistence roots/transactions | `core/config_persistence_owner.lua`, `core/persistence_root_store.lua`, `core/persistence_control_plane.lua`, `core/transfer.lua` |
-| Persistence schema/diagnostics | `core/persistence_*.lua`, `core/sv_store.lua`, `core/sv_doctor.lua` |
+| Persistence schema/diagnostics | `core/persistence_*.lua`, `core/sv_store.lua`, `core/sv_doctor.lua`, `core/logger.lua` |
 | Scheduling/policy | `core/frame_policy.lua`, `core/deferred_scheduler.lua`, `core/frame_policy_bootstrap.lua` |
 | oUF contract/elements | `core/ouf_contract.lua`, `oUF/elements/*.lua` |
 | Units/groups | `units/*.lua`, `core/units.lua`, `core/group_*.lua` |
