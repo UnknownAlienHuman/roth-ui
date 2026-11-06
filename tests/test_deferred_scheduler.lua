@@ -59,8 +59,11 @@ timers[3]()
 expect(generations == 111, "reentrant callback did not execute exactly once")
 
 _G.C_Timer = nil
-expect(scheduler.RunNextFrame("fallback", function() generations = generations + 1 end) == true,
-  "missing-timer fallback rejected work")
-expect(generations == 112, "missing-timer fallback dropped work")
+local missingTimerNs = {
+  safety = { TryCall = function(callback, ...) return pcall(callback, ...) end },
+}
+local ok, message = pcall(assert(loadfile("core/deferred_scheduler.lua")), "Roth_UI", missingTimerNs)
+expect(ok == false and tostring(message):find("C_Timer.After is required", 1, true),
+  "missing timer owner silently changed next-frame work into synchronous recursion")
 
 print("deferred scheduler generation/coalescing test: OK")

@@ -9,7 +9,7 @@
 local _, ns = ...
 
 local func = assert(ns and ns.func, "Roth_UI: ns.func is required by aura_runtime.lua")
-local oUF = assert(ns.oUF or _G.oUF, "Roth_UI: oUF is required by aura_runtime.lua")
+local oUF = assert(ns and ns.oUF, "Roth_UI: ns.oUF is required by aura_runtime.lua")
 local cfg = assert(ns.cfg, "Roth_UI: cfg is required by aura_runtime.lua")
 
 local type = type

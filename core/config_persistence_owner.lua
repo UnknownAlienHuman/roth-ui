@@ -21,6 +21,7 @@ local LEGACY_TARGET_CASTBAR_BAR = { r = 0, g = 0.5, b = 1, a = 0.7 }
 local LEGACY_TARGET_CASTBAR_SHIELDBAR = { r = 0.5, g = 0.5, b = 0.5, a = 1 }
 
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by config_persistence_owner.lua")
+local CanAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by config_persistence_owner.lua")
 local IsSecret = assert(safety.IsSecret, "Roth_UI: safety.IsSecret is required by config_persistence_owner.lua")
 local IsForbiddenTable = assert(safety.IsForbiddenTable, "Roth_UI: safety.IsForbiddenTable is required by config_persistence_owner.lua")
 local CopySerializable = assert(safety.CopySerializable, "Roth_UI: safety.CopySerializable is required by config_persistence_owner.lua")
@@ -446,13 +447,29 @@ local function ApplyConfigSchemaPatches(store)
   end
 end
 
+local function ReadOrdinaryRuntimeValue(value, expectedType)
+  if not CanAccess(value) or IsSecret(value) or type(value) ~= expectedType then
+    return nil
+  end
+  return value
+end
+
 local function RefreshRuntimeConfig()
   ns.runtime = ns.runtime or {}
   local runtime = ns.runtime
 
-  runtime.playername = UnitName("player")
-  runtime.playerclass = select(2, UnitClass("player"))
-  runtime.playerspec = C_SpecializationInfo.GetSpecialization()
+  local playerName = type(UnitName) == "function" and UnitName("player") or nil
+  local playerClass
+  if type(UnitClass) == "function" then
+    local _
+    _, playerClass = UnitClass("player")
+  end
+  local getSpecialization = C_SpecializationInfo and C_SpecializationInfo.GetSpecialization
+  local playerSpec = type(getSpecialization) == "function" and getSpecialization() or nil
+
+  runtime.playername = ReadOrdinaryRuntimeValue(playerName, "string")
+  runtime.playerclass = ReadOrdinaryRuntimeValue(playerClass, "string")
+  runtime.playerspec = ReadOrdinaryRuntimeValue(playerSpec, "number")
 
   do
     local classColor = RAID_CLASS_COLORS and runtime.playerclass and RAID_CLASS_COLORS[runtime.playerclass] or nil

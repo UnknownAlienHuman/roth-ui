@@ -2,7 +2,7 @@
   local _, ns = ...
 
   --get oUF namespace (just in case needed)
-  local oUF = ns.oUF or oUF
+  local oUF = assert(ns and ns.oUF, "Roth_UI: ns.oUF is required by party.lua")
   local mediapath = ns.mediapath or "Interface\\AddOns\\Roth_UI\\media\\"
 
   --get the config

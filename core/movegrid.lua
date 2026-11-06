@@ -15,8 +15,8 @@
 --]]
 
 local _, ns = ...
-
-ns = ns or {}
+local RunNextFrame = assert(ns and ns.defer and ns.defer.RunNextFrame,
+  "Roth_UI: defer.RunNextFrame is required by movegrid.lua")
 
 local gridFrame
 local eventFrame
@@ -112,12 +112,7 @@ end
 local function QueueGridRefresh()
   if not (gridFrame and gridFrame:IsShown()) then return end
   local generation = gridGeneration
-  local scheduler = ns and ns.defer
-  if scheduler and type(scheduler.RunNextFrame) == "function" then
-    scheduler.RunNextFrame("movegrid:layout", function() RefreshGrid(generation) end)
-  else
-    RefreshGrid(generation)
-  end
+  RunNextFrame("movegrid:layout", function() RefreshGrid(generation) end)
 end
 
 local function EnsureGrid()

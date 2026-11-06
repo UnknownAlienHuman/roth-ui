@@ -2,7 +2,7 @@
 local _, ns = ...
 
 --get oUF namespace (just in case needed)
-local oUF = ns.oUF or _G["oUF"]
+local oUF = assert(ns and ns.oUF, "Roth_UI: ns.oUF is required by lib.lua")
 local LSM = LibStub("LibSharedMedia-3.0")
 local frameRegistry = assert(ns and ns.frameRegistry, "Roth_UI: frameRegistry is required by lib.lua")
 local DeferForObject = assert(ns.framePolicy and ns.framePolicy.DeferForObject,

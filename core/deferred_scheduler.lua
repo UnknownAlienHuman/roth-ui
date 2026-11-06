@@ -2,6 +2,8 @@
 local _, ns = ...
 local TryCall = assert(ns and ns.safety and ns.safety.TryCall,
   "Roth_UI: safety.TryCall is required by deferred_scheduler.lua")
+assert(C_Timer and type(C_Timer.After) == "function",
+  "Roth_UI: C_Timer.After is required by deferred_scheduler.lua")
 local scheduler = {}
 ns.defer = scheduler
 
@@ -31,11 +33,7 @@ local function ScheduleDrain()
   if scheduled then return end
   scheduled = true
 
-  if C_Timer and type(C_Timer.After) == "function" then
-    C_Timer.After(0, Drain)
-  else
-    Drain()
-  end
+  C_Timer.After(0, Drain)
 end
 
 function scheduler.RunNextFrame(key, callback)
