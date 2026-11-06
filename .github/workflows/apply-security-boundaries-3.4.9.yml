@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply:
-    if: contains(github.event.head_commit.message, '[apply-security-3.4.9-chunks]')
+    if: contains(github.event.head_commit.message, '[apply-security-3.4.9-final]')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -23,10 +23,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "c03b97543ef33050c2fb42f02085aea0e4ae7548"
+          test "$(git rev-parse HEAD^)" = "af1c12f2f07f59107f840882ef4fd54519eb8e41"
           cat .audit_overlay/parts/part-*.b64 | base64 --decode > /tmp/payload.tar.xz
           echo "34cfe527d53244250ec8494ffd8377bfda51bb6f15bbb5e819bb348026ce7bfd  /tmp/payload.tar.xz" | sha256sum -c -
           tar -xJf /tmp/payload.tar.xz -C .
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("core/sv_doctor.lua")
+          path.write_text(path.read_text(encoding="utf-8").rstrip() + "\n", encoding="utf-8")
+          PY
           rm -rf .audit_overlay
           rm -f .github/workflows/apply-security-boundaries-3.4.9.yml
           git add -A
