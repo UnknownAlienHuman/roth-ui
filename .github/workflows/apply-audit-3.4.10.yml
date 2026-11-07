@@ -31,13 +31,11 @@ jobs:
           cp -a /tmp/roth-overlay/. .
           rm -rf .audit
 
-          # The audited runtime intentionally retires the unused Park alias.
-          # Keep static contracts aligned with the actual single-owner API.
           python3 - <<'PY'
           from pathlib import Path
 
-          runtime_path = Path("core/group_header_visibility.lua")
-          runtime = runtime_path.read_text(encoding="utf-8")
+          # The audited runtime intentionally retires the unused Park alias.
+          runtime = Path("core/group_header_visibility.lua").read_text(encoding="utf-8")
           if "function service.Park" not in runtime:
               replacements = {
                   Path("tools/validate_addon.py"): '        "function service.Park",\n',
@@ -47,6 +45,15 @@ jobs:
                   text = path.read_text(encoding="utf-8")
                   if stale in text:
                       path.write_text(text.replace(stale, "", 1), encoding="utf-8")
+
+          # Flat mover aliases were retired; regressions must exercise the
+          # canonical moverRuntime owner rather than a removed compatibility API.
+          mover_test_path = Path("tests/test_mover_input_safety.lua")
+          mover_test = mover_test_path.read_text(encoding="utf-8")
+          old = "ns.ApplySavedMoverLayout"
+          new = "ns.moverRuntime.ApplySavedLayout"
+          if old in mover_test:
+              mover_test_path.write_text(mover_test.replace(old, new), encoding="utf-8")
           PY
 
           git add -A
