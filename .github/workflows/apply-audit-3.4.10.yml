@@ -46,14 +46,25 @@ jobs:
                   if stale in text:
                       path.write_text(text.replace(stale, "", 1), encoding="utf-8")
 
-          # Flat mover aliases were retired; regressions must exercise the
-          # canonical moverRuntime owner rather than a removed compatibility API.
+          # Flat mover aliases were retired; regressions exercise moverRuntime.
           mover_test_path = Path("tests/test_mover_input_safety.lua")
           mover_test = mover_test_path.read_text(encoding="utf-8")
-          old = "ns.ApplySavedMoverLayout"
-          new = "ns.moverRuntime.ApplySavedLayout"
-          if old in mover_test:
-              mover_test_path.write_text(mover_test.replace(old, new), encoding="utf-8")
+          mover_test_path.write_text(
+              mover_test.replace("ns.ApplySavedMoverLayout", "ns.moverRuntime.ApplySavedLayout"),
+              encoding="utf-8",
+          )
+
+          # target_castbar now requires the sole next-frame scheduler at load.
+          castbar_test_path = Path("tests/test_target_castbar_cache.lua")
+          castbar_test = castbar_test_path.read_text(encoding="utf-8")
+          stale = "local ns = {}\n"
+          replacement = (
+              "local ns = {\n"
+              "  defer = { RunNextFrame = function() return true end },\n"
+              "}\n"
+          )
+          if stale in castbar_test:
+              castbar_test_path.write_text(castbar_test.replace(stale, replacement, 1), encoding="utf-8")
           PY
 
           git add -A
