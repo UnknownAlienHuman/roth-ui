@@ -1,0 +1,38 @@
+name: Export Roth UI audit source
+
+on:
+  push:
+    branches:
+      - audit/donor-optimization-3.4.11
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    if: contains(github.event.head_commit.message, '[export-source]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact branch head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Build exact source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git --sort=name --mtime='UTC 1980-01-01' --owner=0 --group=0 --numeric-owner \
+            -cJf roth-ui-source.tar.xz .
+          sha256sum roth-ui-source.tar.xz > roth-ui-source.tar.xz.sha256
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: roth-ui-source
+          path: |
+            roth-ui-source.tar.xz
+            roth-ui-source.tar.xz.sha256
+          if-no-files-found: error
+          retention-days: 7
