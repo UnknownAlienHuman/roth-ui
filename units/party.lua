@@ -11,7 +11,6 @@
   --get the functions
   local func = ns.func
   local groupVisibility = assert(ns and ns.GroupHeaderVisibility, "Roth_UI: GroupHeaderVisibility is required by units/party.lua")
-  local frameRegistry = assert(ns and ns.frameRegistry, "Roth_UI: frameRegistry is required by units/party.lua")
   local framePolicy = assert(ns and ns.framePolicy, "Roth_UI: framePolicy is required by units/party.lua")
   local DeferUntilOutOfCombat = assert(framePolicy.DeferUntilOutOfCombat,
     "Roth_UI: framePolicy.DeferUntilOutOfCombat is required by units/party.lua")
@@ -279,8 +278,7 @@
   local partyDragFrame = CreateFrame("Frame", "Roth_UIPartyDragFrame", UIParent)
   partyDragFrame:SetSize(50,50)
   partyDragFrame:SetPoint(cfg.units.party.pos.a1,cfg.units.party.pos.af,cfg.units.party.pos.a2,cfg.units.party.pos.x,cfg.units.party.pos.y)
-  func.applyDragFunctionality(partyDragFrame)
-  frameRegistry.Register("units", partyDragFrame)
+  func.applyDragFunctionality(partyDragFrame, "units")
 
   local function GetPartyConfig()
     return cfg and cfg.units and cfg.units.party

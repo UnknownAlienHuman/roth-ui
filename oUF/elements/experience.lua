@@ -67,19 +67,10 @@ local function IsPlayerAtMaxLevel()
   return level >= maxLevel
 end
 
-local function RefreshActionBarArtwork(self)
-  if ns and type(ns.QueueActionBarArtworkRefresh) == "function" then
-    ns.QueueActionBarArtworkRefresh()
-    return
-  end
-  if ns and type(ns.RefreshActionBarArtwork) == "function" then
-    ns.RefreshActionBarArtwork()
-    return
-  end
-  local artwork = self and self.ActionBarBackground
-  local refresh = artwork and artwork.RefreshActionBarArtwork
-  if type(refresh) == "function" then
-    refresh(artwork)
+local function RefreshActionBarArtwork()
+  local queue = ns and ns.QueueActionBarArtworkRefresh
+  if type(queue) == "function" then
+    queue()
   end
 end
 
@@ -125,7 +116,7 @@ local function Update(self, event, unit)
 
   local visibilityChanged = SetVisibility(self, experience, shouldShow)
   if not shouldShow then
-    if visibilityChanged then RefreshActionBarArtwork(self) end
+    if visibilityChanged then RefreshActionBarArtwork() end
     return
   end
 
@@ -157,7 +148,7 @@ local function Update(self, event, unit)
   end
 
   if visibilityChanged then
-    RefreshActionBarArtwork(self)
+    RefreshActionBarArtwork()
   end
 end
 

@@ -120,30 +120,30 @@ local scalePath = "movers.scale.Roth_TestMover"
 local sizePath = "movers.size.Roth_TestMover"
 
 store[pointPath] = { a1 = "TOP", af = "UIParent", a2 = "TOP", x = blocked, y = 2 }
-local ok, failure = pcall(ns.ApplySavedMoverLayout, frame, { size = false, scale = false })
+local ok, failure = pcall(ns.moverRuntime.ApplySavedLayout, frame, { size = false, scale = false })
 expect(ok, "restricted point raised instead of being rejected: " .. tostring(failure))
 expect(frame.point[1] == "CENTER" and frame.point[4] == 11,
   "restricted point mutated the frame")
 
 store[pointPath] = { a1 = "NOT_A_POINT", af = "UIParent", a2 = "CENTER", x = 1, y = 2 }
-ns.ApplySavedMoverLayout(frame, { size = false, scale = false })
+ns.moverRuntime.ApplySavedLayout(frame, { size = false, scale = false })
 expect(frame.point[1] == "CENTER" and frame.point[4] == 11,
   "invalid anchor point mutated the frame")
 
 local forbiddenPoint = { a1 = "TOP", af = "UIParent", a2 = "TOP", x = 1, y = 2 }
 forbiddenTables[forbiddenPoint] = true
 store[pointPath] = forbiddenPoint
-ns.ApplySavedMoverLayout(frame, { size = false, scale = false })
+ns.moverRuntime.ApplySavedLayout(frame, { size = false, scale = false })
 expect(frame.point[1] == "CENTER" and frame.point[4] == 11,
   "inaccessible point table mutated the frame")
 
 store[pointPath] = { a1 = "TOP", af = "RestrictedAnchor", a2 = "TOP", x = 3, y = 4 }
-ns.ApplySavedMoverLayout(frame, { size = false, scale = false })
+ns.moverRuntime.ApplySavedLayout(frame, { size = false, scale = false })
 expect(frame.point[1] == "TOP" and frame.point[2] == UIParent and frame.point[4] == 3,
   "restricted anchor did not fall back to UIParent")
 
 store[pointPath] = { a1 = "BOTTOM", af = "Roth_TestMover", a2 = "BOTTOM", x = 5, y = 6 }
-ns.ApplySavedMoverLayout(frame, { size = false, scale = false })
+ns.moverRuntime.ApplySavedLayout(frame, { size = false, scale = false })
 expect(frame.point[1] == "BOTTOM" and frame.point[2] == UIParent,
   "self anchor was not replaced with UIParent")
 
@@ -151,7 +151,7 @@ expect(frame.point[1] == "BOTTOM" and frame.point[2] == UIParent,
 frame.point = { "CENTER", UIParent, "CENTER", 31, 32 }
 frame.numPoints = 2
 store[pointPath] = { a1 = "TOP", af = "UIParent", a2 = "TOP", x = 1, y = 2 }
-ns.ApplySavedMoverLayout(frame, { size = false, scale = false })
+ns.moverRuntime.ApplySavedLayout(frame, { size = false, scale = false })
 expect(frame.point[1] == "CENTER" and frame.point[4] == 31,
   "multi-anchor frame lost geometry through a partial rollback snapshot")
 frame.numPoints = nil
@@ -159,7 +159,7 @@ frame.numPoints = nil
 frame.point = { "CENTER", UIParent, "CENTER", 21, 22 }
 frame.failPoint = "TOPLEFT"
 store[pointPath] = { a1 = "TOPLEFT", af = "UIParent", a2 = "TOPLEFT", x = 7, y = 8 }
-ns.ApplySavedMoverLayout(frame, { size = false, scale = false })
+ns.moverRuntime.ApplySavedLayout(frame, { size = false, scale = false })
 expect(frame.point[1] == "CENTER" and frame.point[2] == UIParent
     and frame.point[4] == 21 and frame.point[5] == 22,
   "failed SetPoint did not restore the previous anchor transaction")
@@ -167,7 +167,7 @@ expect(frame.point[1] == "CENTER" and frame.point[2] == UIParent
 store[scalePath] = 0 / 0
 store[sizePath] = { w = math.huge, h = 60 }
 local oldScale, oldWidth, oldHeight = frame.scale, frame.width, frame.height
-ns.ApplySavedMoverLayout(frame, { point = false })
+ns.moverRuntime.ApplySavedLayout(frame, { point = false })
 expect(frame.scale == oldScale and frame.width == oldWidth and frame.height == oldHeight,
   "non-finite mover geometry reached native setters")
 

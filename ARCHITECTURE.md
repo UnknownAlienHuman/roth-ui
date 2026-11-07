@@ -1,4 +1,4 @@
-# Roth UI architecture — 3.4.9
+# Roth UI architecture — 3.4.10
 
 ## Boundaries
 
@@ -13,6 +13,9 @@
 | Blizzard-frame load readiness | `core/frame_policy_bootstrap.lua` |
 | Next-frame coalescing | `core/deferred_scheduler.lua` |
 | Movers and persisted geometry | `core/mover_runtime.lua` |
+| Secure group-header visibility | `core/group_header_visibility.lua` -> oUF `header:SetVisibility` |
+| Action-bar artwork invalidation | `core/action_bar_background.lua` -> `QueueActionBarArtworkRefresh` |
+| Non-player castbar callbacks | `core/lib.lua` -> `core/target_castbar.lua` |
 | Fonts | `core/font_policy.lua` |
 | Managed auras | `core/aura_runtime.lua` |
 | Settings category | `core/settings_main.lua` |
@@ -35,6 +38,8 @@ untrusted transfer envelope
 
 Strict copies reject inaccessible/secret values, unsupported types, non-finite numbers, cycles, aliases, excessive depth, excessive tables/entries and excessive aggregate string bytes. Export reads roots without ensure/migration side effects, then shares the import schema validator. A reentrancy lock prevents nested import/reset and intermediate export/reconcile until cleanup. Strict copies reject metatables and gate table contents before traversal.
 
+Read-only unit configuration is exposed as a request-scoped proxy graph. One graph preserves descendant alias identity, but no global cache retains replaced SavedVariables roots. Rejected writes use a fixed ordinary error and never stringify an arbitrary key. Lua 5.1-inoperative table `__pairs`/`__len` pseudo-contracts are absent.
+
 ## Mover geometry
 
 Mover persistence is a narrow data contract, not permission to mutate an arbitrary frame graph:
@@ -48,14 +53,16 @@ stored point/size/scale
   -> fall back to UIParent when a named anchor is unavailable or unsafe
   -> snapshot the current single-anchor point
   -> apply one mutation transaction
-  -> restore the snapshot if SetPoint throws or returns failure
+  -> restore the snapshot if SetPoint fails
 ```
 
-A frame with multiple anchors is not rewritten from a one-point persistence record. Mover code does not infer permission from a global name and does not anchor ordinary layout to an object carrying `UntrustedLayoutScriptExecution`.
+A frame with multiple anchors is not rewritten from a one-point persistence record. Constructors pass their canonical category to `mover_runtime` and register once. Flat `ns.*`/`func.*` registry and layout aliases are not published.
 
 ## Scheduling and readiness
 
 `framePolicy.DeferUntilOutOfCombat` is the single keyed combat-exit queue. A newer request cancels older pending or draining work. `deferred_scheduler.RunNextFrame` is the sole next-frame queue, requires `C_Timer.After`, swaps generations before delivery and isolates callback failures. A missing scheduler dependency is a load-order error, never permission to recurse synchronously.
+
+Settings font/health refresh, target-castbar refresh and action-bar artwork invalidation all require the shared scheduler. External data-bar and Settings consumers may only queue action artwork; synchronous and per-frame refresh aliases are absent.
 
 `frame_policy_bootstrap` distinguishes `IsAddOnLoaded`'s loading-inclusive first return from its completed second return. Named completion callbacks claim their one-shot state before scheduling. Login and Blizzard-addon completion signals share one scheduler key, so equivalent same-frame invalidations produce one group-frame policy pass. The font owner is invoked through the safety boundary and cannot suppress that independent policy invalidation.
 
@@ -64,6 +71,24 @@ A frame with multiple anchors is not rewritten from a one-point persistence reco
 `init.lua` validates the required external oUF version and publishes one namespace reference. All elements, helpers and layouts require `ns.oUF`; no downstream module can silently adopt a different `_G.oUF` instance.
 
 Unit identity, class, reaction and target-state values are gated before comparison, stringification, table indexing or retention. Inaccessible target metadata collapses to a neutral/unavailable presentation. Player runtime identity is retained only when ordinary and type-valid.
+
+`func.createCastbar` is the sole non-player castbar binding site. Unit layouts construct castbars but do not bind a second callback owner or retain an unused cast-unit field.
+
+Secure party/raid visibility uses the required oUF header `SetVisibility` method. Roth does not install a second raw state driver, expose its weak bookkeeping table or keep historical park/forget compatibility routes.
+
+## Managed aura lifecycle
+
+Each owner keeps one finite specification batch:
+
+```text
+new specification
+  -> owner/access/combat recheck
+  -> create once or mark terminal failure
+  -> activate/update successful siblings once
+  -> mark the batch settled
+```
+
+Repeated `OnShow` delivery does not rescan a batch whose specifications are all successful or terminally failed. Adding a new specification reopens exactly one batch without retrying failed managed adoption.
 
 ## Diagnostic transports
 

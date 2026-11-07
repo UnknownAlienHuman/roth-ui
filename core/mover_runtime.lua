@@ -268,10 +268,6 @@ function moverRuntime.ForEachFrame(selection, callback)
 
 end
 
-ns.ForEachMoverFrame = moverRuntime.ForEachFrame
-ns.GetMoverDragHandle = moverRuntime.GetDragHandle
-ns.RegisterMoverFrame = moverRuntime.RegisterFrame
-func.RegisterMoverFrame = RegisterMoverFrame
 
 local function NormalizeMoverOffset(value)
   value = NormalizeFiniteNumber(value, true)
@@ -582,9 +578,6 @@ local function ApplySavedMoverLayout(f, opts)
   end
 end
 
-ns.SaveMoverLayout = SaveMoverLayout
-ns.ClearMoverLayout = ClearMoverLayout
-ns.ApplySavedMoverLayout = ApplySavedMoverLayout
 
 local function SetMoverUserPlaced(f, userPlaced)
   if not (f and f.SetUserPlaced) then return end
@@ -778,10 +771,19 @@ function moverRuntime.ResetLayout(frame)
   return func.ResetMoverLayout(frame)
 end
 
+local function NormalizeMoverCategoryHint(special)
+  if special == "orb" then return "orbs" end
+  if special == "bottomline" then return "art" end
+  if special == "art" or special == "bars" or special == "units" or special == "orbs" then
+    return special
+  end
+  return nil
+end
+
 func.applyDragFunctionality = function(f, special)
   if InCombatLockdown and InCombatLockdown() then return false end
   if not f then return end
-  local category = ResolveMoverCategoryHint(f, special == "orb" and "orbs" or special == "bottomline" and "art" or nil)
+  local category = ResolveMoverCategoryHint(f, NormalizeMoverCategoryHint(special))
   if ResolveMoverDragHandle(f) then
     RegisterMoverFrame(f, category)
     return

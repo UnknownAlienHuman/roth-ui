@@ -4,7 +4,7 @@ Diablo-inspired World of Warcraft Retail interface built on Blizzard-owned actio
 
 ## Compatibility
 
-- Addon: `3.4.9`
+- Addon: `3.4.10`
 - Retail target: `12.1.5`, Interface `120105`
 - Selected Blizzard source: `12.1.5.70688` (`d07eb00237d8891f153215db98a5df880a26cfe5`)
 - Reviewed post-selected delta: `12.1.5.70783` (`297d7aaaa736f346b3e036f38ee088eaf7f8c07f`)
@@ -30,10 +30,14 @@ Install the archive's single `Roth_UI` directory into `_retail_/Interface/AddOns
 - Blizzard owns secure action buttons, paging, bindings, vehicle/override state and native visibility.
 - oUF owns unit-frame lifecycle, secure group headers, cast discovery and managed-aura events.
 - `core/persistence_control_plane.lua` owns import/reset transactions and rollback.
+- Read-only unit configuration uses request-scoped proxy graphs and does not globally retain replaced roots.
 - `core/frame_policy.lua` owns foreign-frame suppression and the keyed combat-exit queue.
 - `core/deferred_scheduler.lua` is the only next-frame scheduler and requires the Retail timer owner.
-- `core/mover_runtime.lua` owns validated mover geometry and transactional point restoration.
-- `core/font_policy.lua`, `core/aura_runtime.lua` and `core/settings_main.lua` remain sole subsystem owners.
+- `core/mover_runtime.lua` owns validated mover geometry, registration and transactional point restoration.
+- `core/group_header_visibility.lua` uses only the required oUF header visibility contract.
+- `core/action_bar_background.lua` exposes one keyed artwork invalidation queue.
+- `core/aura_runtime.lua` settles each managed creation batch after success or terminal failure.
+- `core/font_policy.lua` and `core/settings_main.lua` remain sole subsystem owners.
 - Runtime logs and SavedVariables diagnostics accept ordinary values only; inaccessible/secret values are represented by fixed neutral tokens.
 
 ## Validation

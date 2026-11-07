@@ -43,17 +43,20 @@ local ns = {
     end,
   },
   framePolicy = { DeferUntilOutOfCombat = function() return false end },
+  moverRuntime = { ApplySavedLayout = function() end },
 }
 
 assert(loadfile("core/deferred_scheduler.lua"))("Roth_UI", ns)
 assert(loadfile("core/action_bar_background.lua"))("Roth_UI", ns)
 expect(controller and controller.scripts.OnEvent, "action-art controller was not created")
 expect(type(ns.QueueActionBarArtworkRefresh) == "function", "action-art queue was not published")
+expect(ns.RefreshActionBarArtwork == nil and ns.ActionBarBackground == nil,
+  "action-art published a parallel direct route")
 
 ns.QueueActionBarArtworkRefresh()
 ns.QueueActionBarArtworkRefresh()
 expect(#timers == 1, "action-art retained a second next-frame scheduler")
 timers[1]()
-expect(ns.ActionBarBackground == nil, "disabled action-art unexpectedly allocated artwork")
+expect(ns.ActionBarBackground == nil, "disabled action-art unexpectedly published artwork")
 
 print("action-bar shared scheduler test: OK")

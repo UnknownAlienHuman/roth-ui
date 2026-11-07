@@ -13,11 +13,9 @@ local InCombatLockdown = InCombatLockdown
 local C_ActionBar = _G["C_ActionBar"]
 local NUM_ACTIONBAR_BUTTONS = _G["NUM_ACTIONBAR_BUTTONS"] or 12
 local frameRegistry = assert(ns and ns.frameRegistry, "Roth_UI action_bar_background: ns.frameRegistry is required")
-local CanAccessValue = (ns.safety and ns.safety.CanAccess) or func.CanAccessValue or function(value)
-  return not func.IsSecretValue(value)
-end
 local ResolveRegisteredFrame = assert(frameRegistry.ResolveFrame, "Roth_UI action_bar_background: frameRegistry.ResolveFrame is required")
 local safety = assert(ns and ns.safety, "Roth_UI action_bar_background: safety is required")
+local CanAccessValue = assert(safety.CanAccess, "Roth_UI action_bar_background: safety.CanAccess is required")
 local CanUseRegion = assert(safety.CanUseRegion, "Roth_UI action_bar_background: CanUseRegion is required")
 local TryGet = assert(safety.TryGet, "Roth_UI action_bar_background: TryGet is required")
 local TryMethod = assert(safety.TryMethod, "Roth_UI action_bar_background: TryMethod is required")
@@ -25,6 +23,10 @@ local DeferUntilOutOfCombat = assert(ns.framePolicy and ns.framePolicy.DeferUnti
   "Roth_UI action_bar_background: shared frame policy is required")
 local RunNextFrame = assert(ns.defer and ns.defer.RunNextFrame,
   "Roth_UI action_bar_background: defer.RunNextFrame is required")
+local moverRuntime = assert(ns and ns.moverRuntime,
+  "Roth_UI action_bar_background: moverRuntime is required")
+local ApplySavedMoverLayout = assert(moverRuntime.ApplySavedLayout,
+  "Roth_UI action_bar_background: moverRuntime.ApplySavedLayout is required")
 local MAIN_BAR_SYSTEM_INDEX = type(Enum) == "table"
   and type(Enum.EditModeActionBarSystemIndices) == "table"
   and Enum.EditModeActionBarSystemIndices.MainBar
@@ -258,11 +260,6 @@ local function ApplyArtworkLayout(frame, artCfg, playerFrame)
   backgroundConfig = artCfg
   backgroundPlayerFrame = playerFrame
   backgroundLayoutReady = true
-  ns.ActionBarBackground = frame
-
-  if playerFrame then
-    playerFrame.ActionBarBackground = frame
-  end
   return true
 end
 
@@ -285,17 +282,15 @@ local function EnsureArtworkFrame()
     backgroundFrame = CreateFrame("Frame", "Roth_UIActionBarBackground", UIParent)
     backgroundFrame.texture = backgroundFrame:CreateTexture(nil, "BACKGROUND", nil, -8)
     backgroundFrame.texture:SetAllPoints(backgroundFrame)
-
-    backgroundFrame.RefreshActionBarArtwork = function() ns.RefreshActionBarArtwork() end
   end
 
   ApplyArtworkLayout(backgroundFrame, artCfg, playerFrame)
   if not backgroundFrame.dragframe and func and type(func.applyDragFunctionality) == "function" then
     -- Capture defaults only after the artwork has its configured geometry.
-    func.applyDragFunctionality(backgroundFrame)
-  elseif type(ns.ApplySavedMoverLayout) == "function" then
+    func.applyDragFunctionality(backgroundFrame, "art")
+  else
     -- Config supplies defaults; the mover owns saved layout overrides.
-    ns.ApplySavedMoverLayout(backgroundFrame)
+    ApplySavedMoverLayout(backgroundFrame)
   end
   return backgroundFrame
 end
@@ -385,9 +380,7 @@ RefreshArtwork = function()
       if targetFrame.defaultScale == nil then
         targetFrame.defaultScale = type(targetFrame.GetScale) == "function" and targetFrame:GetScale() or 1
       end
-      if type(ns.ApplySavedMoverLayout) == "function" then
-        ns.ApplySavedMoverLayout(targetFrame)
-      end
+      ApplySavedMoverLayout(targetFrame)
       targetFrame:Show()
     else
       targetFrame:Hide()
@@ -449,10 +442,6 @@ RefreshArtwork = function()
   end
 
   ApplyArtworkVisibility(frame)
-end
-
-function ns.RefreshActionBarArtwork()
-  RefreshArtwork()
 end
 
 local function InstallMainBarHooks()

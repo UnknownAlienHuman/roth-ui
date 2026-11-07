@@ -4,7 +4,6 @@ local _, ns = ...
 --get oUF namespace (just in case needed)
 local oUF = assert(ns and ns.oUF, "Roth_UI: ns.oUF is required by lib.lua")
 local LSM = LibStub("LibSharedMedia-3.0")
-local frameRegistry = assert(ns and ns.frameRegistry, "Roth_UI: frameRegistry is required by lib.lua")
 local DeferForObject = assert(ns.framePolicy and ns.framePolicy.DeferForObject,
   "Roth_UI: framePolicy.DeferForObject is required by lib.lua")
 
@@ -253,8 +252,7 @@ func.createAlternativePowerBar = function(self, name)
 
   bar:SetScale(self.cfg.altpower.scale)
   bar:Hide()
-  func.RegisterMoverFrame(bar, "bars")
-  func.applyDragFunctionality(bar)
+  func.applyDragFunctionality(bar, "bars")
   self.AlternativePower = bar
 end
 
@@ -531,8 +529,6 @@ func.createCastbar = function(f)
   frame:SetPoint(a1, af, a2, x + 8, y)
   frame:SetSize(barW, barH)
 
-  frameRegistry.Register("bars", frame)
-
   local c = CreateFrame("StatusBar", "$parentCastbar", frame)
   c:SetSize(barW, barH)
   c:SetStatusBarTexture(cb.texture)
@@ -605,8 +601,12 @@ func.createCastbar = function(f)
     c.Shield:Hide()
   end
 
-  if style ~= "player" and ns.TargetCastbarRuntime and type(ns.TargetCastbarRuntime.Bind) == "function" then
-    ns.TargetCastbarRuntime.Bind(c, f.unit or style)
+  if style ~= "player" then
+    local runtime = assert(ns.TargetCastbarRuntime,
+      "Roth_UI: TargetCastbarRuntime is required by lib.lua")
+    local bind = assert(runtime.Bind,
+      "Roth_UI: TargetCastbarRuntime.Bind is required by lib.lua")
+    bind(c)
   end
 
   --safezone
@@ -622,7 +622,7 @@ func.createCastbar = function(f)
     c.PostUpdateStage = PostUpdateStage
   end
 
-  func.applyDragFunctionality(frame)
+  func.applyDragFunctionality(frame, "bars")
 
   f.Castbar = c
   c:Hide()
