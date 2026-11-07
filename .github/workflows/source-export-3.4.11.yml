@@ -24,15 +24,15 @@ jobs:
         run: |
           set -euo pipefail
           tar --exclude=.git --sort=name --mtime='UTC 1980-01-01' --owner=0 --group=0 --numeric-owner \
-            -cJf roth-ui-source.tar.xz .
-          sha256sum roth-ui-source.tar.xz > roth-ui-source.tar.xz.sha256
+            -cJf /tmp/roth-ui-source.tar.xz .
+          sha256sum /tmp/roth-ui-source.tar.xz > /tmp/roth-ui-source.tar.xz.sha256
 
       - name: Upload source archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: roth-ui-source
           path: |
-            roth-ui-source.tar.xz
-            roth-ui-source.tar.xz.sha256
+            /tmp/roth-ui-source.tar.xz
+            /tmp/roth-ui-source.tar.xz.sha256
           if-no-files-found: error
           retention-days: 7
