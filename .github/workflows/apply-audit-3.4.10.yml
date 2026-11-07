@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Check out staging commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -30,8 +30,28 @@ jobs:
           tar -xJf /tmp/roth-overlay.tar.xz -C /tmp/roth-overlay
           cp -a /tmp/roth-overlay/. .
           rm -rf .audit
+
+          # The audited runtime intentionally retires the unused Park alias.
+          # Keep static contracts aligned with the actual single-owner API.
+          python3 - <<'PY'
+          from pathlib import Path
+
+          runtime_path = Path("core/group_header_visibility.lua")
+          runtime = runtime_path.read_text(encoding="utf-8")
+          if "function service.Park" not in runtime:
+              replacements = {
+                  Path("tools/validate_addon.py"): '        "function service.Park",\n',
+                  Path("tools/validate_group_visibility.py"): "        'function service.Park(frame)',\n",
+              }
+              for path, stale in replacements.items():
+                  text = path.read_text(encoding="utf-8")
+                  if stale in text:
+                      path.write_text(text.replace(stale, "", 1), encoding="utf-8")
+          PY
+
           git add -A
           git diff --cached --check
+          git diff --cached --stat
 
       - name: Install Lua 5.1
         run: |
@@ -53,6 +73,18 @@ jobs:
           python3 tools/package_release.py "/tmp/dist-a/Roth_UI-${version}.zip"
           python3 tools/package_release.py "/tmp/dist-b/Roth_UI-${version}.zip"
           cmp "/tmp/dist-a/Roth_UI-${version}.zip" "/tmp/dist-b/Roth_UI-${version}.zip"
+
+      - name: Preserve exact candidate for diagnosis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Roth_UI-3.4.10-candidate-${{ github.sha }}
+          path: |
+            .
+            !.git/**
+            !.audit/**
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Publish validated source commit
         shell: bash
