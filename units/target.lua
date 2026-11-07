@@ -44,7 +44,6 @@ local function AppendClassText(parts, value)
 end
 
 local classTextParts = {}
-local targetCastbarRuntime = ns.TargetCastbarRuntime
 local function ResetClassTextParts(parts)
   for i = #parts, 1, -1 do
     parts[i] = nil
@@ -305,9 +304,6 @@ local function createStyle(self)
   --castbar
   if self.cfg.castbar.show then
     func.createCastbar(self)
-    if targetCastbarRuntime and type(targetCastbarRuntime.Bind) == "function" then
-      targetCastbarRuntime.Bind(self.Castbar, "target")
-    end
   end
 
   --debuffglow

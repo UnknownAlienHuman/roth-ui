@@ -6,7 +6,9 @@ _G.CreateColor = function(r, g, b, a)
   created = created + 1
   return { r = r, g = g, b = b, a = a }
 end
-local ns = {}
+local ns = {
+  defer = { RunNextFrame = function() return true end },
+}
 assert(loadfile("core/target_castbar.lua"))("Roth_UI", ns)
 local runtime = ns.TargetCastbarRuntime
 local secret = {}

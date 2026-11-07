@@ -1,6 +1,6 @@
 # Roth UI agent guide
 
-Target: addon `3.4.9`, Retail `12.1.5`, Interface `120105`, selected source build `12.1.5.70688`, reviewed post-selected source `12.1.5.70783`, oUF `14.2.1+`.
+Target: addon `3.4.10`, Retail `12.1.5`, Interface `120105`, selected source build `12.1.5.70688`, reviewed post-selected source `12.1.5.70783`, oUF `14.2.1+`.
 
 Before editing, read `README.md`, `ARCHITECTURE.md`, `CURRENT_STATUS.md`, `CODE_INDEX.md`, `CODE_GRAPH.md`, the TOC and the applicable contracts in `UnknownAlienHuman/wow-addon-engineering-kb`.
 
@@ -15,18 +15,22 @@ Before editing, read `README.md`, `ARCHITECTURE.md`, `CURRENT_STATUS.md`, `CODE_
 
 - External oUF: `init.lua` validates `_G.oUF` once; all consumers require `ns.oUF`.
 - Persistence root mutation: `persistence_control_plane` transaction only.
-- No raw root getter/writer exported after owner capture.
+- Read-only unit-config views are request-scoped proxy graphs; no global source-to-proxy cache.
 - Combat deferral and foreign-frame suppression: `frame_policy` only.
 - Next-frame scheduling: `deferred_scheduler` only; no synchronous fallback.
-- Mover geometry persistence: `mover_runtime` only; persisted anchors are bounded ordinary data and apply transactionally.
-- Managed auras, movers, fonts and Settings keep one owner each.
-- oUF owns unit frames and secure group headers; Blizzard owns secure action state.
+- Action-bar artwork invalidation: `QueueActionBarArtworkRefresh` only; no direct/frame refresh aliases.
+- Mover geometry and registration: `mover_runtime` only; no flat namespace aliases or duplicate constructor registration.
+- Managed aura creation reaches one terminal success/failure state per specification batch.
+- Non-player castbar binding: `func.createCastbar` only.
+- oUF owns unit frames and secure group headers; group visibility uses the oUF header `SetVisibility` contract only.
+- Blizzard owns secure action state.
 
 ## Safety
 
 - Gate inaccessible/secret-capable values before comparison, formatting, conversion, indexing, storage or retention.
 - Logs, reports, queues and serializers are ordinary-only transports.
 - Portable documents are bounded trees, not arbitrary graphs.
+- Never stringify or retain rejected arbitrary keys merely to report an error.
 - Never anchor addon layout to a region carrying `UntrustedLayoutScriptExecution`; fall back to an independent ordinary root.
 - Never reparent protected frames, override Blizzard globals, unregister Blizzard events, write CVars or add first-party `OnUpdate` loops.
 - Structural party/raid changes require reload.

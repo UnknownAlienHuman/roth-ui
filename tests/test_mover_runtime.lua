@@ -10,7 +10,7 @@ _G.IsAltKeyDown = function() return altDown end
 _G.GameTooltip = nil
 _G.floor = math.floor
 _G.unpack = table.unpack or unpack
-_G.LibStub = nil -- the runtime must work without the dormant rLib bridge
+_G.LibStub = nil
 _G.Enum = { ForbiddenAspect = { UntrustedLayoutScriptExecution = 8 } }
 _G.issecretvalue = function() return false end
 _G.canaccessvalue = function() return true end
@@ -18,19 +18,15 @@ _G.canaccessallvalues = function() return true end
 _G.canaccesstable = function() return true end
 
 local store = {}
-local function keyPath(path)
-  return table.concat(path, ".")
-end
-local function getPath(path)
-  return store[keyPath(path)]
-end
-local function setPath(path, value)
-  store[keyPath(path)] = value
-end
+local function keyPath(path) return table.concat(path, ".") end
+local function getPath(path) return store[keyPath(path)] end
+local function setPath(path, value) store[keyPath(path)] = value end
 
 local canonical = {}
+local registerCalls = 0
 local frameRegistry = {
   RegisterFrame = function(_, category, frame)
+    registerCalls = registerCalls + 1
     canonical[category] = canonical[category] or {}
     for _, entry in ipairs(canonical[category]) do if entry == frame then return end end
     canonical[category][#canonical[category] + 1] = frame
@@ -121,7 +117,10 @@ _G.CreateFrame = function(_, name, parent) return makeFrame(name, parent) end
 local ns = {
   cfg = { framesLocked = true },
   func = { IsSecretValue = function() return false end },
-  store = { GetConfigValue = function(path) return getPath(path) end, SetConfigValue = function(path, value) setPath(path, value) end },
+  store = {
+    GetConfigValue = function(path) return getPath(path) end,
+    SetConfigValue = function(path, value) setPath(path, value) end,
+  },
   frameRegistry = frameRegistry,
   framePolicy = {
     DeferUntilOutOfCombat = function() return false end,
@@ -131,14 +130,19 @@ local ns = {
 assert(loadfile("core/safety.lua"))("Roth_UI", ns)
 assert(loadfile("core/safety_aspects.lua"))("Roth_UI", ns)
 assert(loadfile("core/mover_runtime.lua"))("Roth_UI", ns)
+expect(type(ns.moverRuntime) == "table", "canonical mover service was not published")
+expect(ns.RegisterMoverFrame == nil and ns.ForEachMoverFrame == nil and ns.GetMoverDragHandle == nil,
+  "retired flat mover aliases were published")
+expect(ns.func.RegisterMoverFrame == nil, "retired func mover alias was published")
 
 local function createMovable(name, category)
   local frame = makeFrame(name, _G.UIParent)
   frame:SetPoint("CENTER", _G.UIParent, "CENTER", 5, 6)
   frame:SetSize(120, 40)
   frame:SetScale(1)
-  ns.RegisterMoverFrame(frame, category)
-  ns.func.applyDragFunctionality(frame)
+  local before = registerCalls
+  ns.func.applyDragFunctionality(frame, category)
+  expect(registerCalls == before + 1, "mover constructor registered the frame more than once")
   expect(frame.dragframe ~= nil, "mover handle was not created for " .. name)
   expect(frameRegistry:GetCategory(frame) == category, "mover was not registered in expected category")
   return frame
@@ -173,8 +177,9 @@ expect(savedPoint and savedPoint.a1 == "TOP" and savedPoint.x == 31 and savedPoi
 
 shiftDown = false
 handle.scripts.OnMouseWheel(handle, 1)
-expect(math.abs(frame.scale - 1.03) < 0.00001 and math.abs(getPath({ "movers", "scale", "Roth_TestMover" }) - 1.03) < 0.00001,
-  "mouse wheel scale change did not persist: " .. tostring(frame.scale) .. ", " .. tostring(getPath({ "movers", "scale", "Roth_TestMover" })))
+expect(math.abs(frame.scale - 1.03) < 0.00001
+    and math.abs(getPath({ "movers", "scale", "Roth_TestMover" }) - 1.03) < 0.00001,
+  "mouse wheel scale change did not persist")
 shiftDown = true
 handle.scripts.OnMouseWheel(handle, 1)
 expect(math.abs(frame.scale - 1.04) < 0.00001, "Shift+wheel fine scale step was incorrect")
@@ -223,12 +228,13 @@ expect(not handle.shown and not handle.mouse and not handle.mouseWheel,
 
 local altPower = makeFrame("Roth_AltPower", _G.UIParent)
 altPower:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 0)
+local beforeAlt = registerCalls
 ns.func.applyDragFunctionality(altPower, "orb")
+expect(registerCalls == beforeAlt + 1, "orb mover registered more than once")
 expect(frameRegistry:GetCategory(altPower) == "orbs",
   "orb hint was not registered through the shared mover")
-ns.RegisterMoverFrame(altPower, "orbs")
 local visitedAltPower = false
-ns.ForEachMoverFrame("orbs", function(candidate, category)
+ns.moverRuntime.ForEachFrame("orbs", function(candidate, category)
   if candidate == altPower then visitedAltPower = category == "orbs" end
 end)
 expect(visitedAltPower, "shared mover iteration did not include the alternate-power frame")

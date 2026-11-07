@@ -1,14 +1,17 @@
-# Roth UI 3.4.9
+# Roth UI 3.4.10
 
 Target: Retail `12.1.5.70688`, Interface `120105`, external oUF `14.2.1+`.
 
 ## Changes
 
-- Require the shared asynchronous next-frame scheduler; remove synchronous fallback execution from scheduler and move-grid paths.
-- Keep one external oUF owner: `init.lua` publishes `ns.oUF`, and all runtime consumers require it instead of consulting globals independently.
-- Gate target class text, target-selection sounds and player runtime identity before comparison, formatting, keying or retention.
-- Make session logging and SavedVariables diagnostics ordinary-only; restricted values use fixed neutral markers and are never stringified.
-- Add executable regressions for scheduler ownership, oUF ownership, runtime identity and diagnostic transport boundaries.
+- Make read-only unit-config proxy graphs request-scoped so replaced SavedVariables roots are collectible; reject writes without stringifying arbitrary keys.
+- Settle managed-aura creation batches after every specification succeeds or reaches terminal failure, eliminating repeated `OnShow` scans.
+- Bind each non-player castbar once in the constructor and remove per-layout duplicate bind paths and unused cast-unit retention.
+- Route mover registration and saved-layout application through `mover_runtime`; remove flat aliases and duplicate constructor registration.
+- Require the oUF secure-header `SetVisibility` contract; remove the parallel raw state-driver fallback and historical public bookkeeping helpers.
+- Expose one keyed action-artwork invalidation queue; remove direct namespace, per-frame and player-frame refresh routes.
+- Require the shared next-frame scheduler for Settings and target-castbar refreshes.
+- Add executable regressions for proxy lifetime, terminal aura batches, owner cleanup, canonical mover registration and action-art scheduling.
 
 ## Verification boundary
 

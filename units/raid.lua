@@ -10,7 +10,6 @@
   --get the functions
   local func = ns.func
   local groupVisibility = assert(ns and ns.GroupHeaderVisibility, "Roth_UI: GroupHeaderVisibility is required by units/raid.lua")
-  local frameRegistry = assert(ns and ns.frameRegistry, "Roth_UI: frameRegistry is required by units/raid.lua")
   local framePolicy = assert(ns and ns.framePolicy, "Roth_UI: framePolicy is required by units/raid.lua")
   local DeferUntilOutOfCombat = assert(framePolicy.DeferUntilOutOfCombat,
     "Roth_UI: framePolicy.DeferUntilOutOfCombat is required by units/raid.lua")
@@ -236,11 +235,9 @@
       raidAnchor = CreateFrame("Frame", "Roth_UIRaidAnchor", UIParent)
       raidAnchor:SetSize(50,50)
       raidAnchor:SetPoint(pos.a1, pos.af, pos.a2, pos.x, pos.y)
-      func.applyDragFunctionality(raidAnchor)
+      func.applyDragFunctionality(raidAnchor, "units")
       raidAnchor:SetFrameStrata("DIALOG")
       raidAnchor:SetFrameLevel(10)
-      -- The shared mover supplies the unlock overlay; the anchor needs no art.
-      frameRegistry.Register("units", raidAnchor)
     end
 
     raidGroups = {}

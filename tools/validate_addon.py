@@ -345,7 +345,6 @@ def assert_runtime_boundaries(graph: list[Entry]) -> None:
         '__mode = "k"',
         "InCombatLockdown",
         "function service.ApplyDesired",
-        "function service.Park",
     ):
         if token not in group_visibility:
             fail(f"group-header visibility contract missing: {token}")

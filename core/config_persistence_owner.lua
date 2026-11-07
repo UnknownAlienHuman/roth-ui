@@ -29,7 +29,6 @@ local SanitizeSerializableInPlace = assert(safety.SanitizeSerializableInPlace, "
 
 local configDefaults
 local activeConfigStore
-local readOnlyConfigViews = setmetatable({}, { __mode = "k" })
 
 local function ResolveConfigDefaults()
   local defaults = configDefaults or ns.cfgDefaults
@@ -573,49 +572,38 @@ local function AttachCfgProxy(saved)
   return proxy
 end
 
-local function CreateReadOnlyConfigView(source)
+local function CreateReadOnlyConfigView(source, views)
   if type(source) ~= "table" then
     return source
   end
 
-  local cached = readOnlyConfigViews[source]
+  -- Keep one memo only for the lifetime of the exposed proxy graph. A global
+  -- weak-key cache is not sufficient in Lua 5.1 when each proxy value closes
+  -- over its source key; that cycle can retain replaced SavedVariables roots.
+  views = views or {}
+  local cached = views[source]
   if cached then
     return cached
   end
 
   local proxy = {}
-  local function iterator(_, previousKey)
-    local nextKey, nextValue = next(source, previousKey)
-    if nextKey == nil then
-      return nil
-    end
-    if type(nextValue) == "table" then
-      nextValue = CreateReadOnlyConfigView(nextValue)
-    end
-    return nextKey, nextValue
-  end
-
+  views[source] = proxy
   setmetatable(proxy, {
     __index = function(_, key)
       local value = source[key]
       if type(value) == "table" then
-        return CreateReadOnlyConfigView(value)
+        return CreateReadOnlyConfigView(value, views)
       end
       return value
     end,
-    __newindex = function(_, key)
-      error(("Roth_UI: runtime config view is read-only for key '%s'; use SavedVariables APIs instead."):format(tostring(key)), 2)
-    end,
-    __pairs = function()
-      return iterator, nil, nil
-    end,
-    __len = function()
-      return #source
+    __newindex = function()
+      -- Keys can be secret-capable or carry hostile metamethods. Do not format
+      -- or retain them while rejecting a write to the read-only view.
+      error("Roth_UI: runtime config view is read-only; use SavedVariables APIs instead.", 2)
     end,
     __metatable = false,
   })
 
-  readOnlyConfigViews[source] = proxy
   return proxy
 end
 
