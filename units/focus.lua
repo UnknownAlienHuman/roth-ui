@@ -10,7 +10,6 @@
 
   --get the functions
   local func = ns.func
-  local targetCastbarRuntime = ns.TargetCastbarRuntime
 
   --get the unit container
   local unit = ns.unit
@@ -63,11 +62,6 @@
       end,
       castbarPredicate = function(frame)
         return frame.cfg.castbar.show
-      end,
-      onCastbarCreated = function(_, castbar)
-        if targetCastbarRuntime and type(targetCastbarRuntime.Bind) == "function" then
-          targetCastbarRuntime.Bind(castbar, "focus")
-        end
       end,
     })
 

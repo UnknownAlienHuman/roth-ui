@@ -7,7 +7,8 @@ local pairs = pairs
 local ipairs = ipairs
 local tonumber = tonumber
 local InCombatLockdown = InCombatLockdown
-local defer = ns and ns.defer
+local RunNextFrame = assert(ns and ns.defer and ns.defer.RunNextFrame,
+  "Roth_UI: defer.RunNextFrame is required by settings_general.lua")
 local settingsActions = assert(ns and ns.settingsActions, "Roth_UI: settings actions are required by settings_general.lua")
 
 local LSM = (LibStub and LibStub("LibSharedMedia-3.0", true)) or nil
@@ -38,11 +39,7 @@ local function QueueFontPolicyRefresh(key, afterRefresh)
       end
     end
 
-    if defer and type(defer.RunNextFrame) == "function" then
-      defer.RunNextFrame("settings_general:" .. key, Refresh)
-    else
-      Refresh()
-    end
+    RunNextFrame("settings_general:" .. key, Refresh)
   end)
 end
 
@@ -120,13 +117,9 @@ local function RefreshDataBarLayout()
     if reputation and type(reputation.ForceUpdate) == "function" then
       reputation:ForceUpdate()
     end
-    if ns and type(ns.RefreshActionBarArtwork) == "function" then
-      ns.RefreshActionBarArtwork()
-      return
-    end
-    local artwork = playerFrame and playerFrame.ActionBarBackground
-    if artwork and type(artwork.RefreshActionBarArtwork) == "function" then
-      artwork.RefreshActionBarArtwork()
+    local queueArtwork = ns and ns.QueueActionBarArtworkRefresh
+    if type(queueArtwork) == "function" then
+      queueArtwork()
     end
   end
 
@@ -179,11 +172,7 @@ local function ApplyGlobalHealthValueMode()
   end
 
   ui:RunOutOfCombat("settings_health_value_mode_global", function()
-    if defer and type(defer.RunNextFrame) == "function" then
-      defer.RunNextFrame("settings_general:health_value_mode", Refresh)
-    else
-      Refresh()
-    end
+    RunNextFrame("settings_general:health_value_mode", Refresh)
   end)
 end
 

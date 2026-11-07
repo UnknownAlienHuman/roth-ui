@@ -49,6 +49,12 @@ local function makeFrame(name, parent)
   return frame
 end
 
+local function findFrame(name)
+  for i = 1, #created do
+    if created[i].name == name then return created[i] end
+  end
+end
+
 local function makeMoverBar(name)
   local frame = makeRegion()
   frame.name, frame.width, frame.height, frame.scale = name, 100, 10, 1
@@ -63,7 +69,6 @@ end
 
 local expBar = makeMoverBar("Roth_UIExpBar")
 local repBar = makeMoverBar("Roth_UIRepBar")
-
 _G.CreateFrame = function(_, name, parent) return makeFrame(name, parent) end
 
 local controller
@@ -71,7 +76,8 @@ local saved = { point = nil, scale = nil, size = nil }
 local savedBars = {}
 local appliedLayoutCount = 0
 local appliedBarLayoutCount = 0
-local policyQueue, policyDrainCount = {}, 0
+local policyQueue = {}
+local nextFrame = {}
 local ns = {
   cfg = {
     bars = {},
@@ -79,9 +85,10 @@ local ns = {
       expbar = { width = 365, height = 10 },
       repbar = { width = 365, height = 10 },
       art = { actionbarbackground = {
-      show = true, scale = 1.25,
-      pos = { a1 = "CENTER", af = "UIParent", a2 = "CENTER", x = 12, y = 34 },
-    } } } },
+        show = true, scale = 1.25,
+        pos = { a1 = "CENTER", af = "UIParent", a2 = "CENTER", x = 12, y = 34 },
+      } },
+    } },
   },
   func = { IsSecretValue = function() return false end },
   frameRegistry = {
@@ -95,18 +102,25 @@ local ns = {
     CanAccess = function() return true end,
     CanUseRegion = function(value) return type(value) == "table" end,
     TryGet = function(value, key) return true, value and value[key] end,
-    TryMethod = function(value, key, ...) if value and type(value[key]) == "function" then return true, value[key](value, ...) end; return false end,
+    TryMethod = function(value, key, ...)
+      if value and type(value[key]) == "function" then return true, value[key](value, ...) end
+      return false
+    end,
   },
   framePolicy = {
     DeferUntilOutOfCombat = function(key, callback) policyQueue[key] = callback end,
   },
-  defer = { RunNextFrame = function() return true end },
+  defer = {
+    RunNextFrame = function(key, callback)
+      nextFrame[key] = callback
+      return true
+    end,
+  },
+  moverRuntime = {},
 }
 
--- These mocks preserve the real ordering contract: configured layout is in
--- place before mover initialization; existing saved overrides are reapplied
--- after each later config layout refresh.
-ns.func.applyDragFunctionality = function(frame)
+ns.func.applyDragFunctionality = function(frame, category)
+  expect(category == "art", "artwork mover did not receive the canonical category")
   expect(frame.width == 788 and frame.height == 220, "mover initialized before configured artwork size")
   expect(frame.scale == 1.25, "mover initialized before configured scale")
   expect(frame.points[1][1] == "CENTER" and frame.points[1][4] == 12 and frame.points[1][5] == 34,
@@ -119,7 +133,8 @@ ns.func.applyDragFunctionality = function(frame)
   if saved.size then frame:SetSize(saved.size.w, saved.size.h) end
   if saved.scale then frame:SetScale(saved.scale) end
 end
-ns.ApplySavedMoverLayout = function(frame)
+
+ns.moverRuntime.ApplySavedLayout = function(frame)
   if frame == expBar or frame == repBar then
     appliedBarLayoutCount = appliedBarLayoutCount + 1
     local layout = savedBars[frame.name]
@@ -135,6 +150,7 @@ ns.ApplySavedMoverLayout = function(frame)
   if saved.point then frame:ClearAllPoints(); frame:SetPoint(saved.point.a1, _G[saved.point.af], saved.point.a2, saved.point.x, saved.point.y) end
   if saved.scale then frame:SetScale(saved.scale) end
 end
+
 ns.func.ResetMoverLayout = function(frame)
   local pos = frame.defaultPosition
   frame:ClearAllPoints()
@@ -143,11 +159,22 @@ ns.func.ResetMoverLayout = function(frame)
   frame:SetSize(frame.defaultSize.w, frame.defaultSize.h)
 end
 
+local function drainArtwork()
+  local callback = nextFrame["action-bar-background"]
+  expect(type(callback) == "function", "artwork refresh was not queued")
+  nextFrame["action-bar-background"] = nil
+  callback()
+end
+
 assert(loadfile("core/action_bar_background.lua"))("Roth_UI", ns)
 controller = created[1]
+local artwork = findFrame("Roth_UIActionBarBackground")
 expect(controller ~= nil and controller.scripts.OnEvent, "event controller was not created")
-expect(ns.ActionBarBackground ~= nil, "enabled artwork frame was not created")
-local artwork = ns.ActionBarBackground
+expect(artwork ~= nil, "enabled artwork frame was not created")
+expect(ns.ActionBarBackground == nil and ns.RefreshActionBarArtwork == nil,
+  "artwork owner leaked direct frame or synchronous refresh aliases")
+expect(artwork.RefreshActionBarArtwork == nil,
+  "artwork frame leaked a parallel refresh method")
 expect(artwork.width == 788 and artwork.height == 220 and artwork.scale == 1.25,
   "configured artwork dimensions or scale were not applied")
 expect(artwork.points[1][1] == "CENTER" and artwork.points[1][4] == 12 and artwork.points[1][5] == 34,
@@ -163,11 +190,14 @@ expect(repBar.defaultPosition and repBar.defaultPosition.y == 138.75
     and repBar.defaultSize.w == 500,
   "reputation bar mover defaults did not capture artwork-aligned geometry")
 
-savedBars["Roth_UIExpBar"] = {
+savedBars.Roth_UIExpBar = {
   point = { a1 = "TOP", af = "UIParent", a2 = "BOTTOM", x = 35, y = 55 },
-  scale = 1.4, size = { w = 500, h = 22 },
+  scale = 1.4,
+  size = { w = 500, h = 22 },
 }
-ns.RefreshActionBarArtwork()
+ns.QueueActionBarArtworkRefresh()
+ns.QueueActionBarArtworkRefresh()
+drainArtwork()
 expect(expBar.points[1][1] == "TOP" and expBar.points[1][4] == 35 and expBar.points[1][5] == 55
     and expBar.width == 500 and expBar.height == 22 and expBar.scale == 1.4,
   "saved experience-bar mover overrides did not survive action-art refresh")
@@ -186,19 +216,20 @@ expect(appliedLayoutCount == afterWorld + 1, "player vehicle event did not refre
 
 saved.point = { a1 = "TOP", af = "UIParent", a2 = "BOTTOM", x = 80, y = 90 }
 saved.scale, saved.size = 1.7, { w = 900, h = 260 }
-ns.RefreshActionBarArtwork()
+ns.QueueActionBarArtworkRefresh()
+drainArtwork()
 expect(artwork.points[1][1] == "TOP" and artwork.points[1][4] == 80 and artwork.points[1][5] == 90,
   "saved mover point did not survive artwork refresh")
 expect(artwork.scale == 1.7 and artwork.width == 900 and artwork.height == 260,
   "saved mover scale/size did not survive artwork refresh")
 expect(appliedLayoutCount >= 1, "saved mover layout was not reapplied after config geometry")
 
--- Settings can change the configured default after the frame already exists.
 ns.cfg.units.player.art.actionbarbackground.pos = {
   a1 = "BOTTOM", af = "UIParent", a2 = "BOTTOM", x = -15, y = 25,
 }
 ns.cfg.units.player.art.actionbarbackground.scale = 0.9
-ns.RefreshActionBarArtwork()
+ns.QueueActionBarArtworkRefresh()
+drainArtwork()
 expect(artwork.defaultPosition.a1 == "BOTTOM" and artwork.defaultPosition.x == -15
     and artwork.defaultScale == 0.9,
   "changed configured defaults were not recorded for mover reset")
@@ -216,20 +247,20 @@ saved = savedAtStart
 
 local beforeCreateDisabled = #created
 ns.cfg.units.player.art.actionbarbackground.show = false
-ns.RefreshActionBarArtwork()
+ns.QueueActionBarArtworkRefresh()
+drainArtwork()
 expect(#created == beforeCreateDisabled, "disabling existing artwork created a spurious frame")
 expect(artwork.shown == false, "disabled artwork was not hidden")
 
 local beforeCombat = #created
 inCombat = true
-ns.RefreshActionBarArtwork()
+ns.QueueActionBarArtworkRefresh()
+drainArtwork()
 expect(#created == beforeCombat, "combat refresh performed structural frame work")
 expect(policyQueue["action-bar-background"] ~= nil, "combat refresh was not deferred to shared policy")
 inCombat = false
 policyQueue["action-bar-background"]()
 policyQueue["action-bar-background"] = nil
-policyDrainCount = policyDrainCount + 1
-expect(policyDrainCount == 1, "shared deferred callback did not run once")
 
 expect(controller.events.PLAYER_REGEN_ENABLED == nil,
   "action-bar owner registered its own permanent regen-enabled event")
@@ -246,13 +277,17 @@ local disabledNs = {
     CanAccess = function() return true end,
     CanUseRegion = function(value) return type(value) == "table" end,
     TryGet = function(value, key) return true, value and value[key] end,
-    TryMethod = function(value, key, ...) if value and type(value[key]) == "function" then return true, value[key](value, ...) end; return false end,
+    TryMethod = function(value, key, ...)
+      if value and type(value[key]) == "function" then return true, value[key](value, ...) end
+      return false
+    end,
   },
   framePolicy = { DeferUntilOutOfCombat = function(key, callback) policyQueue[key] = callback end },
   defer = { RunNextFrame = function() return true end },
+  moverRuntime = { ApplySavedLayout = function() end },
 }
 assert(loadfile("core/action_bar_background.lua"))("Roth_UI", disabledNs)
 expect(#created == disabledStart + 1, "disabled artwork created more than its event controller")
-expect(disabledNs.ActionBarBackground == nil, "disabled artwork published or created a background frame")
+expect(disabledNs.ActionBarBackground == nil, "disabled artwork published a background frame")
 
 print("action-bar artwork lifecycle/mover test: OK")

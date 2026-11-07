@@ -1,4 +1,4 @@
-# Roth UI dependency graph — 3.4.9
+# Roth UI dependency graph — 3.4.10
 
 ```text
 init -> canonical ns.oUF
@@ -21,6 +21,12 @@ unit identity value
   -> native/addon-owned sink
   -> no generic retention or logging
 
+unit config request
+  -> current canonical settings table
+  -> request-scoped read-only proxy graph
+  -> shared descendants reuse one proxy inside that graph
+  -> graph and replaced source become collectible together
+
 import text
   -> transfer envelope validation
   -> persistence transaction
@@ -31,9 +37,22 @@ persisted mover geometry
   -> value/table access gates
   -> finite bounds + point/name validation
   -> ordinary independent anchor resolution
+  -> one mover-runtime registration/category
   -> snapshot current point
   -> clear + apply once
   -> restore snapshot if SetPoint fails
+
+managed aura specifications
+  -> owner/access/combat recheck
+  -> create once or terminally fail each specification
+  -> update successful siblings once
+  -> settle batch until a new specification is added
+
+non-player castbar
+  -> func.createCastbar
+  -> one TargetCastbarRuntime.Bind
+  -> oUF callbacks
+  -> native boolean/color sinks
 
 Settings readiness
   -> Roth ADDON_LOADED after all builders
@@ -54,6 +73,11 @@ combat-sensitive request
   -> PLAYER_REGEN_ENABLED drain rechecks combat before each callback
   -> listener removed when no pending work remains
 
+action artwork invalidation
+  -> QueueActionBarArtworkRefresh only
+  -> deferred_scheduler key action-bar-background
+  -> one owner refreshes layout and reapplies mover state
+
 layout refresh requests
   -> mandatory deferred_scheduler keyed generation
   -> one timer for all keys
@@ -61,4 +85,4 @@ layout refresh requests
   -> reentrant work enters the next generation
 ```
 
-The TOC is the executable load order. `init.lua` establishes `ns.oUF`; safety modules precede all value consumers; `core/persistence_control_plane.lua` loads after root/schema services; `core/deferred_scheduler.lua` precedes move-grid, frame-policy bootstrap and action artwork; `units/mini_target_scaffold.lua` precedes its unit styles.
+The TOC is the executable load order. `init.lua` establishes `ns.oUF`; safety modules precede all value consumers; `core/persistence_control_plane.lua` loads after root/schema services; `core/deferred_scheduler.lua` precedes move-grid, Settings refresh, target castbars, frame-policy bootstrap and action artwork; `units/mini_target_scaffold.lua` precedes its unit styles.

@@ -313,7 +313,7 @@ function func.EnsureAuraRegions(frame)
   -- Hidden or currently inaccessible owners must not allocate managed objects.
   if not IsFrameVisible(frame) then return false end
   local specs = frame and frame.__rothAuraSpecs
-  if type(specs) ~= "table" or frame.__rothAuraRegionsCreated or frame.__rothAuraRegionsCreating then
+  if type(specs) ~= "table" or frame.__rothAuraRegionsSettled or frame.__rothAuraRegionsCreating then
     return false
   end
   if InCombatLockdown and InCombatLockdown() then
@@ -331,7 +331,7 @@ function func.EnsureAuraRegions(frame)
 
   frame.__rothAuraRegionsCreating = true
   local created = false
-  local complete = true
+  local settled = true
   for i = 1, #specs do
     local spec = specs[i]
     if not spec.element and not spec.creationFailed then
@@ -346,10 +346,12 @@ function func.EnsureAuraRegions(frame)
         WarnOnce("auraCreationFailed", "A managed aura region failed to initialize; reload after correcting the error.")
       end
     end
-    if not spec.element then complete = false end
+    if not spec.element and not spec.creationFailed then
+      settled = false
+    end
   end
   frame.__rothAuraRegionsCreating = nil
-  frame.__rothAuraRegionsCreated = created and complete
+  frame.__rothAuraRegionsSettled = settled
 
   if created then
     local enabledOK, enabled = safety.TryMethod(frame, "IsElementEnabled", "Auras")
@@ -382,7 +384,9 @@ function func.QueueAuraRegion(frame, spec)
     end
   end
   frame.__rothAuraSpecs[#frame.__rothAuraSpecs + 1] = spec
-  frame.__rothAuraRegionsCreated = nil
+  -- A new specification opens a new finite creation batch. Existing successful
+  -- or terminally failed siblings keep their state and are not retried.
+  frame.__rothAuraRegionsSettled = nil
 
   if frame.__rothAuraLifecycleReady and IsFrameVisible(frame) then
     func.EnsureAuraRegions(frame)

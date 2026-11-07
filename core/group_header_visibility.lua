@@ -1,29 +1,27 @@
 -- Secure oUF group-header visibility owner.
 --
--- oUF creates protected SecureGroupHeaderTemplate frames and retains them in
--- its header registry. Roth UI therefore never reparents or respawns an active
--- header to apply settings. Visibility is updated out of combat through oUF's
--- public header method when available; desired/applied state stays in a weak
--- addon-owned table rather than on the protected frame.
+-- oUF owns the protected header and exposes SetVisibility. Roth keeps only the
+-- desired/applied ordinary policy in a private weak table and never installs a
+-- parallel state driver or publishes the bookkeeping table.
 
 local _, ns = ...
 
 local safety = assert(ns and ns.safety, "Roth_UI: ns.safety is required by group_header_visibility.lua")
-local TryCall = assert(safety.TryCall, "Roth_UI: safety.TryCall is required by group_header_visibility.lua")
+local CanAccess = assert(safety.CanAccess, "Roth_UI: safety.CanAccess is required by group_header_visibility.lua")
+local IsSecret = assert(safety.IsSecret, "Roth_UI: safety.IsSecret is required by group_header_visibility.lua")
+local CanUseRegion = assert(safety.CanUseRegion, "Roth_UI: safety.CanUseRegion is required by group_header_visibility.lua")
+local TryMethod = assert(safety.TryMethod, "Roth_UI: safety.TryMethod is required by group_header_visibility.lua")
 local InCombatLockdown = InCombatLockdown
-local RegisterStateDriver = RegisterStateDriver
-local UnregisterStateDriver = UnregisterStateDriver
 local type = type
 local setmetatable = setmetatable
 
 local service = ns.GroupHeaderVisibility or {}
 ns.GroupHeaderVisibility = service
 
-local states = service.states or setmetatable({}, { __mode = "k" })
-service.states = states
+local states = setmetatable({}, { __mode = "k" })
 
 local function ResolveVisibility(visibility)
-  if type(visibility) ~= "string" then
+  if not CanAccess(visibility) or IsSecret(visibility) or type(visibility) ~= "string" then
     return nil
   end
   local value = visibility:match("^%s*(.-)%s*$")
@@ -40,11 +38,6 @@ local function ResolveVisibility(visibility)
   return value
 end
 
-local function ResolveFallbackCondition(visibility)
-  local custom = visibility:match("^custom%s+(.+)$")
-  return custom or visibility
-end
-
 local function GetState(frame)
   local state = states[frame]
   if not state then
@@ -55,7 +48,7 @@ local function GetState(frame)
 end
 
 local function ApplyResolved(frame, value)
-  if not frame or not value then
+  if not value or not CanUseRegion(frame) then
     return false
   end
   if InCombatLockdown and InCombatLockdown() then
@@ -67,46 +60,17 @@ local function ApplyResolved(frame, value)
     return true
   end
 
-  local ok
-  if type(frame.SetVisibility) == "function" then
-    ok = TryCall(frame.SetVisibility, frame, value)
-  else
-    if type(RegisterStateDriver) ~= "function" then
-      return false
-    end
-    if type(UnregisterStateDriver) == "function" then
-      TryCall(UnregisterStateDriver, frame, "visibility")
-    end
-    ok = TryCall(RegisterStateDriver, frame, "visibility", ResolveFallbackCondition(value))
-  end
-
-  if ok == true then
-    state.applied = value
-    return true
-  end
-  return false
-end
-
-function service.SetDesired(frame, visibility)
-  if not frame then
+  if TryMethod(frame, "SetVisibility", value) ~= true then
     return false
   end
-  local value = ResolveVisibility(visibility)
-  if not value then
-    return false
-  end
-  GetState(frame).desired = value
+
+  state.applied = value
   return true
-end
-
-function service.GetDesired(frame)
-  local state = frame and states[frame]
-  return state and state.desired or nil
 end
 
 function service.Apply(frame, visibility)
   local value = ResolveVisibility(visibility)
-  if not value then
+  if not value or not CanUseRegion(frame) then
     return false
   end
   GetState(frame).desired = value
@@ -114,28 +78,18 @@ function service.Apply(frame, visibility)
 end
 
 function service.ApplyDesired(frame, fallback)
-  local state = frame and states[frame]
+  if not CanUseRegion(frame) then
+    return false
+  end
+  local state = states[frame]
   local value = state and state.desired or ResolveVisibility(fallback)
   return ApplyResolved(frame, value)
 end
 
 function service.Hide(frame)
-  return ApplyResolved(frame, ResolveVisibility("hide"))
+  return ApplyResolved(frame, "custom hide")
 end
 
 function service.Show(frame)
-  return ApplyResolved(frame, ResolveVisibility("show"))
-end
-
--- Historical rebuild code called Park before spawning another secure header.
--- Secure headers cannot be destroyed and oUF retains them, so reparenting is
--- prohibited. Keep this compatibility entry point as hide-only fail-safe.
-function service.Park(frame)
-  return service.Hide(frame)
-end
-
-function service.Forget(frame)
-  if frame then
-    states[frame] = nil
-  end
+  return ApplyResolved(frame, "custom show")
 end

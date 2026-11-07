@@ -10,8 +10,6 @@
 
   --get the functions
   local func = ns.func
-  local frameRegistry = assert(ns and ns.frameRegistry, "Roth_UI: frameRegistry is required by units/boss.lua")
-  local targetCastbarRuntime = ns.TargetCastbarRuntime
 
   --get the unit container
   local unit = ns.unit
@@ -107,11 +105,7 @@
       else
         unit:SetPoint("TOP", boss[i-1], "BOTTOM", 0, -5)
       end
-      frameRegistry.Register("units", unit)
-      if unit.Castbar and targetCastbarRuntime and type(targetCastbarRuntime.Bind) == "function" then
-        targetCastbarRuntime.Bind(unit.Castbar, "boss"..i)
-      end
-      func.applyDragFunctionality(unit)
+      func.applyDragFunctionality(unit, "units")
       boss[i] = unit
     end
   end

@@ -13,6 +13,8 @@ ns.TargetCastbarRuntime = runtime
 local type = type
 local pairs = pairs
 local CreateColor = assert(_G.CreateColor, "Roth_UI: CreateColor is required by target_castbar.lua")
+local RunNextFrame = assert(ns.defer and ns.defer.RunNextFrame,
+  "Roth_UI: defer.RunNextFrame is required by target_castbar.lua")
 
 local DEFAULTS = {
   interruptibleCast = { r = 1.0, g = 0.7, b = 0.0, a = 1.0 },
@@ -171,13 +173,12 @@ function runtime.ApplyInitialVisual(bar)
   SetKnownBarColor(bar, "interruptibleCast")
 end
 
-function runtime.Bind(bar, unitToken)
+function runtime.Bind(bar)
   if not bar then
     return false
   end
 
   runtime.ApplyInitialVisual(bar)
-  bar.__rothCastUnit = unitToken
   bar.PostCastStart = runtime.PostCastStart
   bar.PostCastInterruptible = runtime.PostCastInterruptible
   bar.PostCastFail = runtime.PostCastFail
@@ -199,10 +200,5 @@ function runtime.RefreshActive()
 end
 
 function runtime.ScheduleActiveRefresh()
-  local defer = ns and ns.defer
-  if defer and type(defer.RunNextFrame) == "function" then
-    defer.RunNextFrame("target_castbar:refresh", runtime.RefreshActive)
-  else
-    runtime.RefreshActive()
-  end
+  return RunNextFrame("target_castbar:refresh", runtime.RefreshActive)
 end

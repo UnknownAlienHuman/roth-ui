@@ -22,16 +22,27 @@ def main() -> int:
     raid = RAID.read_text(encoding="utf-8-sig")
     frame_policy = FRAME_POLICY.read_text(encoding="utf-8-sig")
 
-    for forbidden in ("SetParent", "hiddenParents"):
+    for forbidden in (
+        "SetParent",
+        "hiddenParents",
+        "RegisterStateDriver",
+        "UnregisterStateDriver",
+        "service.states",
+        "function service.SetDesired",
+        "function service.GetDesired",
+        "function service.Park",
+        "function service.Forget",
+    ):
         if forbidden in runtime:
-            fail(f"secure group-header owner contains forbidden token: {forbidden}")
+            fail(f"secure group-header owner contains retired token: {forbidden}")
 
     for required in (
         'value == "show" or value == "hide"',
         'return "custom " .. value',
         'function service.ApplyDesired',
-        'function service.GetDesired',
-        'function service.Park(frame)',
+        'TryMethod(frame, "SetVisibility", value)',
+        "CanAccess(visibility)",
+        "CanUseRegion(frame)",
         '__mode = "k"',
     ):
         if required not in runtime:
@@ -40,8 +51,10 @@ def main() -> int:
     for required in (
         'calls[2] == "custom hide"',
         'calls[4] == "custom show"',
-        'temporary hide overwrote desired visibility',
-        'temporary show overwrote desired visibility',
+        'desired visibility was not restored after hide',
+        'desired visibility was not restored after show',
+        'parallel state-driver fallback was used',
+        'header without the required oUF SetVisibility contract was accepted',
     ):
         if required not in regression:
             fail(f"group-header regression assertion missing: {required}")

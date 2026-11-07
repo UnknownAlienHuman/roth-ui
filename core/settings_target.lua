@@ -3,6 +3,10 @@ local ns = assert(private or _G.Roth_UI, "Roth_UI: main namespace is required")
 
 local ui = assert(ns and ns.SettingsUI, "Roth_UI: SettingsUI is required by settings_target.lua")
 local type = type
+local targetCastbarRuntime = assert(ns and ns.TargetCastbarRuntime,
+  "Roth_UI: TargetCastbarRuntime is required by settings_target.lua")
+local ScheduleTargetCastbarRefresh = assert(targetCastbarRuntime.ScheduleActiveRefresh,
+  "Roth_UI: TargetCastbarRuntime.ScheduleActiveRefresh is required by settings_target.lua")
 
 local function SemanticPath(key)
   return { "units", "target", "castbar", "color", "semantic", key }
@@ -17,15 +21,7 @@ local function GetCurrentColor(key)
 end
 
 local function ApplyTargetCastbarContract()
-  local runtime = ns and ns.TargetCastbarRuntime
-  if runtime and type(runtime.ScheduleActiveRefresh) == "function" then
-    runtime.ScheduleActiveRefresh()
-    return
-  end
-
-  if ns and type(ns.RefreshTargetCastbarColorContract) == "function" then
-    ns.RefreshTargetCastbarColorContract()
-  end
+  ScheduleTargetCastbarRefresh()
 end
 
 local function SetSemanticColor(key, hexColor)

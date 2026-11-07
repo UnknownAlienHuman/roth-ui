@@ -145,8 +145,5 @@ function func.buildMiniTargetScaffold(self, opts)
 
   if type(opts.castbarPredicate) == "function" and opts.castbarPredicate(self) then
     func.createCastbar(self)
-    if self.Castbar and type(opts.onCastbarCreated) == "function" then
-      opts.onCastbarCreated(self, self.Castbar)
-    end
   end
 end
